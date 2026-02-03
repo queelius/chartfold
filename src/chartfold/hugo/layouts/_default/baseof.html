@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Title }} | {{ .Site.Title }}</title>
+    <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+    <nav class="sidebar">
+        <h2><a href="{{ "/" | relURL }}">Chartfold</a></h2>
+        <ul>
+            <li><a href="{{ "/" | relURL }}">Dashboard</a></li>
+            <li><a href="{{ "timeline/" | relURL }}">Timeline</a></li>
+            <li><a href="{{ "labs/" | relURL }}">Labs</a></li>
+            <li><a href="{{ "encounters/" | relURL }}">Encounters</a></li>
+            <li><a href="{{ "medications/" | relURL }}">Medications</a></li>
+            <li><a href="{{ "conditions/" | relURL }}">Conditions</a></li>
+            <li><a href="{{ "pathology/" | relURL }}">Pathology</a></li>
+            <li><a href="{{ "surgical/" | relURL }}">Surgical Timeline</a></li>
+            <li><a href="{{ "imaging/" | relURL }}">Imaging</a></li>
+        </ul>
+    </nav>
+    <main class="content">
+        {{ block "main" . }}{{ end }}
+    </main>
+</body>
+</html>

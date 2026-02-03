@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "chartfold": {
+      "command": "python",
+      "args": ["-m", "chartfold.mcp.server"],
+      "env": {
+        "CHARTFOLD_DB": "chartfold.db"
+      }
+    }
+  }
+}
