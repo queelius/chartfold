@@ -18,7 +18,7 @@ pip install -e ".[dev,mcp]"
 ## Commands
 
 ```bash
-# Run all tests (478 tests, pytest)
+# Run all tests (700+ tests, pytest)
 python -m pytest tests/
 
 # Run a single test file
@@ -43,16 +43,32 @@ python -m chartfold summary
 # What's new since a given date (visit diff)
 python -m chartfold diff 2025-01-01
 
-# Export clinical summary as markdown
-python -m chartfold export --output summary.md --lookback 6
-python -m chartfold export --format pdf --output summary.pdf
+# Export as Markdown (visit-focused, filtered by lookback)
+python -m chartfold export markdown --output summary.md --lookback 6
+python -m chartfold export markdown --output summary.pdf --pdf   # PDF via pandoc
+
+# Export as self-contained HTML with charts
+python -m chartfold export html --output summary.html --lookback 6
+python -m chartfold export html --full --output full.html   # All data
+
+# Full-fidelity export (all tables, all records)
+python -m chartfold export markdown --full --output data.md
+python -m chartfold export json --output data.json
+python -m chartfold export json --include-load-log --output full.json
+python -m chartfold export json --exclude-notes --output clinical.json
+
+# Import JSON back to new database (round-trip capable)
+python -m chartfold import data.json --db new_chartfold.db
+python -m chartfold import data.json --validate-only
+python -m chartfold import data.json --db existing.db --overwrite
 
 # Generate personalized config from your data
 python -m chartfold init-config
 
 # Generate Hugo static site
-python -m chartfold generate-site --hugo-dir ./site
-python -m chartfold generate-site --hugo-dir ./site --config chartfold.toml
+python -m chartfold export hugo --output ./site
+python -m chartfold export hugo --output ./site --config chartfold.toml
+python -m chartfold export hugo --output ./site --linked-sources
 
 # Personal notes
 python -m chartfold notes list --limit 20
@@ -150,9 +166,13 @@ Specialized parsers for structured clinical data that don't fit neatly into the 
 
 TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, Hugo dashboard settings. Auto-generated from DB contents via `python -m chartfold init-config`.
 
-### Export (export.py)
+### Export Modules
 
-Structured markdown export of key clinical data (conditions, meds, labs, encounters, imaging, pathology, allergies). Optional PDF via pandoc. Designed for bringing to doctor visits.
+- `export.py` — Structured markdown export of key clinical data (conditions, meds, labs, encounters, imaging, pathology, allergies). Optional PDF via pandoc.
+- `export_html.py` — Self-contained HTML export with embedded Chart.js for lab trend charts, sortable tables, and collapsible sections. No external dependencies.
+- `export_full.py` — Full-fidelity JSON/markdown export of all tables for round-trip backup/restore.
+
+All export formats support both visit-focused (with `--lookback`) and full data modes.
 
 ### Example Data Sources
 
