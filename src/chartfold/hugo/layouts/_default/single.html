@@ -1,5 +1,8 @@
 {{ define "main" }}
 <article>
+    {{ with .Parent }}
+    <nav class="breadcrumb">&larr; <a href="{{ .Permalink }}">{{ .Title }}</a></nav>
+    {{ end }}
     <h1>{{ .Title }}</h1>
     {{ .Content }}
 </article>

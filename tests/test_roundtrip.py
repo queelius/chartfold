@@ -25,7 +25,7 @@ class TestUnifiedRecordsCounts:
             "patients", "documents", "encounters", "lab_results", "vitals",
             "medications", "conditions", "procedures", "pathology_reports",
             "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status",
+            "social_history", "family_history", "mental_status", "source_assets",
         }
         assert set(counts.keys()) == expected_keys
         assert all(v == 0 for v in counts.values())

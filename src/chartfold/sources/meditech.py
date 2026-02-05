@@ -42,6 +42,7 @@ def process_meditech_export(input_dir: str, config: SourceConfig | None = None) 
 
     result = {
         "source": config.name,
+        "input_dir": os.path.abspath(input_dir),
         "fhir_data": None,
         "ccda_data": None,
         "toc_data": [],
@@ -119,6 +120,7 @@ def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
             "section_names": list(doc["sections"].keys()),
             "lab_count": len(doc["labs"]),
             "note_count": len(doc["notes"]),
+            "file_path": os.path.abspath(filepath),
         })
 
         for lab in doc["labs"]:

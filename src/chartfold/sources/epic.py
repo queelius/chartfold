@@ -32,6 +32,7 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
 
     data = {
         "source": config.name,
+        "input_dir": os.path.abspath(input_dir),
         "inventory": [],
         "cea_values": [],
         "lab_results": [],
@@ -78,6 +79,7 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                 "sections": section_names,
                 "authors": enc_info.get("authors", []),
                 "facility": enc_info.get("facility", ""),
+                "file_path": os.path.abspath(filepath),
             })
 
             if enc_date:

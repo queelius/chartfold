@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from chartfold.core.utils import normalize_date_to_iso, try_parse_numeric
+from chartfold.core.utils import derive_source_name, normalize_date_to_iso, try_parse_numeric
 from chartfold.models import (
     AllergyRecord,
     ClinicalNote,
@@ -20,6 +20,7 @@ from chartfold.models import (
     UnifiedRecords,
     VitalRecord,
 )
+from chartfold.sources.assets import discover_source_assets
 
 
 def _parser_counts(data: dict) -> dict[str, int]:
@@ -42,13 +43,20 @@ def _parser_counts(data: dict) -> dict[str, int]:
     }
 
 
-def athena_to_unified(data: dict) -> UnifiedRecords:
+def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecords:
     """Transform athenahealth extraction output into UnifiedRecords.
 
     Args:
         data: Output from process_athena_export().
+        source_name: Optional source name override. If not provided, derived from input_dir.
     """
-    source = "athena_sihf"
+    input_dir = data.get("input_dir", "")
+    if source_name:
+        source = source_name
+    elif input_dir:
+        source = derive_source_name(input_dir, "athena")
+    else:
+        source = "athena"
     records = UnifiedRecords(source=source)
 
     # Patient
@@ -72,6 +80,7 @@ def athena_to_unified(data: dict) -> UnifiedRecords:
             doc_type="CDA",
             title=doc.get("title", ""),
             encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
+            file_path=doc.get("file_path", ""),
         ))
 
     # Encounters
@@ -207,5 +216,9 @@ def athena_to_unified(data: dict) -> UnifiedRecords:
             provider=proc.get("provider", ""),
             facility=proc.get("facility", ""),
         ))
+
+    # Source assets (non-parsed files)
+    if input_dir:
+        records.source_assets = discover_source_assets(input_dir, source)
 
     return records

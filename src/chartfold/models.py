@@ -239,6 +239,25 @@ class MentalStatusRecord:
 
 
 @dataclass
+class SourceAsset:
+    """A source file (PDF, image, etc.) not parsed but tracked for provenance."""
+
+    source: str
+    asset_type: str  # pdf, png, html, xsl, etc.
+    file_path: str  # absolute path on disk
+    file_name: str  # basename for display
+    file_size_kb: int = 0
+    content_type: str = ""  # MIME type
+    title: str = ""  # from TOC or inferred
+    encounter_date: str = ""  # ISO YYYY-MM-DD if known
+    encounter_id: str = ""  # e.g., V00003336701 (MEDITECH)
+    doc_id: str = ""  # cross-ref to documents.doc_id
+    ref_table: str = ""  # clinical table (nullable)
+    ref_id: int | None = None  # row ID in ref_table
+    metadata: str = ""  # JSON blob for extras
+
+
+@dataclass
 class UnifiedRecords:
     """Container for all records from a single source load.
 
@@ -262,6 +281,7 @@ class UnifiedRecords:
     social_history: list[SocialHistoryRecord] = field(default_factory=list)
     family_history: list[FamilyHistoryRecord] = field(default_factory=list)
     mental_status: list[MentalStatusRecord] = field(default_factory=list)
+    source_assets: list[SourceAsset] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
         """Return record counts per table, matching the keys from db.load_source()."""
@@ -282,4 +302,5 @@ class UnifiedRecords:
             "social_history": len(self.social_history),
             "family_history": len(self.family_history),
             "mental_status": len(self.mental_status),
+            "source_assets": len(self.source_assets),
         }

@@ -40,6 +40,7 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
 
     data = {
         "source": config.name,
+        "input_dir": os.path.abspath(input_dir),
         "patient": None,
         "documents": [],
         "encounters": [],
@@ -87,6 +88,7 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
             "title": title,
             "encounter_date": "",
             "size_kb": size_kb,
+            "file_path": os.path.abspath(filepath),
         })
 
         print(f"  {fname}: {title}, {len(sections)} sections, {size_kb}KB")

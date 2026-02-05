@@ -1044,8 +1044,8 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
     """
     assets = db.query(
         "SELECT id, source, asset_type, file_path, file_name, "
-        "file_size_kb, title, encounter_date, ref_table, ref_id "
-        "FROM source_assets ORDER BY source, encounter_date, file_name"
+        "file_size_kb, title, encounter_date, encounter_id, ref_table, ref_id "
+        "FROM source_assets ORDER BY source, encounter_date, encounter_id, file_name"
     )
     if not assets:
         _write_page(content / "sources.md", "Source Documents",
@@ -1086,16 +1086,19 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         if d:
             notes_by_date.setdefault(d, []).append(n)
 
-    # Group assets by date
+    # Group assets by date, then by encounter_id, then other
     dated: dict[str, list] = {}
-    undated: list = []
+    by_encounter_id: dict[str, list] = {}
+    other: list = []
     for a in assets:
         if a["id"] not in asset_url_map:
             continue
         if a.get("encounter_date"):
             dated.setdefault(a["encounter_date"], []).append(a)
+        elif a.get("encounter_id"):
+            by_encounter_id.setdefault(a["encounter_id"], []).append(a)
         else:
-            undated.append(a)
+            other.append(a)
 
     # Build page content
     md_parts = []
@@ -1135,11 +1138,52 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         md_parts.append(table)
         md_parts.append("")
 
-    # Undated section
-    if undated:
-        md_parts.append("## Undated")
+    # Encounter-ID groups (for assets with encounter_id but no date)
+    for enc_id in sorted(by_encounter_id.keys()):
+        group = by_encounter_id[enc_id]
+        md_parts.append(f"## Encounter {enc_id}")
+
+        # Back-links: try to find matching encounters by encounter_id
+        backlinks = []
+        for date, encs in encounters_by_date.items():
+            for e in encs:
+                # Check if any encounter date group has this encounter_id
+                pass
+        # Try source_doc_id match from encounters table
+        enc_matches = db.query(
+            "SELECT id, encounter_date, encounter_type FROM encounters "
+            "WHERE source_doc_id = ? OR source_doc_id LIKE ?",
+            (enc_id, f"%{enc_id}%"),
+        )
+        for e in enc_matches:
+            etype = e.get("encounter_type", "") or "Encounter"
+            date_str = f" ({e['encounter_date']})" if e.get("encounter_date") else ""
+            backlinks.append(f"[{etype}{date_str}](/encounters/{e['id']}/)")
+
+        if backlinks:
+            md_parts.append("**Related:** " + " &bull; ".join(backlinks))
+            md_parts.append("")
+
         rows = []
-        for a in undated:
+        for a in group:
+            url = asset_url_map[a["id"]]
+            display = a.get("title") or a["file_name"]
+            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+            rows.append([
+                (display, url),
+                a["asset_type"],
+                size_str,
+                a["source"],
+            ])
+        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
+        md_parts.append(table)
+        md_parts.append("")
+
+    # Other (no date, no encounter_id)
+    if other:
+        md_parts.append("## Other")
+        rows = []
+        for a in other:
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""

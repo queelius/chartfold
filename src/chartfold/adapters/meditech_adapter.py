@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from chartfold.core.utils import normalize_date_to_iso, parse_iso_date, try_parse_numeric
+from chartfold.core.utils import derive_source_name, normalize_date_to_iso, parse_iso_date, try_parse_numeric
 from chartfold.models import (
     AllergyRecord,
     ClinicalNote,
@@ -21,6 +21,7 @@ from chartfold.models import (
     UnifiedRecords,
     VitalRecord,
 )
+from chartfold.sources.assets import discover_source_assets, enrich_assets_from_meditech_toc
 from chartfold.sources.meditech import (
     deduplicate_allergies,
     deduplicate_family_history,
@@ -70,13 +71,20 @@ def _parser_counts(data: dict) -> dict[str, int]:
     }
 
 
-def meditech_to_unified(data: dict) -> UnifiedRecords:
+def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecords:
     """Transform MEDITECH extraction output into UnifiedRecords.
 
     Args:
         data: Output from process_meditech_export().
+        source_name: Optional source name override. If not provided, derived from input_dir.
     """
-    source = "meditech_anderson"
+    input_dir = data.get("input_dir", "")
+    if source_name:
+        source = source_name
+    elif input_dir:
+        source = derive_source_name(input_dir, "meditech")
+    else:
+        source = "meditech"
     records = UnifiedRecords(source=source)
 
     fhir = data.get("fhir_data") or {}
@@ -101,6 +109,7 @@ def meditech_to_unified(data: dict) -> UnifiedRecords:
             doc_type="CCDA",
             title=doc.get("title", ""),
             encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
+            file_path=doc.get("file_path", ""),
         ))
 
     # Encounters from FHIR
@@ -241,7 +250,49 @@ def meditech_to_unified(data: dict) -> UnifiedRecords:
             recorded_date=ms.get("date_iso", ""),
         ))
 
+    # Source assets (non-parsed files like PDFs)
+    input_dir = data.get("input_dir", "")
+    if input_dir:
+        records.source_assets = discover_source_assets(input_dir, source)
+        # Enrich with MEDITECH TOC metadata
+        toc_data = data.get("toc_data", [])
+        if toc_data:
+            records.source_assets = enrich_assets_from_meditech_toc(
+                records.source_assets, toc_data, input_dir
+            )
+        # Enrich encounter_date from FHIR encounters using V-number mapping
+        _enrich_asset_dates_from_fhir(records.source_assets, fhir.get("encounters", []))
+
     return records
+
+
+def _enrich_asset_dates_from_fhir(assets: list, fhir_encounters: list[dict]) -> None:
+    """Enrich source asset encounter_date from FHIR encounter identifiers.
+
+    MEDITECH FHIR encounters have identifier.value = V-number (e.g., V00003676858)
+    and period.start = encounter date. Source assets have encounter_id from directory
+    names. This function populates encounter_date on assets by looking up the V-number.
+
+    Modifies assets in place.
+    """
+    # Build V-number -> date mapping from FHIR encounters
+    enc_id_to_date: dict[str, str] = {}
+    for enc in fhir_encounters:
+        enc_id = enc.get("encounter_id", "")
+        date = enc.get("start_iso", "")
+        if enc_id and date:
+            enc_id_to_date[enc_id] = date
+
+    if not enc_id_to_date:
+        return
+
+    # Enrich assets
+    for asset in assets:
+        if asset.encounter_date:
+            continue  # Already has a date
+        enc_id = asset.encounter_id
+        if enc_id and enc_id in enc_id_to_date:
+            asset.encounter_date = enc_id_to_date[enc_id]
 
 
 def _add_fhir_labs(records: UnifiedRecords, observations: list[dict], source: str) -> None:

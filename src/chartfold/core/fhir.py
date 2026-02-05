@@ -270,12 +270,16 @@ def _parse_medication_request(med: dict) -> dict:
 def _parse_encounter(enc: dict) -> dict:
     period = enc.get("period", {})
     enc_type = enc.get("type", [{}])[0].get("text", "")
+    # Extract encounter identifier (e.g., V00003676858 for MEDITECH)
+    identifiers = enc.get("identifier", [])
+    enc_id = identifiers[0].get("value", "") if identifiers else ""
     return {
         "type": enc_type,
         "start": period.get("start", ""),
         "end": period.get("end", ""),
         "status": enc.get("status", ""),
         "start_iso": parse_iso_date(period.get("start", "")),
+        "encounter_id": enc_id,
     }
 
 

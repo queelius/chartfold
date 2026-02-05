@@ -7,6 +7,8 @@ import tempfile
 import pytest
 from lxml import etree
 
+from chartfold.sources.base import detect_source, resolve_epic_dir
+
 from chartfold.core.cda import (
     NS,
     el_text,
@@ -21,6 +23,7 @@ from chartfold.core.cda import (
 from chartfold.core.fhir import parse_fhir_bundle
 from chartfold.core.utils import (
     deduplicate_by_key,
+    derive_source_name,
     normalize_date_to_iso,
     parse_iso_date,
     parse_narrative_date,
@@ -569,3 +572,118 @@ class TestMarkdownWriter:
         assert "Extracted Clinical Data" in text
         assert "1.8" in text
         assert "DOC0001" in text
+
+
+# ---------------------------------------------------------------------------
+# Source Auto-Detection
+# ---------------------------------------------------------------------------
+
+
+class TestDetectSource:
+    def test_epic_direct(self, tmp_path):
+        (tmp_path / "DOC0001.XML").write_text("<xml/>")
+        (tmp_path / "DOC0002.XML").write_text("<xml/>")
+        assert detect_source(str(tmp_path)) == "epic"
+
+    def test_epic_ihe_xdm(self, tmp_path):
+        doc_dir = tmp_path / "IHE_XDM" / "Alexander1"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "DOC0001.XML").write_text("<xml/>")
+        assert detect_source(str(tmp_path)) == "epic"
+
+    def test_meditech_fhir(self, tmp_path):
+        (tmp_path / "US Core FHIR Resources.json").write_text("{}")
+        assert detect_source(str(tmp_path)) == "meditech"
+
+    def test_meditech_ccda_dir(self, tmp_path):
+        (tmp_path / "CCDA").mkdir()
+        assert detect_source(str(tmp_path)) == "meditech"
+
+    def test_athena_document_xml(self, tmp_path):
+        doc_dir = tmp_path / "Document_XML"
+        doc_dir.mkdir()
+        (doc_dir / "AmbulatorySummary_alltime.xml").write_text("<xml/>")
+        assert detect_source(str(tmp_path)) == "athena"
+
+    def test_athena_direct(self, tmp_path):
+        (tmp_path / "AmbulatorySummary_alltime.xml").write_text("<xml/>")
+        assert detect_source(str(tmp_path)) == "athena"
+
+    def test_unknown_returns_none(self, tmp_path):
+        (tmp_path / "random.txt").write_text("hello")
+        assert detect_source(str(tmp_path)) is None
+
+    def test_empty_dir_returns_none(self, tmp_path):
+        assert detect_source(str(tmp_path)) is None
+
+    def test_nonexistent_dir_returns_none(self):
+        assert detect_source("/nonexistent/path/xyz") is None
+
+
+class TestResolveEpicDir:
+    def test_direct_docs(self, tmp_path):
+        (tmp_path / "DOC0001.XML").write_text("<xml/>")
+        assert resolve_epic_dir(str(tmp_path)) == str(tmp_path)
+
+    def test_ihe_xdm_traversal(self, tmp_path):
+        doc_dir = tmp_path / "IHE_XDM" / "Alexander1"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "DOC0001.XML").write_text("<xml/>")
+        assert resolve_epic_dir(str(tmp_path)) == str(doc_dir)
+
+    def test_no_docs_returns_input(self, tmp_path):
+        assert resolve_epic_dir(str(tmp_path)) == str(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# derive_source_name tests
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveSourceName:
+    def test_simple_directory(self):
+        assert derive_source_name("/path/to/anderson", "epic") == "epic_anderson"
+
+    def test_with_trailing_slash(self):
+        assert derive_source_name("/path/to/anderson/", "epic") == "epic_anderson"
+
+    def test_meditech_type(self):
+        assert derive_source_name("/exports/siteman", "meditech") == "meditech_siteman"
+
+    def test_athena_type(self):
+        assert derive_source_name("/exports/sihf_jan26", "athena") == "athena_sihf_jan26"
+
+    def test_skips_common_subdirs_ccda(self):
+        """Should go up one level for common subdirectory names."""
+        assert derive_source_name("/exports/siteman/CCDA", "meditech") == "meditech_siteman"
+
+    def test_skips_common_subdirs_document_xml(self):
+        assert derive_source_name("/exports/sihf/Document_XML", "athena") == "athena_sihf"
+
+    def test_skips_common_subdirs_ihe_xdm(self):
+        assert derive_source_name("/exports/anderson/IHE_XDM", "epic") == "epic_anderson"
+
+    def test_skips_common_subdirs_alexander1(self):
+        """Alexander1 is a common Epic subdirectory under IHE_XDM."""
+        assert derive_source_name("/exports/anderson/IHE_XDM/Alexander1", "epic") == "epic_ihe_xdm"
+
+    def test_normalizes_spaces(self):
+        assert derive_source_name("/path/to/my export", "epic") == "epic_my_export"
+
+    def test_normalizes_special_chars(self):
+        assert derive_source_name("/path/to/dr-tan's_records", "meditech") == "meditech_dr_tan_s_records"
+
+    def test_normalizes_case(self):
+        assert derive_source_name("/path/to/Anderson", "epic") == "epic_anderson"
+
+    def test_collapses_multiple_underscores(self):
+        assert derive_source_name("/path/to/foo--bar", "epic") == "epic_foo_bar"
+
+    def test_strips_leading_trailing_underscores(self):
+        assert derive_source_name("/path/to/_export_", "epic") == "epic_export"
+
+    def test_empty_path_fallback(self):
+        assert derive_source_name("", "epic") == "epic_unknown"
+
+    def test_root_path_fallback(self):
+        assert derive_source_name("/", "meditech") == "meditech_unknown"

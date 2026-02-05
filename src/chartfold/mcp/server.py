@@ -45,7 +45,8 @@ mcp = FastMCP(
         "- match_cross_source_encounters: Same-day encounters across different EHR systems\n"
         "- get_data_quality_report: Duplicate labs and source coverage matrix\n"
         "- get_database_summary: Table counts and load history\n"
-        "- search_notes / get_pathology_report: Full-text clinical note search and pathology lookup\n\n"
+        "- search_notes / get_pathology_report: Full-text clinical note search and pathology lookup\n"
+        "- get_source_files / get_asset_summary: Find source files (PDFs, images) linked to records\n\n"
         "- save_note / get_note / search_notes_personal / delete_note: "
         "Persist and retrieve personal analyses, observations, and visit prep summaries\n\n"
         "Start with get_database_summary or get_schema to understand available data. "
@@ -621,6 +622,88 @@ def delete_note(note_id: int) -> dict:
     try:
         deleted = db.delete_note(note_id)
         return {"deleted": deleted}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_source_files(
+    table_name: str = "",
+    record_id: int = 0,
+    encounter_date: str = "",
+    source: str = "",
+    asset_type: str = "",
+) -> list[dict]:
+    """Find source files (PDFs, images, etc.) linked to clinical records.
+
+    Returns source assets matching the criteria. You can search by:
+    - table_name + record_id: Assets linked to a specific clinical record
+    - encounter_date: Assets from a specific encounter date
+    - source: Assets from a specific EHR source
+    - asset_type: Filter by file type (pdf, png, html, etc.)
+
+    Args:
+        table_name: Clinical table name (e.g., "lab_results", "procedures").
+        record_id: Record ID in the table.
+        encounter_date: ISO date to filter by.
+        source: Filter by source (e.g., "epic_anderson", "meditech_anderson").
+        asset_type: Filter by asset type (e.g., "pdf", "png").
+    """
+    db = _get_db()
+    try:
+        conditions = []
+        params = []
+
+        if table_name and record_id:
+            conditions.append("(ref_table = ? AND ref_id = ?)")
+            params.extend([table_name, record_id])
+        if encounter_date:
+            conditions.append("encounter_date = ?")
+            params.append(encounter_date)
+        if source:
+            conditions.append("source = ?")
+            params.append(source)
+        if asset_type:
+            conditions.append("asset_type = ?")
+            params.append(asset_type)
+
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        return db.query(
+            f"SELECT id, source, asset_type, file_path, file_name, file_size_kb, "
+            f"title, encounter_date, encounter_id, doc_id "
+            f"FROM source_assets{where} ORDER BY encounter_date DESC, file_name",
+            tuple(params),
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_asset_summary() -> dict:
+    """Get a summary of source assets (PDFs, images, etc.) by source and type.
+
+    Returns counts and total sizes grouped by source and asset type, plus a
+    grand total. Use this to understand what non-parsed source files are available
+    in the database.
+    """
+    db = _get_db()
+    try:
+        by_source_type = db.query("""
+            SELECT source, asset_type, COUNT(*) as count, SUM(file_size_kb) as total_kb
+            FROM source_assets
+            GROUP BY source, asset_type
+            ORDER BY source, count DESC
+        """)
+
+        total = db.query(
+            "SELECT COUNT(*) as count, SUM(file_size_kb) as total_kb FROM source_assets"
+        )[0]
+
+        return {
+            "by_source_and_type": by_source_type,
+            "total_count": total["count"],
+            "total_size_kb": total["total_kb"] or 0,
+        }
     finally:
         db.close()
 

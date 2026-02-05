@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import re
-
-from chartfold.core.utils import normalize_date_to_iso, try_parse_numeric
+from chartfold.core.utils import derive_source_name, normalize_date_to_iso, try_parse_numeric
 from chartfold.models import (
     AllergyRecord,
     ClinicalNote,
@@ -21,7 +19,7 @@ from chartfold.models import (
     UnifiedRecords,
     VitalRecord,
 )
-from chartfold.sources.epic import _classify_result
+from chartfold.sources.assets import discover_source_assets
 
 
 def _parser_counts(data: dict) -> dict[str, int]:
@@ -46,13 +44,20 @@ def _parser_counts(data: dict) -> dict[str, int]:
     }
 
 
-def epic_to_unified(data: dict) -> UnifiedRecords:
+def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecords:
     """Transform Epic extraction output into UnifiedRecords.
 
     Args:
         data: Output from process_epic_documents().
+        source_name: Optional source name override. If not provided, derived from input_dir.
     """
-    source = "epic_anderson"
+    input_dir = data.get("input_dir", "")
+    if source_name:
+        source = source_name
+    elif input_dir:
+        source = derive_source_name(input_dir, "epic")
+    else:
+        source = "epic"
     records = UnifiedRecords(source=source)
 
     # Documents
@@ -63,7 +68,7 @@ def epic_to_unified(data: dict) -> UnifiedRecords:
             doc_type="CDA",
             title=inv.get("title", ""),
             encounter_date=normalize_date_to_iso(inv.get("date", "")),
-            file_path="",
+            file_path=inv.get("file_path", ""),
             file_size_kb=inv.get("size_kb", 0),
         ))
 
@@ -230,6 +235,11 @@ def epic_to_unified(data: dict) -> UnifiedRecords:
             provider=proc.get("provider", ""),
             status=proc.get("status", ""),
         ))
+
+    # Source assets (non-parsed files)
+    input_dir = data.get("input_dir", "")
+    if input_dir:
+        records.source_assets = discover_source_assets(input_dir, source)
 
     return records
 

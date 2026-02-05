@@ -32,6 +32,7 @@ from chartfold.models import (
     PatientRecord,
     ProcedureRecord,
     SocialHistoryRecord,
+    SourceAsset,
     UnifiedRecords,
     VitalRecord,
 )
@@ -53,6 +54,7 @@ _TABLE_MAP: list[tuple[str, str, type]] = [
     ("social_history", "social_history", SocialHistoryRecord),
     ("family_history", "family_history", FamilyHistoryRecord),
     ("mental_status", "mental_status", MentalStatusRecord),
+    ("source_assets", "source_assets", SourceAsset),
 ]
 
 
@@ -145,8 +147,8 @@ class ChartfoldDB:
                     conditions_count, procedures_count, pathology_reports_count,
                     imaging_reports_count, clinical_notes_count, immunizations_count,
                     allergies_count, social_history_count, family_history_count,
-                    mental_status_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    mental_status_count, source_assets_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     source, now, duration,
                     counts.get("patients", 0),
@@ -165,6 +167,7 @@ class ChartfoldDB:
                     counts.get("social_history", 0),
                     counts.get("family_history", 0),
                     counts.get("mental_status", 0),
+                    counts.get("source_assets", 0),
                 ),
             )
 
@@ -181,7 +184,7 @@ class ChartfoldDB:
         tables = ["patients", "documents", "encounters", "lab_results", "vitals",
                    "medications", "conditions", "procedures", "pathology_reports",
                    "imaging_reports", "clinical_notes", "immunizations", "allergies",
-                   "social_history", "family_history", "mental_status"]
+                   "social_history", "family_history", "mental_status", "source_assets"]
         result = {}
         for table in tables:
             row = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
@@ -222,6 +225,7 @@ class ChartfoldDB:
             "social_history": row["social_history_count"],
             "family_history": row["family_history_count"],
             "mental_status": row["mental_status_count"],
+            "source_assets": row.get("source_assets_count", 0),
         }
 
     # --- Personal notes CRUD ---

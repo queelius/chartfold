@@ -1,5 +1,6 @@
 """Shared utility functions for date parsing, deduplication, etc."""
 
+import os
 import re
 from typing import Callable
 
@@ -92,6 +93,36 @@ def try_parse_numeric(value: str) -> float | None:
         return float(cleaned)
     except (ValueError, TypeError):
         return None
+
+
+def derive_source_name(input_dir: str, source_type: str) -> str:
+    """Derive a source name from the input directory path and source type.
+
+    Examples:
+        "/path/to/anderson/" + "epic" -> "epic_anderson"
+        "/path/to/siteman/CCDA/" + "meditech" -> "meditech_siteman"
+        "~/exports/sihf_jan26/" + "athena" -> "athena_sihf_jan26"
+
+    The directory name is normalized to lowercase with spaces/special chars
+    replaced by underscores.
+    """
+    # Get the deepest non-empty directory name
+    path = os.path.normpath(input_dir)
+    dir_name = os.path.basename(path)
+
+    # If the dirname is a common subdirectory, go up one level
+    common_subdirs = {"ccda", "document_xml", "ihe_xdm", "alexander1"}
+    if dir_name.lower() in common_subdirs:
+        dir_name = os.path.basename(os.path.dirname(path))
+
+    # Normalize: lowercase, replace non-alphanumeric with underscore, collapse
+    normalized = re.sub(r"[^a-z0-9]+", "_", dir_name.lower())
+    normalized = normalized.strip("_")
+
+    if not normalized:
+        normalized = "unknown"
+
+    return f"{source_type}_{normalized}"
 
 
 def deduplicate_by_key(

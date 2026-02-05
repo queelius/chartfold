@@ -34,7 +34,7 @@ def build_surgical_timeline(
         "FROM pathology_reports ORDER BY report_date"
     )
     imaging = db.query(
-        "SELECT study_name, modality, study_date, impression, source "
+        "SELECT id, study_name, modality, study_date, impression, source "
         "FROM imaging_reports ORDER BY study_date"
     )
 
@@ -98,6 +98,7 @@ def build_surgical_timeline(
         if linked_paths:
             p = linked_paths[0]  # Primary pathology report
             entry["pathology"] = {
+                "id": p["id"],
                 "diagnosis": p.get("diagnosis", ""),
                 "staging": p.get("staging", ""),
                 "margins": p.get("margins", ""),
@@ -124,6 +125,7 @@ def build_surgical_timeline(
                             # delta < 0: imaging after procedure
                             if -post_op_imaging_days <= delta <= pre_op_imaging_days:
                                 entry["related_imaging"].append({
+                                    "id": img["id"],
                                     "study": img["study_name"],
                                     "modality": img["modality"],
                                     "date": img_date,

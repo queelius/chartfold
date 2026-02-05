@@ -245,7 +245,8 @@ CREATE TABLE IF NOT EXISTS load_log (
     allergies_count INTEGER DEFAULT 0,
     social_history_count INTEGER DEFAULT 0,
     family_history_count INTEGER DEFAULT 0,
-    mental_status_count INTEGER DEFAULT 0
+    mental_status_count INTEGER DEFAULT 0,
+    source_assets_count INTEGER DEFAULT 0
 );
 
 -- Personal notes / analysis storage (created by Claude or user)
@@ -269,3 +270,26 @@ CREATE TABLE IF NOT EXISTS note_tags (
 CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_ref ON notes(ref_table, ref_id);
 CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
+
+-- Source assets (PDFs, images, etc. not parsed but tracked)
+CREATE TABLE IF NOT EXISTS source_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    asset_type TEXT NOT NULL,      -- pdf, png, html, xsl, etc.
+    file_path TEXT NOT NULL,       -- absolute path on disk
+    file_name TEXT NOT NULL,       -- basename for display
+    file_size_kb INTEGER,
+    content_type TEXT,             -- MIME type
+    title TEXT,                    -- from TOC or inferred from directory
+    encounter_date TEXT,           -- ISO YYYY-MM-DD if known
+    encounter_id TEXT,             -- e.g., V00003336701 (MEDITECH)
+    doc_id TEXT,                   -- cross-ref to documents.doc_id (nullable)
+    ref_table TEXT,                -- clinical table (nullable)
+    ref_id INTEGER,                -- row ID in ref_table (nullable)
+    metadata TEXT                  -- JSON blob for source-specific extras
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_assets_source ON source_assets(source);
+CREATE INDEX IF NOT EXISTS idx_source_assets_type ON source_assets(asset_type);
+CREATE INDEX IF NOT EXISTS idx_source_assets_date ON source_assets(encounter_date);
+CREATE INDEX IF NOT EXISTS idx_source_assets_ref ON source_assets(ref_table, ref_id);

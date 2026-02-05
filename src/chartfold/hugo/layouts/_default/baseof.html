@@ -6,6 +6,7 @@
     <title>{{ .Title }} | {{ .Site.Title }}</title>
     <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
 </head>
 <body>
     <nav class="sidebar">
@@ -17,13 +18,27 @@
             <li><a href="{{ "encounters/" | relURL }}">Encounters</a></li>
             <li><a href="{{ "medications/" | relURL }}">Medications</a></li>
             <li><a href="{{ "conditions/" | relURL }}">Conditions</a></li>
+            <li><a href="{{ "notes/" | relURL }}">Clinical Notes</a></li>
             <li><a href="{{ "pathology/" | relURL }}">Pathology</a></li>
             <li><a href="{{ "surgical/" | relURL }}">Surgical Timeline</a></li>
             <li><a href="{{ "imaging/" | relURL }}">Imaging</a></li>
+            <li><a href="{{ "sources/" | relURL }}">Source Documents</a></li>
         </ul>
     </nav>
     <main class="content">
         {{ block "main" . }}{{ end }}
     </main>
+    <script>
+    (function(){
+      var path = window.location.pathname.split('/')[1] || '';
+      var links = document.querySelectorAll('.sidebar a');
+      links.forEach(function(a) {
+        if (path && a.getAttribute('href').indexOf('/' + path) === 0) {
+          a.style.color = '#fff';
+          a.style.fontWeight = '600';
+        }
+      });
+    })();
+    </script>
 </body>
 </html>

@@ -9,6 +9,7 @@ def get_lab_trend(
     db: ChartfoldDB,
     test_name: str | None = None,
     test_loinc: str | None = None,
+    test_names: list[str] | None = None,
     start_date: str = "",
     end_date: str = "",
 ) -> list[dict]:
@@ -18,6 +19,7 @@ def get_lab_trend(
         db: Database connection.
         test_name: Test name to search for (partial match, case-insensitive).
         test_loinc: LOINC code for exact match.
+        test_names: Multiple test names to OR-match (for cross-source synonyms).
         start_date: Filter results on or after this ISO date.
         end_date: Filter results on or before this ISO date.
     """
@@ -27,6 +29,10 @@ def get_lab_trend(
     if test_loinc:
         conditions.append("test_loinc = ?")
         params.append(test_loinc)
+    elif test_names:
+        eq_clauses = " OR ".join("LOWER(test_name) = ?" for _ in test_names)
+        conditions.append(f"({eq_clauses})")
+        params.extend(n.lower() for n in test_names)
     elif test_name:
         conditions.append("LOWER(test_name) LIKE ?")
         params.append(f"%{test_name.lower()}%")
@@ -97,6 +103,7 @@ def get_lab_series(
     db: ChartfoldDB,
     test_name: str | None = None,
     test_loinc: str | None = None,
+    test_names: list[str] | None = None,
     start_date: str = "",
     end_date: str = "",
 ) -> dict:
@@ -109,6 +116,7 @@ def get_lab_series(
         db: Database connection.
         test_name: Test name to search for (partial match, case-insensitive).
         test_loinc: LOINC code for exact match.
+        test_names: Multiple test names to OR-match (for cross-source synonyms).
         start_date: Filter results on or after this ISO date.
         end_date: Filter results on or before this ISO date.
 
@@ -120,6 +128,7 @@ def get_lab_series(
     - ref_range_discrepancy: True if sources report different reference ranges
     """
     results = get_lab_trend(db, test_name=test_name, test_loinc=test_loinc,
+                            test_names=test_names,
                             start_date=start_date, end_date=end_date)
     if not results:
         return {

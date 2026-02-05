@@ -139,6 +139,104 @@ def multi_source_db(tmp_path):
     db.close()
 
 
+@pytest.fixture
+def synonym_db(tmp_path):
+    """Database with different test names for the same test across sources."""
+    db = ChartfoldDB(str(tmp_path / "synonym.db"))
+    db.init_schema()
+
+    epic_records = UnifiedRecords(
+        source="epic_anderson",
+        lab_results=[
+            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
+                      value="1.4", value_numeric=1.4, unit="ng/mL",
+                      ref_range="0.0-3.0", result_date="2025-01-15"),
+            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
+                      value="5.8", value_numeric=5.8, unit="ng/mL",
+                      ref_range="0.0-3.0", interpretation="H",
+                      result_date="2025-06-15"),
+        ],
+    )
+    meditech_records = UnifiedRecords(
+        source="meditech_siteman",
+        lab_results=[
+            LabResult(source="meditech_siteman",
+                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
+                      value="4.1", value_numeric=4.1, unit="ng/mL",
+                      ref_range="0.0-5.0", result_date="2024-11-01"),
+            LabResult(source="meditech_siteman",
+                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
+                      value="2.5", value_numeric=2.5, unit="ng/mL",
+                      ref_range="0.0-5.0", result_date="2025-03-01"),
+            LabResult(source="meditech_siteman",
+                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
+                      value="3.8", value_numeric=3.8, unit="ng/mL",
+                      ref_range="0.0-5.0", result_date="2025-08-01"),
+        ],
+    )
+    db.load_source(epic_records)
+    db.load_source(meditech_records)
+    yield db
+    db.close()
+
+
+class TestLabTrendMultiName:
+    def test_single_name_misses_synonyms(self, synonym_db):
+        """Searching for 'CEA' with LIKE does NOT match 'Carcinoembryonic Antigen'."""
+        results = get_lab_trend(synonym_db, test_name="CEA")
+        assert len(results) == 2  # Only Epic's results
+        assert all(r["source"] == "epic_anderson" for r in results)
+
+    def test_multi_name_finds_all(self, synonym_db):
+        """Using test_names with both variants finds all results."""
+        results = get_lab_trend(synonym_db, test_names=["CEA", "Carcinoembryonic Antigen"])
+        assert len(results) == 5  # 2 Epic + 3 MEDITECH
+
+    def test_multi_name_chronological(self, synonym_db):
+        results = get_lab_trend(synonym_db, test_names=["CEA", "Carcinoembryonic Antigen"])
+        dates = [r["result_date"] for r in results]
+        assert dates == sorted(dates)
+
+    def test_multi_name_with_date_filter(self, synonym_db):
+        results = get_lab_trend(
+            synonym_db,
+            test_names=["CEA", "Carcinoembryonic Antigen"],
+            start_date="2025-01-01",
+        )
+        assert len(results) == 4  # Excludes 2024-11-01
+
+    def test_loinc_takes_precedence_over_test_names(self, synonym_db):
+        """LOINC filter should be preferred over test_names if both provided."""
+        results = get_lab_trend(synonym_db, test_loinc="2039-6",
+                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        # test_loinc matches all 5 since both names share the same LOINC
+        assert len(results) == 5
+
+
+class TestLabSeriesMultiName:
+    def test_multi_name_series(self, synonym_db):
+        series = get_lab_series(synonym_db,
+                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        assert len(series["results"]) == 5
+        assert "epic_anderson" in series["sources"]
+        assert "meditech_siteman" in series["sources"]
+
+    def test_multi_name_ref_range_discrepancy(self, synonym_db):
+        series = get_lab_series(synonym_db,
+                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        assert series["ref_range_discrepancy"] is True
+
+    def test_single_name_series_misses_synonyms(self, synonym_db):
+        """Confirm the problem: single test_name misses cross-source data."""
+        series = get_lab_series(synonym_db, test_name="CEA")
+        assert len(series["results"]) == 2
+        assert len(series["sources"]) == 1
+
+    def test_multi_name_empty_when_no_match(self, synonym_db):
+        series = get_lab_series(synonym_db, test_names=["NonExistent", "AlsoNot"])
+        assert series["results"] == []
+
+
 class TestLabSeries:
     def test_cross_source_series(self, multi_source_db):
         series = get_lab_series(multi_source_db, test_name="CEA")

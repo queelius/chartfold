@@ -631,8 +631,8 @@ class TestLinkedSources:
         assert "## 2025-02-20" in content
         assert "## 2025-01-15" in content
 
-    def test_linked_sources_undated_section(self, loaded_db, tmp_path):
-        """Assets without encounter_date go in 'Undated' section."""
+    def test_linked_sources_other_section(self, loaded_db, tmp_path):
+        """Assets without encounter_date or encounter_id go in 'Other' section."""
         asset_dir = tmp_path / "assets"
         asset_dir.mkdir()
         f1 = asset_dir / "style.xsl"
@@ -649,8 +649,29 @@ class TestLinkedSources:
         generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
 
         content = (hugo_dir / "content" / "sources.md").read_text()
-        assert "Undated" in content
+        assert "## Other" in content
         assert "style.xsl" in content or "Stylesheet" in content
+
+    def test_linked_sources_grouped_by_encounter_id(self, loaded_db, tmp_path):
+        """Assets with encounter_id but no date are grouped by encounter ID."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "admission.pdf"
+        f1.write_text("pdf content")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "admission.pdf", 10, "Admission", "V00003336701"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        content = (hugo_dir / "content" / "sources.md").read_text()
+        assert "## Encounter V00003336701" in content
+        assert "admission.pdf" in content or "Admission" in content
 
     def test_encounter_detail_shows_source_docs(self, loaded_db, tmp_path):
         """Encounter detail page includes source documents when linked."""

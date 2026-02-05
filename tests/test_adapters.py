@@ -8,9 +8,21 @@ from chartfold.adapters.meditech_adapter import meditech_to_unified
 
 
 class TestEpicAdapter:
-    def test_source_name(self, sample_epic_data):
+    def test_source_name_fallback(self, sample_epic_data):
+        """Without input_dir, fallback to generic source name."""
+        records = epic_to_unified(sample_epic_data)
+        assert records.source == "epic"
+
+    def test_source_name_from_directory(self, sample_epic_data, tmp_path):
+        """Source name derived from input_dir when present."""
+        sample_epic_data["input_dir"] = str(tmp_path / "anderson")
         records = epic_to_unified(sample_epic_data)
         assert records.source == "epic_anderson"
+
+    def test_source_name_override(self, sample_epic_data):
+        """Explicit source_name overrides derived name."""
+        records = epic_to_unified(sample_epic_data, source_name="epic_custom")
+        assert records.source == "epic_custom"
 
     def test_documents(self, sample_epic_data):
         records = epic_to_unified(sample_epic_data)
@@ -119,9 +131,21 @@ class TestGuessModality:
 
 
 class TestMeditechAdapter:
-    def test_source_name(self, sample_meditech_data):
+    def test_source_name_fallback(self, sample_meditech_data):
+        """Without input_dir, fallback to generic source name."""
         records = meditech_to_unified(sample_meditech_data)
-        assert records.source == "meditech_anderson"
+        assert records.source == "meditech"
+
+    def test_source_name_from_directory(self, sample_meditech_data, tmp_path):
+        """Source name derived from input_dir when present."""
+        sample_meditech_data["input_dir"] = str(tmp_path / "siteman")
+        records = meditech_to_unified(sample_meditech_data)
+        assert records.source == "meditech_siteman"
+
+    def test_source_name_override(self, sample_meditech_data):
+        """Explicit source_name overrides derived name."""
+        records = meditech_to_unified(sample_meditech_data, source_name="meditech_custom")
+        assert records.source == "meditech_custom"
 
     def test_patient_from_fhir(self, sample_meditech_data):
         records = meditech_to_unified(sample_meditech_data)
@@ -268,9 +292,21 @@ class TestDateNormalization:
 
 
 class TestAthenaAdapter:
-    def test_source_name(self, sample_athena_data):
+    def test_source_name_fallback(self, sample_athena_data):
+        """Without input_dir, fallback to generic source name."""
         records = athena_to_unified(sample_athena_data)
-        assert records.source == "athena_sihf"
+        assert records.source == "athena"
+
+    def test_source_name_from_directory(self, sample_athena_data, tmp_path):
+        """Source name derived from input_dir when present."""
+        sample_athena_data["input_dir"] = str(tmp_path / "sihf_jan26")
+        records = athena_to_unified(sample_athena_data)
+        assert records.source == "athena_sihf_jan26"
+
+    def test_source_name_override(self, sample_athena_data):
+        """Explicit source_name overrides derived name."""
+        records = athena_to_unified(sample_athena_data, source_name="athena_custom")
+        assert records.source == "athena_custom"
 
     def test_patient(self, sample_athena_data):
         records = athena_to_unified(sample_athena_data)
@@ -367,6 +403,6 @@ class TestAthenaAdapter:
 
     def test_empty_data(self):
         records = athena_to_unified({})
-        assert records.source == "athena_sihf"
+        assert records.source == "athena"  # Fallback without input_dir
         assert records.patient is None
         assert len(records.lab_results) == 0

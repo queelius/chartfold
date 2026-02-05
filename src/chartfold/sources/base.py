@@ -69,6 +69,68 @@ ATHENA_CONFIG = SourceConfig(
     recover_xml=False,
 )
 
+def detect_source(input_dir: str) -> str | None:
+    """Auto-detect the EHR source type from directory contents.
+
+    Returns 'epic', 'meditech', 'athena', or None if unrecognized.
+    """
+    try:
+        entries = os.listdir(input_dir)
+    except OSError:
+        return None
+
+    # MEDITECH: has "US Core FHIR Resources.json" or a CCDA/ directory with UUID-named XML
+    if "US Core FHIR Resources.json" in entries:
+        return "meditech"
+    if "CCDA" in entries and os.path.isdir(os.path.join(input_dir, "CCDA")):
+        return "meditech"
+
+    # athena: has Document_XML/ with AmbulatorySummary, or directly has AmbulatorySummary XML
+    if "Document_XML" in entries and os.path.isdir(os.path.join(input_dir, "Document_XML")):
+        for f in os.listdir(os.path.join(input_dir, "Document_XML")):
+            if re.search(r"AmbulatorySummary.*\.xml$", f, re.IGNORECASE):
+                return "athena"
+    for f in entries:
+        if re.search(r"AmbulatorySummary.*\.xml$", f, re.IGNORECASE):
+            return "athena"
+
+    # Epic: has DOC####.XML files directly
+    for f in entries:
+        if re.match(r"DOC\d{4}\.XML", f, re.IGNORECASE):
+            return "epic"
+
+    # Epic: IHE_XDM subdirectory structure (e.g., IHE_XDM/Alexander1/DOC0001.XML)
+    if "IHE_XDM" in entries and os.path.isdir(os.path.join(input_dir, "IHE_XDM")):
+        xdm_dir = os.path.join(input_dir, "IHE_XDM")
+        for sub in os.listdir(xdm_dir):
+            sub_path = os.path.join(xdm_dir, sub)
+            if os.path.isdir(sub_path):
+                for f in os.listdir(sub_path):
+                    if re.match(r"DOC\d{4}\.XML", f, re.IGNORECASE):
+                        return "epic"
+
+    return None
+
+
+def resolve_epic_dir(input_dir: str) -> str:
+    """If input_dir is a top-level Epic export with IHE_XDM/, return the actual DOC dir."""
+    entries = os.listdir(input_dir)
+    # Already has DOC files directly
+    for f in entries:
+        if re.match(r"DOC\d{4}\.XML", f, re.IGNORECASE):
+            return input_dir
+    # Check IHE_XDM subdirectory
+    xdm_dir = os.path.join(input_dir, "IHE_XDM")
+    if os.path.isdir(xdm_dir):
+        for sub in os.listdir(xdm_dir):
+            sub_path = os.path.join(xdm_dir, sub)
+            if os.path.isdir(sub_path):
+                for f in os.listdir(sub_path):
+                    if re.match(r"DOC\d{4}\.XML", f, re.IGNORECASE):
+                        return sub_path
+    return input_dir
+
+
 MEDITECH_CONFIG = SourceConfig(
     name="MEDITECH",
     lab_sections=[
