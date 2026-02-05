@@ -20,6 +20,27 @@ from chartfold.models import (
     VitalRecord,
 )
 from chartfold.sources.assets import discover_source_assets
+from chartfold.sources.epic import OID_SNOMED
+
+
+def _is_valid_legacy_text(text: str, header_prefix: str) -> bool:
+    """Check if a legacy text entry is valid (non-empty and not a header line)."""
+    stripped = text.strip()
+    return bool(stripped) and not stripped.startswith(header_prefix)
+
+
+def _extract_snomed_code(proc: dict) -> str:
+    """Extract SNOMED code from procedure if code system matches."""
+    if proc.get("code_system", "") == OID_SNOMED:
+        return str(proc.get("code_value", "") or "")
+    return ""
+
+
+def _format_provider_list(authors: list | str | None) -> str:
+    """Format author list as comma-separated provider string."""
+    if isinstance(authors, list):
+        return ", ".join(authors)
+    return ""
 
 
 def _parser_counts(data: dict) -> dict[str, int]:
@@ -83,9 +104,7 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
                 encounter_date=normalize_date_to_iso(enc.get("date", "")),
                 encounter_type="",
                 facility=enc.get("facility", ""),
-                provider=", ".join(enc.get("authors", []))
-                if isinstance(enc.get("authors"), list)
-                else "",
+                provider=_format_provider_list(enc.get("authors")),
             )
         )
 
@@ -168,8 +187,7 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
     # Medications (structured)
     for med in data.get("medications", []):
         if isinstance(med, str):
-            # Legacy text format fallback
-            if med.strip() and not med.startswith("Medications"):
+            if _is_valid_legacy_text(med, "Medications"):
                 records.medications.append(
                     MedicationRecord(source=source, name=med.strip(), status="active")
                 )
@@ -190,8 +208,7 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
     # Conditions (structured)
     for cond in data.get("problems", []):
         if isinstance(cond, str):
-            # Legacy text format fallback
-            if cond.strip() and not cond.startswith("Active Problems"):
+            if _is_valid_legacy_text(cond, "Active Problems"):
                 records.conditions.append(
                     ConditionRecord(
                         source=source, condition_name=cond.strip(), clinical_status="active"
@@ -258,17 +275,13 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
         )
 
     # Procedures
-    from chartfold.sources.epic import OID_SNOMED
-
     for proc in data.get("procedures", []):
         records.procedures.append(
             ProcedureRecord(
                 source=source,
                 source_doc_id=proc.get("source_doc", ""),
                 name=proc.get("name", ""),
-                snomed_code=proc.get("code_value", "")
-                if proc.get("code_system", "") == OID_SNOMED
-                else "",
+                snomed_code=_extract_snomed_code(proc),
                 procedure_date=normalize_date_to_iso(proc.get("date", "")),
                 provider=proc.get("provider", ""),
                 status=proc.get("status", ""),
@@ -286,18 +299,24 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
 def _guess_modality(study_name: str) -> str:
     """Guess imaging modality from study name."""
     name = study_name.upper()
-    if "PET" in name:
-        return "PET"
-    if "MRI" in name or "MR " in name:
-        return "MRI"
-    if "CT " in name or "CT/" in name or name.startswith("CT"):
+
+    # Check for patterns that map to each modality
+    # Order matters: more specific patterns first
+    modality_patterns = [
+        ("PET", ["PET"]),
+        ("MRI", ["MRI", "MR "]),
+        ("CT", ["CT ", "CT/"]),
+        ("US", ["US ", "ULTRASOUND"]),
+        ("XR", ["XR ", "X-RAY", "XRAY", "CHEST"]),
+        ("MG", ["MAMM"]),
+    ]
+
+    # Special case: CT at start of name
+    if name.startswith("CT"):
         return "CT"
-    if "US " in name or "ULTRASOUND" in name:
-        return "US"
-    if "XR " in name or "X-RAY" in name or "XRAY" in name:
-        return "XR"
-    if "CHEST" in name:
-        return "XR"
-    if "MAMM" in name:
-        return "MG"
+
+    for modality, patterns in modality_patterns:
+        if any(pattern in name for pattern in patterns):
+            return modality
+
     return ""
