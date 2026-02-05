@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from chartfold.db import ChartfoldDB
 from chartfold.extractors.pathology import link_pathology_to_procedures
 
@@ -72,8 +74,8 @@ def build_surgical_timeline(
         )
 
     # Build timeline entries
-    timeline = []
-    path_by_proc = {}
+    timeline: list[dict[str, Any]] = []
+    path_by_proc: dict[int, list[dict[str, Any]]] = {}
     for p in pathology:
         pid = p.get("procedure_id")
         if pid:
@@ -86,7 +88,7 @@ def build_surgical_timeline(
 
     for proc in procedures:
         proc_date = proc.get("procedure_date", "")
-        entry = {
+        entry: dict[str, Any] = {
             "procedure": {
                 "id": proc["id"],
                 "name": proc["name"],

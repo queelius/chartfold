@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from chartfold.db import ChartfoldDB
 from chartfold.formatters.markdown import MarkdownWriter
@@ -283,8 +284,8 @@ def import_json(
         data = json.load(f)
 
     tables = data["tables"]
-    counts = {}
-    errors = []
+    counts: dict[str, int] = {}
+    errors: list[str] = []
 
     # If overwriting, delete the existing database
     if db_exists and overwrite:
@@ -295,7 +296,7 @@ def import_json(
         db.init_schema()
 
         # Track ID remappings for FK resolution
-        id_map = {}  # table -> {old_id: new_id}
+        id_map: dict[str, dict[int, int]] = {}  # table -> {old_id: new_id}
 
         # Phase 1: Tables without FK dependencies
         for table in IMPORT_PHASE_1:

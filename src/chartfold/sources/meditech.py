@@ -7,10 +7,13 @@ Handles MEDITECH Expanse 2.2 EHI exports with:
 - NDJSON Table of Contents for document index
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
 from datetime import datetime
+from typing import Any
 
 from chartfold.core.cda import (
     NS,
@@ -27,7 +30,9 @@ from chartfold.sources.base import MEDITECH_CONFIG, SourceConfig, discover_files
 import contextlib
 
 
-def process_meditech_export(input_dir: str, config: SourceConfig | None = None) -> dict:
+def process_meditech_export(
+    input_dir: str, config: SourceConfig | None = None
+) -> dict[str, Any]:
     """Parse a full MEDITECH EHI export (CCDA + FHIR + NDJSON TOC).
 
     Args:
@@ -39,7 +44,7 @@ def process_meditech_export(input_dir: str, config: SourceConfig | None = None) 
     """
     config = config or MEDITECH_CONFIG
 
-    result = {
+    result: dict[str, Any] = {
         "source": config.name,
         "input_dir": os.path.abspath(input_dir),
         "fhir_data": None,
@@ -73,9 +78,9 @@ def process_meditech_export(input_dir: str, config: SourceConfig | None = None) 
     return result
 
 
-def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
+def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict[str, Any]:
     """Parse all CCDA files and return aggregated data."""
-    agg = {
+    agg: dict[str, Any] = {
         "documents": [],
         "all_labs": [],
         "all_procedures": [],
@@ -187,18 +192,21 @@ def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
     return agg
 
 
-def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
+def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict[str, Any] | None:
     """Parse a single MEDITECH CCDA XML file."""
     try:
         root = parse_doc(filepath, recover=config.recover_xml)
     except Exception as e:
         return {"error": str(e), "filename": os.path.basename(filepath)}
 
-    doc = {
+    # Extract sections first for typed access
+    sections = get_sections(root)
+
+    doc: dict[str, Any] = {
         "filename": os.path.basename(filepath),
         "title": get_title(root),
         "encounter_date": get_encounter_date(root),
-        "sections": get_sections(root),
+        "sections": sections,
         "labs": [],
         "procedures": [],
         "problems": [],
@@ -214,13 +222,13 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
 
     # Labs
     for sec_name in config.lab_sections:
-        if sec_name in doc["sections"]:
-            doc["labs"].extend(_extract_meditech_labs(doc["sections"][sec_name]))
+        if sec_name in sections:
+            doc["labs"].extend(_extract_meditech_labs(sections[sec_name]))
 
     # Procedures
-    if "Procedures" in doc["sections"]:
+    if "Procedures" in sections:
         doc["procedures"] = _extract_table_rows(
-            doc["sections"]["Procedures"],
+            sections["Procedures"],
             key_headers={
                 "procedure": "name",
                 "date": "date_raw",
@@ -234,10 +242,10 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
 
     # Problems
     for sec_name in config.problem_sections:
-        if sec_name in doc["sections"]:
+        if sec_name in sections:
             doc["problems"].extend(
                 _extract_table_rows(
-                    doc["sections"][sec_name],
+                    sections[sec_name],
                     key_headers={
                         "problem": "name",
                         "condition": "name",
@@ -249,10 +257,10 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
 
     # Medications
     for sec_name in config.medication_sections:
-        if sec_name in doc["sections"]:
+        if sec_name in sections:
             doc["medications"].extend(
                 _extract_table_rows(
-                    doc["sections"][sec_name],
+                    sections[sec_name],
                     key_headers={
                         "medication": "name",
                         "dose": "dose",
@@ -271,38 +279,38 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
 
     # Clinical notes
     for sec_name in config.note_sections:
-        if sec_name in doc["sections"]:
-            text = section_text(doc["sections"][sec_name])
+        if sec_name in sections:
+            text = section_text(sections[sec_name])
             if text.strip() and len(text.strip()) > 20:
                 doc["notes"][sec_name] = text
 
     # Vitals
-    if "Vital Signs" in doc["sections"]:
-        doc["vitals"] = _extract_meditech_vitals(doc["sections"]["Vital Signs"])
+    if "Vital Signs" in sections:
+        doc["vitals"] = _extract_meditech_vitals(sections["Vital Signs"])
 
     # Immunizations
-    if "Immunizations" in doc["sections"]:
-        doc["immunizations"] = _extract_meditech_immunizations(doc["sections"]["Immunizations"])
+    if "Immunizations" in sections:
+        doc["immunizations"] = _extract_meditech_immunizations(sections["Immunizations"])
 
     # Allergies
     for name in ("Allergies, Adverse Reactions, Alerts", "Allergies"):
-        if name in doc["sections"]:
-            doc["allergies"] = _extract_meditech_allergies(doc["sections"][name])
+        if name in sections:
+            doc["allergies"] = _extract_meditech_allergies(sections[name])
             break
 
     # Social History
-    if "Social History" in doc["sections"]:
-        doc["social_history"] = _extract_meditech_social_history(doc["sections"]["Social History"])
+    if "Social History" in sections:
+        doc["social_history"] = _extract_meditech_social_history(sections["Social History"])
 
     # Family History
     for name in ("Family History", "Family history"):
-        if name in doc["sections"]:
-            doc["family_history"] = _extract_meditech_family_history(doc["sections"][name])
+        if name in sections:
+            doc["family_history"] = _extract_meditech_family_history(sections[name])
             break
 
     # Mental Status
-    if "Mental Status" in doc["sections"]:
-        doc["mental_status"] = _extract_meditech_mental_status(doc["sections"]["Mental Status"])
+    if "Mental Status" in sections:
+        doc["mental_status"] = _extract_meditech_mental_status(sections["Mental Status"])
 
     return doc
 
@@ -961,9 +969,9 @@ def deduplicate_medications(medications: list[dict]) -> list[dict]:
     )
 
 
-def deduplicate_notes(notes: list[dict]) -> list[dict]:
+def deduplicate_notes(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep longest version per (type, encounter_date)."""
-    best = {}
+    best: dict[tuple[Any, Any], dict[str, Any]] = {}
     for note in notes:
         key = (note["type"], note["encounter_date"])
         if key not in best or len(note["text"]) > len(best[key]["text"]):

@@ -1,10 +1,13 @@
 """FHIR R4 Bundle parser for structured EHR data extraction."""
 
+from __future__ import annotations
+
 import base64
 import json
 import re
 from collections import defaultdict
 from html.parser import HTMLParser
+from typing import Any
 
 from chartfold.core.utils import parse_iso_date
 
@@ -46,7 +49,7 @@ def decode_presented_form(data_b64: str, content_type: str = "") -> str:
     return text
 
 
-def parse_fhir_bundle(filepath: str) -> dict:
+def parse_fhir_bundle(filepath: str) -> dict[str, Any]:
     """Parse a FHIR Bundle JSON and extract all resource types.
 
     Returns a dict with keys: patient, observations, conditions,
@@ -57,13 +60,13 @@ def parse_fhir_bundle(filepath: str) -> dict:
         bundle = json.load(f)
 
     entries = bundle.get("entry", [])
-    resources = defaultdict(list)
+    resources: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in entries:
         res = entry.get("resource", {})
         rtype = res.get("resourceType", "Unknown")
         resources[rtype].append(res)
 
-    data = {
+    data: dict[str, Any] = {
         "patient": None,
         "observations": [],
         "conditions": [],

@@ -8,8 +8,11 @@ Key characteristics:
 - Panel captions: "PANEL - Final result (MM/DD/YYYY H:MM AM TZ)"
 """
 
+from __future__ import annotations
+
 import os
 import re
+from typing import Any
 
 from chartfold.core.cda import (
     NS,
@@ -26,11 +29,13 @@ from chartfold.sources.base import EPIC_CONFIG, SourceConfig, discover_files
 import contextlib
 
 
-def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -> dict:
+def process_epic_documents(
+    input_dir: str, config: SourceConfig | None = None
+) -> dict[str, Any]:
     """Parse all Epic CDA documents and return structured data."""
     config = config or EPIC_CONFIG
 
-    data = {
+    data: dict[str, Any] = {
         "source": config.name,
         "input_dir": os.path.abspath(input_dir),
         "inventory": [],
@@ -52,7 +57,12 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
 
     files = discover_files(input_dir, config.file_pattern)
     # Sort by numeric ID
-    files.sort(key=lambda f: int(re.search(r"\d+", os.path.basename(f)).group()))
+
+    def get_doc_num(f: str) -> int:
+        m = re.search(r"\d+", os.path.basename(f))
+        return int(m.group()) if m else 0
+
+    files.sort(key=get_doc_num)
 
     print(f"Found {len(files)} Epic documents to process")
 

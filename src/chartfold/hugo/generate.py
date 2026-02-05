@@ -1266,19 +1266,19 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         asset_url_map[a["id"]] = f"/sources/{a['source']}/{dest_name}"
 
     # Query related clinical records for back-links
-    encounters_by_date = {}
+    encounters_by_date: dict[str, list[dict]] = {}
     for e in db.query("SELECT id, encounter_date, encounter_type, facility FROM encounters"):
         d = e.get("encounter_date", "")
         if d:
             encounters_by_date.setdefault(d, []).append(e)
 
-    procedures_by_date = {}
+    procedures_by_date: dict[str, list[dict]] = {}
     for p in db.query("SELECT id, procedure_date, name FROM procedures"):
         d = p.get("procedure_date", "")
         if d:
             procedures_by_date.setdefault(d, []).append(p)
 
-    notes_by_date = {}
+    notes_by_date: dict[str, list[dict]] = {}
     for n in db.query("SELECT id, note_date, note_type FROM clinical_notes"):
         d = n.get("note_date", "")
         if d:

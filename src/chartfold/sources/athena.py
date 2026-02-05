@@ -10,8 +10,11 @@ Key characteristics:
 - Mental Status: question/answer tables + PHQ-2/PHQ-9 score tables
 """
 
+from __future__ import annotations
+
 import os
 import re
+from typing import Any
 
 from chartfold.core.cda import NS, el_text, get_sections, get_title, parse_doc
 from chartfold.core.utils import normalize_date_to_iso
@@ -30,7 +33,9 @@ ATHENA_CONFIG = SourceConfig(
 )
 
 
-def process_athena_export(input_dir: str, config: SourceConfig | None = None) -> dict:
+def process_athena_export(
+    input_dir: str, config: SourceConfig | None = None
+) -> dict[str, Any]:
     """Parse athenahealth CDA export and return structured data.
 
     Args:
@@ -38,7 +43,7 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
     """
     config = config or ATHENA_CONFIG
 
-    data = {
+    data: dict[str, Any] = {
         "source": config.name,
         "input_dir": os.path.abspath(input_dir),
         "patient": None,
@@ -758,7 +763,7 @@ def _extract_family_history(section) -> list[dict]:
     return entries
 
 
-def _extract_mental_status(section) -> list[dict]:
+def _extract_mental_status(section) -> list[dict[str, Any]]:
     """Extract mental health screenings from athena Mental Status section.
 
     Two table types:
@@ -770,7 +775,7 @@ def _extract_mental_status(section) -> list[dict]:
     if text_el is None:
         return []
 
-    entries = []
+    entries: list[dict[str, Any]] = []
     for table in text_el.findall(f".//{{{NS}}}table"):
         headers = _get_headers(table)
         if not headers:
@@ -862,7 +867,7 @@ def _extract_mental_status(section) -> list[dict]:
     return entries
 
 
-def _extract_encounters(section) -> list[dict]:
+def _extract_encounters(section) -> list[dict[str, Any]]:
     """Extract past encounters from athena Past Encounters section.
 
     Multi-row pattern: continuation rows (extra diagnoses) have empty leading cells.
@@ -871,7 +876,7 @@ def _extract_encounters(section) -> list[dict]:
     if text_el is None:
         return []
 
-    encounters = []
+    encounters: list[dict[str, Any]] = []
     for table in text_el.findall(f".//{{{NS}}}table"):
         headers = _get_headers(table)
         if not headers:
@@ -903,7 +908,7 @@ def _extract_encounters(section) -> list[dict]:
             elif "icd10" in hl or "icd-10" in hl or "icd 10" in hl:
                 col_map["icd10"] = i
 
-        current_encounter = None
+        current_encounter: dict[str, Any] | None = None
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
             enc_id = (

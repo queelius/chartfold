@@ -1,8 +1,10 @@
 """Shared utility functions for date parsing, deduplication, etc."""
 
+from __future__ import annotations
+
 import os
 import re
-from typing import Callable
+from typing import Any, Callable
 
 _MONTHS = {
     "january": "01",
@@ -135,11 +137,11 @@ def derive_source_name(input_dir: str, source_type: str) -> str:
 
 
 def deduplicate_by_key(
-    items: list[dict],
-    key_func: Callable[[dict], tuple],
-    sort_key: Callable[[dict], str] | None = None,
+    items: list[dict[str, Any]],
+    key_func: Callable[[dict[str, Any]], tuple[Any, ...]],
+    sort_key: Callable[[dict[str, Any]], Any] | None = None,
     reverse: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Deduplicate a list of dicts using a key function.
 
     Args:

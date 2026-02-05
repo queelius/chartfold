@@ -274,7 +274,8 @@ class ChartfoldDB:
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (title, content, now, now, ref_table, ref_id),
                 )
-                note_id = cursor.lastrowid
+                # lastrowid is always int after INSERT
+                note_id = cursor.lastrowid or 0
 
             for tag in tags:
                 clean_tag = tag.strip()

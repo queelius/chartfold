@@ -35,10 +35,12 @@ def get_encounter_date(root: etree._Element) -> str:
     """
     low = root.find(f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime/{{{NS}}}low")
     if low is not None:
-        return low.get("value", "")[:8]
+        val = low.get("value", "")
+        return str(val)[:8] if val else ""
     eff = root.find(f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime")
     if eff is not None:
-        return eff.get("value", "")[:8]
+        val = eff.get("value", "")
+        return str(val)[:8] if val else ""
     return ""
 
 
@@ -79,19 +81,21 @@ def section_text(section: etree._Element) -> str:
     text_el = section.find(f"{{{NS}}}text")
     if text_el is None:
         return ""
-    return etree.tostring(text_el, method="text", encoding="unicode").strip()
+    result = etree.tostring(text_el, method="text", encoding="unicode")
+    return str(result).strip()
 
 
 def el_text(el: etree._Element | None) -> str:
     """Get text content of an element, stripping whitespace."""
     if el is None:
         return ""
-    return etree.tostring(el, method="text", encoding="unicode").strip()
+    result = etree.tostring(el, method="text", encoding="unicode")
+    return str(result).strip()
 
 
-def extract_encounter_info(root: etree._Element) -> dict:
+def extract_encounter_info(root: etree._Element) -> dict[str, str | list[str]]:
     """Extract encounter metadata (providers, facility)."""
-    info = {}
+    info: dict[str, str | list[str]] = {}
     facility = root.find(f".//{{{NS}}}encompassingEncounter//{{{NS}}}name")
     if facility is not None and facility.text:
         info["facility"] = facility.text.strip()

@@ -108,7 +108,8 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict:
 
 def get_lab_test_configs(config: dict) -> list[LabTestConfig]:
     """Return list of configured lab tests with match rules."""
-    return config.get("lab_tests", [])
+    tests = config.get("lab_tests", [])
+    return list(tests) if tests else []
 
 
 def _default_config() -> dict:
