@@ -79,6 +79,56 @@ def _build_asset_lookup(db: ChartfoldDB) -> dict:
     }
 
 
+def _render_source_docs_section(
+    asset_lookup: dict,
+    asset_url_map: dict[int, str],
+    ref_table: str = "",
+    ref_id: int | None = None,
+    date: str = "",
+    source: str = "",
+) -> str:
+    """Render a '### Source Documents' section for a clinical detail page.
+
+    Matches assets by direct ref first, then falls back to date+source.
+    Returns empty string if no matching assets found.
+    """
+    matched: list[dict] = []
+    seen_ids: set[int] = set()
+
+    # Priority 1: direct ref match
+    if ref_table and ref_id is not None:
+        for a in asset_lookup.get("by_ref", {}).get((ref_table, ref_id), []):
+            if a["id"] not in seen_ids:
+                matched.append(a)
+                seen_ids.add(a["id"])
+
+    # Priority 2: date + source fallback
+    if date and source:
+        for a in asset_lookup.get("by_date_source", {}).get((date, source), []):
+            if a["id"] not in seen_ids:
+                matched.append(a)
+                seen_ids.add(a["id"])
+
+    if not matched:
+        return ""
+
+    lines = ["### Source Documents", ""]
+    for a in matched:
+        url = asset_url_map.get(a["id"])
+        if not url:
+            continue
+        display = a.get("title") or a["file_name"]
+        size = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+        detail = f" ({a['asset_type']}" + (f", {size}" if size else "") + ")"
+        lines.append(f"- [{display}]({url}){detail}")
+
+    # If no URLs resolved, return empty
+    if len(lines) <= 2:
+        return ""
+
+    return "\n".join(lines)
+
+
 def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
                    linked_sources: bool = False) -> None:
     """Generate the full Hugo site from a chartfold database.

@@ -600,6 +600,74 @@ class TestLinkedSources:
         assert (hugo_dir / "static" / "sources" / "meditech").is_dir()
 
 
+class TestRenderSourceDocs:
+    def test_render_with_ref_match(self):
+        """Direct ref_table/ref_id match renders source doc links."""
+        from chartfold.hugo.generate import _render_source_docs_section
+        asset_lookup = {
+            "by_ref": {
+                ("encounters", 5): [
+                    {"id": 1, "file_name": "visit.pdf", "asset_type": "pdf",
+                     "file_size_kb": 42, "source": "epic", "title": "Visit Summary"},
+                ],
+            },
+            "by_date_source": {},
+        }
+        result = _render_source_docs_section(
+            asset_lookup, {1: "/sources/epic/1_visit.pdf"},
+            ref_table="encounters", ref_id=5,
+        )
+        assert "Source Documents" in result
+        assert "visit.pdf" in result or "Visit Summary" in result
+        assert "/sources/epic/1_visit.pdf" in result
+
+    def test_render_with_date_source_fallback(self):
+        """When no ref match, falls back to date+source matching."""
+        from chartfold.hugo.generate import _render_source_docs_section
+        asset_lookup = {
+            "by_ref": {},
+            "by_date_source": {
+                ("2025-01-15", "epic"): [
+                    {"id": 2, "file_name": "labs.pdf", "asset_type": "pdf",
+                     "file_size_kb": 18, "source": "epic", "title": ""},
+                ],
+            },
+        }
+        result = _render_source_docs_section(
+            asset_lookup, {2: "/sources/epic/2_labs.pdf"},
+            date="2025-01-15", source="epic",
+        )
+        assert "labs.pdf" in result
+        assert "/sources/epic/2_labs.pdf" in result
+
+    def test_render_no_matches_returns_empty(self):
+        """When no assets match, returns empty string."""
+        from chartfold.hugo.generate import _render_source_docs_section
+        asset_lookup = {"by_ref": {}, "by_date_source": {}}
+        result = _render_source_docs_section(
+            asset_lookup, {},
+            ref_table="encounters", ref_id=999,
+        )
+        assert result == ""
+
+    def test_render_deduplicates(self):
+        """Asset appearing in both ref and date match is shown only once."""
+        from chartfold.hugo.generate import _render_source_docs_section
+        shared_asset = {"id": 1, "file_name": "report.pdf", "asset_type": "pdf",
+                        "file_size_kb": 10, "source": "epic", "title": ""}
+        asset_lookup = {
+            "by_ref": {("encounters", 5): [shared_asset]},
+            "by_date_source": {("2025-01-15", "epic"): [shared_asset]},
+        }
+        result = _render_source_docs_section(
+            asset_lookup, {1: "/sources/epic/1_report.pdf"},
+            ref_table="encounters", ref_id=5,
+            date="2025-01-15", source="epic",
+        )
+        # The display text [report.pdf] should appear exactly once
+        assert result.count("[report.pdf]") == 1
+
+
 class TestAssetLookup:
     def test_build_asset_lookup_by_ref(self, loaded_db, tmp_path):
         """Assets with ref_table/ref_id appear in by_ref lookup."""
