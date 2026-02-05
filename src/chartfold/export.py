@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import subprocess
 from datetime import date, timedelta
-from pathlib import Path
 
-from chartfold.analysis.lab_trends import get_abnormal_labs, get_latest_labs
+from chartfold.analysis.lab_trends import get_abnormal_labs
 from chartfold.analysis.medications import get_active_medications, reconcile_medications
-from chartfold.analysis.visit_prep import generate_visit_prep
 from chartfold.db import ChartfoldDB
 from chartfold.formatters.markdown import MarkdownWriter
 
@@ -60,8 +58,10 @@ def export_markdown(
         md.heading("Active Conditions", level=2)
         md.table(
             ["Condition", "ICD-10", "Onset", "Source"],
-            [[c["condition_name"], c.get("icd10_code", ""),
-              c.get("onset_date", ""), c["source"]] for c in conditions],
+            [
+                [c["condition_name"], c.get("icd10_code", ""), c.get("onset_date", ""), c["source"]]
+                for c in conditions
+            ],
         )
 
     # Active medications
@@ -71,9 +71,17 @@ def export_markdown(
         md.heading("Active Medications", level=2)
         md.table(
             ["Medication", "Sig", "Route", "Start Date", "Prescriber", "Source"],
-            [[m["name"], m.get("sig", ""), m.get("route", ""),
-              m.get("start_date", ""), m.get("prescriber", ""), m["source"]]
-             for m in active_meds],
+            [
+                [
+                    m["name"],
+                    m.get("sig", ""),
+                    m.get("route", ""),
+                    m.get("start_date", ""),
+                    m.get("prescriber", ""),
+                    m["source"],
+                ]
+                for m in active_meds
+            ],
         )
 
     # Medication reconciliation
@@ -100,9 +108,18 @@ def export_markdown(
         md.heading(f"Lab Results (since {lookback})", level=2)
         md.table(
             ["Test", "Value", "Unit", "Range", "Flag", "Date", "Source"],
-            [[r["test_name"], r["value"], r.get("unit", ""), r.get("ref_range", ""),
-              r.get("interpretation", "") or "", r["result_date"], r["source"]]
-             for r in recent_labs],
+            [
+                [
+                    r["test_name"],
+                    r["value"],
+                    r.get("unit", ""),
+                    r.get("ref_range", ""),
+                    r.get("interpretation", "") or "",
+                    r["result_date"],
+                    r["source"],
+                ]
+                for r in recent_labs
+            ],
         )
 
     # Abnormal labs (all time)
@@ -112,9 +129,18 @@ def export_markdown(
         md.heading("Abnormal Lab Results (All Time)", level=2)
         md.table(
             ["Test", "Value", "Unit", "Range", "Flag", "Date", "Source"],
-            [[r["test_name"], r["value"], r.get("unit", ""), r.get("ref_range", ""),
-              r.get("interpretation", ""), r["result_date"], r["source"]]
-             for r in abnormal[:50]],
+            [
+                [
+                    r["test_name"],
+                    r["value"],
+                    r.get("unit", ""),
+                    r.get("ref_range", ""),
+                    r.get("interpretation", ""),
+                    r["result_date"],
+                    r["source"],
+                ]
+                for r in abnormal[:50]
+            ],
         )
 
     # Recent encounters
@@ -129,9 +155,17 @@ def export_markdown(
         md.heading(f"Recent Encounters (since {lookback})", level=2)
         md.table(
             ["Date", "Type", "Facility", "Provider", "Reason", "Source"],
-            [[e["encounter_date"], e.get("encounter_type", ""), e.get("facility", ""),
-              e.get("provider", ""), (e.get("reason", "") or "")[:60], e["source"]]
-             for e in encounters],
+            [
+                [
+                    e["encounter_date"],
+                    e.get("encounter_type", ""),
+                    e.get("facility", ""),
+                    e.get("provider", ""),
+                    (e.get("reason", "") or "")[:60],
+                    e["source"],
+                ]
+                for e in encounters
+            ],
         )
 
     # Recent imaging
@@ -189,8 +223,10 @@ def export_markdown(
         md.heading("Allergies", level=2)
         md.table(
             ["Allergen", "Reaction", "Severity", "Source"],
-            [[a["allergen"], a.get("reaction", ""), a.get("severity", ""),
-              a["source"]] for a in allergies],
+            [
+                [a["allergen"], a.get("reaction", ""), a.get("severity", ""), a["source"]]
+                for a in allergies
+            ],
         )
 
     # Write output
@@ -219,22 +255,31 @@ def export_pdf(
 
     try:
         subprocess.run(
-            ["pandoc", md_path, "-o", output_path,
-             "--pdf-engine=xelatex",
-             "-V", "geometry:margin=1in",
-             "-V", "fontsize=10pt"],
-            check=True, capture_output=True,
+            [
+                "pandoc",
+                md_path,
+                "-o",
+                output_path,
+                "--pdf-engine=xelatex",
+                "-V",
+                "geometry:margin=1in",
+                "-V",
+                "fontsize=10pt",
+            ],
+            check=True,
+            capture_output=True,
         )
         return output_path
     except FileNotFoundError:
         print("Warning: pandoc not found. Markdown file generated instead.")
         return md_path
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         # Try weasyprint as fallback
         try:
             subprocess.run(
                 ["pandoc", md_path, "-o", output_path, "--pdf-engine=weasyprint"],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             return output_path
         except (FileNotFoundError, subprocess.CalledProcessError):

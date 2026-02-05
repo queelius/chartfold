@@ -14,7 +14,6 @@ from pathlib import Path
 from chartfold.analysis.lab_trends import (
     get_abnormal_labs,
     get_lab_series,
-    get_latest_labs,
 )
 from chartfold.analysis.medications import get_active_medications, reconcile_medications
 from chartfold.config import get_lab_test_configs, load_config
@@ -389,7 +388,7 @@ def _html_table(
 
     return f"""<table{cls}>
 <thead><tr>{head_cells}</tr></thead>
-<tbody>{''.join(body_rows)}</tbody>
+<tbody>{"".join(body_rows)}</tbody>
 </table>"""
 
 
@@ -420,7 +419,7 @@ def _build_chart_js(chart_id: str, datasets: list[dict], unit: str, title: str) 
         src_label = ds.get("source", "")
         data_points = [
             {"x": lbl, "y": val}
-            for lbl, val in zip(ds.get("labels", []), ds.get("values", []))
+            for lbl, val in zip(ds.get("labels", []), ds.get("values", []), strict=False)
             if val is not None
         ]
         if not data_points:
@@ -472,8 +471,7 @@ def _render_summary_section(db: ChartfoldDB, sources: list[str]) -> str:
         if count > 0:
             label = table.replace("_", " ").title()
             cards.append(
-                f'<div class="card"><h3>{_escape(label)}</h3>'
-                f'<div class="value">{count}</div></div>'
+                f'<div class="card"><h3>{_escape(label)}</h3><div class="value">{count}</div></div>'
             )
 
     if not cards:
@@ -507,8 +505,13 @@ def _render_conditions_section(db: ChartfoldDB, active_only: bool = True) -> str
         return ""
 
     rows = [
-        [c["condition_name"], c.get("icd10_code", ""), c.get("clinical_status", ""),
-         c.get("onset_date", ""), c["source"]]
+        [
+            c["condition_name"],
+            c.get("icd10_code", ""),
+            c.get("clinical_status", ""),
+            c.get("onset_date", ""),
+            c["source"],
+        ]
         for c in conditions
     ]
 
@@ -533,8 +536,14 @@ def _render_medications_section(db: ChartfoldDB, active_only: bool = True) -> st
             return ""
 
         rows = [
-            [m["name"], m.get("sig", ""), m.get("route", ""),
-             m.get("start_date", ""), m.get("prescriber", ""), m["source"]]
+            [
+                m["name"],
+                m.get("sig", ""),
+                m.get("route", ""),
+                m.get("start_date", ""),
+                m.get("prescriber", ""),
+                m["source"],
+            ]
             for m in active_meds
         ]
 
@@ -549,10 +558,10 @@ def _render_medications_section(db: ChartfoldDB, active_only: bool = True) -> st
         if recon.get("discrepancies"):
             disc_items = []
             for disc in recon["discrepancies"]:
-                statuses = ", ".join(
-                    f"{e['source']}: {e['status']}" for e in disc["entries"]
+                statuses = ", ".join(f"{e['source']}: {e['status']}" for e in disc["entries"])
+                disc_items.append(
+                    f"<li><strong>{_escape(disc['name'])}</strong> — {_escape(statuses)}</li>"
                 )
-                disc_items.append(f"<li><strong>{_escape(disc['name'])}</strong> — {_escape(statuses)}</li>")
             discrepancy_html = f"""
 <div class="discrepancy">
 <h3>Medication Discrepancies</h3>
@@ -577,8 +586,15 @@ def _render_medications_section(db: ChartfoldDB, active_only: bool = True) -> st
             return ""
 
         rows = [
-            [m["name"], m.get("status", ""), m.get("sig", ""), m.get("route", ""),
-             m.get("start_date", ""), m.get("stop_date", ""), m["source"]]
+            [
+                m["name"],
+                m.get("status", ""),
+                m.get("sig", ""),
+                m.get("route", ""),
+                m.get("start_date", ""),
+                m.get("stop_date", ""),
+                m["source"],
+            ]
             for m in all_meds
         ]
 
@@ -617,18 +633,19 @@ def _render_labs_section(
         datasets = []
         for i, src in enumerate(sources):
             src_results = [
-                r for r in trend
-                if r["source"] == src and r["value_numeric"] is not None
+                r for r in trend if r["source"] == src and r["value_numeric"] is not None
             ]
             if not src_results:
                 continue
             color = SOURCE_COLORS[i % len(SOURCE_COLORS)]
-            datasets.append({
-                "source": src,
-                "labels": [r["result_date"] for r in src_results],
-                "values": [r["value_numeric"] for r in src_results],
-                "color": color,
-            })
+            datasets.append(
+                {
+                    "source": src,
+                    "labels": [r["result_date"] for r in src_results],
+                    "values": [r["value_numeric"] for r in src_results],
+                    "color": color,
+                }
+            )
 
         unit = trend[0]["unit"] if trend else ""
         chart_id = f"chart-{lt.name.lower().replace(' ', '-')}"
@@ -641,7 +658,9 @@ def _render_labs_section(
                     f"<strong>{src}</strong>: {rr}"
                     for src, rr in series.get("ref_ranges", {}).items()
                 )
-                ref_note = f'<p><em>Note: Reference ranges differ across sources: {ranges_str}</em></p>'
+                ref_note = (
+                    f"<p><em>Note: Reference ranges differ across sources: {ranges_str}</em></p>"
+                )
 
             charts.append(f"<h3>{_escape(lt.name)} Trend</h3>{chart_html}{ref_note}")
 
@@ -673,8 +692,15 @@ def _render_labs_section(
 
     if recent_labs:
         rows = [
-            [r["test_name"], r["value"], r.get("unit", ""), r.get("ref_range", ""),
-             r.get("interpretation", "") or "", r["result_date"], r["source"]]
+            [
+                r["test_name"],
+                r["value"],
+                r.get("unit", ""),
+                r.get("ref_range", ""),
+                r.get("interpretation", "") or "",
+                r["result_date"],
+                r["source"],
+            ]
             for r in recent_labs
         ]
 
@@ -697,8 +723,15 @@ def _render_labs_section(
         abnormal = get_abnormal_labs(db)
         if abnormal:
             rows = [
-                [r["test_name"], r["value"], r.get("unit", ""), r.get("ref_range", ""),
-                 r.get("interpretation", ""), r["result_date"], r["source"]]
+                [
+                    r["test_name"],
+                    r["value"],
+                    r.get("unit", ""),
+                    r.get("ref_range", ""),
+                    r.get("interpretation", ""),
+                    r["result_date"],
+                    r["source"],
+                ]
                 for r in abnormal[:50]
             ]
             abnormal_table = _html_table(
@@ -737,8 +770,14 @@ def _render_encounters_section(db: ChartfoldDB, lookback_date: str) -> str:
         return ""
 
     rows = [
-        [e["encounter_date"], e.get("encounter_type", ""), e.get("facility", ""),
-         e.get("provider", ""), (e.get("reason", "") or "")[:60], e["source"]]
+        [
+            e["encounter_date"],
+            e.get("encounter_type", ""),
+            e.get("facility", ""),
+            e.get("provider", ""),
+            (e.get("reason", "") or "")[:60],
+            e["source"],
+        ]
         for e in encounters
     ]
 
@@ -779,8 +818,8 @@ def _render_imaging_section(db: ChartfoldDB, lookback_date: str) -> str:
     for img in imaging:
         parts.append(f"""
 <div class="card">
-<h3>{_escape(img['study_name'])} — {_escape(img['study_date'])}</h3>
-<p class="meta">Modality: {_escape(img.get('modality', ''))} | Source: {_escape(img['source'])}</p>
+<h3>{_escape(img["study_name"])} — {_escape(img["study_date"])}</h3>
+<p class="meta">Modality: {_escape(img.get("modality", ""))} | Source: {_escape(img["source"])}</p>
 """)
         if img.get("impression"):
             parts.append(f'<div class="report-body">{_escape(img["impression"])}</div>')
@@ -818,7 +857,7 @@ def _render_pathology_section(db: ChartfoldDB) -> str:
             parts.append(f"<p><strong>Margins:</strong> {_escape(p['margins'])}</p>")
         if p.get("lymph_nodes"):
             parts.append(f"<p><strong>Lymph Nodes:</strong> {_escape(p['lymph_nodes'])}</p>")
-        parts.append(f"<p class=\"meta\">Source: {_escape(p['source'])}</p></div>")
+        parts.append(f'<p class="meta">Source: {_escape(p["source"])}</p></div>')
 
     return f'<div class="section">{"".join(parts)}</div>'
 
@@ -849,8 +888,13 @@ def _render_allergies_section(db: ChartfoldDB, active_only: bool = True) -> str:
         headers = ["Allergen", "Reaction", "Severity", "Source"]
     else:
         rows = [
-            [a["allergen"], a.get("reaction", ""), a.get("severity", ""),
-             a.get("status", ""), a["source"]]
+            [
+                a["allergen"],
+                a.get("reaction", ""),
+                a.get("severity", ""),
+                a.get("status", ""),
+                a["source"],
+            ]
             for a in allergies
         ]
         headers = ["Allergen", "Reaction", "Severity", "Status", "Source"]
@@ -879,15 +923,16 @@ def _render_clinical_notes_section(db: ChartfoldDB) -> str:
     for n in notes:
         title = f"{n.get('note_type', 'Note')} — {n.get('note_date', '')}"
         parts.append(f'<div class="card"><h3>{_escape(title)}</h3>')
-        parts.append(f"<p class=\"meta\">Author: {_escape(n.get('author', ''))} | Source: {_escape(n['source'])}</p>")
+        parts.append(
+            f'<p class="meta">Author: {_escape(n.get("author", ""))} | Source: {_escape(n["source"])}</p>'
+        )
         content = n.get("content", "") or ""
         if content:
             # Truncate long notes
             if len(content) > 1000:
                 truncated = content[:1000] + "..."
                 full_html = _html_details(
-                    "Show full note",
-                    f'<div class="report-body">{_escape(content)}</div>'
+                    "Show full note", f'<div class="report-body">{_escape(content)}</div>'
                 )
                 parts.append(f'<div class="report-body">{_escape(truncated)}</div>{full_html}')
             else:
@@ -908,8 +953,13 @@ def _render_procedures_section(db: ChartfoldDB) -> str:
         return ""
 
     rows = [
-        [p["name"], p.get("procedure_date", ""), p.get("provider", ""),
-         p.get("facility", ""), p["source"]]
+        [
+            p["name"],
+            p.get("procedure_date", ""),
+            p.get("provider", ""),
+            p.get("facility", ""),
+            p["source"],
+        ]
         for p in procedures
     ]
 
@@ -937,8 +987,13 @@ def _render_vitals_section(db: ChartfoldDB) -> str:
         return ""
 
     rows = [
-        [v["vital_type"], v.get("value_text") or v.get("value", ""), v.get("unit", ""),
-         v.get("recorded_date", ""), v["source"]]
+        [
+            v["vital_type"],
+            v.get("value_text") or v.get("value", ""),
+            v.get("unit", ""),
+            v.get("recorded_date", ""),
+            v["source"],
+        ]
         for v in vitals
     ]
 
@@ -948,10 +1003,7 @@ def _render_vitals_section(db: ChartfoldDB) -> str:
     )
 
     # Wrap in details if many rows
-    if len(vitals) > 50:
-        content = _html_details(f"Vitals ({len(vitals)} records)", table)
-    else:
-        content = table
+    content = _html_details(f"Vitals ({len(vitals)} records)", table) if len(vitals) > 50 else table
 
     return f"""
 <div class="section">
@@ -972,8 +1024,13 @@ def _render_immunizations_section(db: ChartfoldDB) -> str:
         return ""
 
     rows = [
-        [i["vaccine_name"], i.get("admin_date", ""),
-         i.get("lot_number", ""), i.get("site", ""), i["source"]]
+        [
+            i["vaccine_name"],
+            i.get("admin_date", ""),
+            i.get("lot_number", ""),
+            i.get("site", ""),
+            i["source"],
+        ]
         for i in immunizations
     ]
 

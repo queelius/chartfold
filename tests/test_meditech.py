@@ -1,8 +1,6 @@
 """Tests for MEDITECH source parser."""
 
 import json
-import os
-import tempfile
 
 import pytest
 
@@ -79,6 +77,7 @@ class TestMeditechLabExtraction:
     @pytest.fixture
     def lab_section(self):
         from lxml import etree
+
         return etree.fromstring(MEDITECH_LAB_XML)
 
     def test_extract_labs(self, lab_section):
@@ -87,7 +86,7 @@ class TestMeditechLabExtraction:
 
     def test_lab_values(self, lab_section):
         labs = _extract_meditech_labs(lab_section)
-        wbc = next(l for l in labs if l["test"] == "White Blood Count")
+        wbc = next(lab for lab in labs if lab["test"] == "White Blood Count")
         assert wbc["value"] == "3.8"
         assert wbc["unit"] == "K/mm3"
         assert wbc["date_iso"] == "2021-11-23"
@@ -96,14 +95,14 @@ class TestMeditechLabExtraction:
 
     def test_cea_extraction(self, lab_section):
         labs = _extract_meditech_labs(lab_section)
-        cea = next(l for l in labs if "Carcinoembryonic" in l["test"])
+        cea = next(lab for lab in labs if "Carcinoembryonic" in lab["test"])
         assert cea["value"] == "1.4"
         assert cea["unit"] == "ng/mL"
         assert cea["ref_range"] == "0.0-3.0"
 
     def test_hemoglobin(self, lab_section):
         labs = _extract_meditech_labs(lab_section)
-        hgb = next(l for l in labs if l["test"] == "Hemoglobin")
+        hgb = next(lab for lab in labs if lab["test"] == "Hemoglobin")
         assert hgb["value"] == "9.4"
         assert hgb["interpretation"] == "Below low normal"
 
@@ -121,7 +120,11 @@ class TestDeduplication:
     def test_deduplicate_notes_keeps_longest(self):
         notes = [
             {"type": "Progress Note", "encounter_date": "20220201", "text": "Short note"},
-            {"type": "Progress Note", "encounter_date": "20220201", "text": "This is a much longer version of the progress note with more detail"},
+            {
+                "type": "Progress Note",
+                "encounter_date": "20220201",
+                "text": "This is a much longer version of the progress note with more detail",
+            },
         ]
         result = deduplicate_notes(notes)
         assert len(result) == 1
@@ -162,7 +165,9 @@ class TestTOCParser:
                 "resourceType": "DocumentReference",
                 "description": "Consent",
                 "docStatus": "final",
-                "content": [{"attachment": {"url": "consent.pdf", "size": 100, "title": "Consent"}}],
+                "content": [
+                    {"attachment": {"url": "consent.pdf", "size": 100, "title": "Consent"}}
+                ],
             },
         ]
         toc_file.write_text("\n".join(json.dumps(e) for e in entries))
@@ -253,6 +258,7 @@ class TestMeditechVitalsExtraction:
     @pytest.fixture
     def vitals_section(self):
         from lxml import etree
+
         return etree.fromstring(MEDITECH_VITALS_XML)
 
     def test_extract_all_vitals(self, vitals_section):
@@ -307,11 +313,13 @@ class TestMeditechVitalsExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Vital Signs</title></section>')
         assert _extract_meditech_vitals(empty) == []
 
     def test_unknown_vital_name_ignored(self):
         from lxml import etree
+
         xml = f"""<section xmlns="{NS}">
           <text>
             <table>
@@ -368,6 +376,7 @@ class TestMeditechImmunizationsExtraction:
     @pytest.fixture
     def imm_section(self):
         from lxml import etree
+
         return etree.fromstring(MEDITECH_IMMUNIZATIONS_XML)
 
     def test_extract_immunizations(self, imm_section):
@@ -389,6 +398,7 @@ class TestMeditechImmunizationsExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Immunizations</title></section>')
         assert _extract_meditech_immunizations(empty) == []
 
@@ -448,16 +458,19 @@ MEDITECH_REAL_ALLERGIES_XML = f"""<section xmlns="{NS}">
 class TestMeditechAllergiesExtraction:
     def test_no_known_allergies_text(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_NO_ALLERGIES_XML)
         assert _extract_meditech_allergies(section) == []
 
     def test_no_known_allergies_negation(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_NEGATION_ALLERGIES_XML)
         assert _extract_meditech_allergies(section) == []
 
     def test_real_allergies(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_REAL_ALLERGIES_XML)
         allergies = _extract_meditech_allergies(section)
         assert len(allergies) == 2
@@ -468,6 +481,7 @@ class TestMeditechAllergiesExtraction:
 
     def test_sulfa_allergy(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_REAL_ALLERGIES_XML)
         allergies = _extract_meditech_allergies(section)
         sulfa = next(a for a in allergies if "Sulfa" in a["allergen"])
@@ -475,6 +489,7 @@ class TestMeditechAllergiesExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Allergies</title></section>')
         assert _extract_meditech_allergies(empty) == []
 
@@ -504,6 +519,7 @@ class TestMeditechSocialHistoryExtraction:
     @pytest.fixture
     def sh_section(self):
         from lxml import etree
+
         return etree.fromstring(MEDITECH_SOCIAL_HISTORY_XML)
 
     def test_extract_social_history(self, sh_section):
@@ -525,6 +541,7 @@ class TestMeditechSocialHistoryExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Social History</title></section>')
         assert _extract_meditech_social_history(empty) == []
 
@@ -590,6 +607,7 @@ MEDITECH_FAMILY_HISTORY_TABLE_XML = f"""<section xmlns="{NS}">
 class TestMeditechFamilyHistoryExtraction:
     def test_structured_entries(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_FAMILY_HISTORY_STRUCTURED_XML)
         entries = _extract_meditech_family_history(section)
         assert len(entries) == 2
@@ -599,6 +617,7 @@ class TestMeditechFamilyHistoryExtraction:
 
     def test_table_fallback(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_FAMILY_HISTORY_TABLE_XML)
         entries = _extract_meditech_family_history(section)
         assert len(entries) == 2
@@ -609,12 +628,14 @@ class TestMeditechFamilyHistoryExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Family History</title></section>')
         assert _extract_meditech_family_history(empty) == []
 
     def test_nullflavor_relation(self):
         """When relation has nullFlavor, falls back to 'Not Specified'."""
         from lxml import etree
+
         xml = f"""<section xmlns="{NS}"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
           <title>Family History</title>
@@ -686,12 +707,14 @@ MEDITECH_MENTAL_STATUS_STRUCTURED_XML = f"""<section xmlns="{NS}">
 class TestMeditechMentalStatusExtraction:
     def test_table_extraction(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_MENTAL_STATUS_XML)
         entries = _extract_meditech_mental_status(section)
         assert len(entries) == 2
 
     def test_observation_values(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_MENTAL_STATUS_XML)
         entries = _extract_meditech_mental_status(section)
         q1 = entries[0]
@@ -701,6 +724,7 @@ class TestMeditechMentalStatusExtraction:
 
     def test_second_observation(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_MENTAL_STATUS_XML)
         entries = _extract_meditech_mental_status(section)
         q2 = entries[1]
@@ -709,6 +733,7 @@ class TestMeditechMentalStatusExtraction:
 
     def test_structured_fallback(self):
         from lxml import etree
+
         section = etree.fromstring(MEDITECH_MENTAL_STATUS_STRUCTURED_XML)
         entries = _extract_meditech_mental_status(section)
         assert len(entries) == 1
@@ -718,11 +743,13 @@ class TestMeditechMentalStatusExtraction:
 
     def test_empty_section(self):
         from lxml import etree
+
         empty = etree.fromstring(f'<section xmlns="{NS}"><title>Mental Status</title></section>')
         assert _extract_meditech_mental_status(empty) == []
 
 
 # ── Deduplication tests for new types ──
+
 
 class TestNewDeduplication:
     def test_deduplicate_vitals(self):

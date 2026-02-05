@@ -100,17 +100,19 @@ def discover_source_assets(input_dir: str, source: str) -> list[SourceAsset]:
             rel_path = filepath.relative_to(input_path)
             title, encounter_id, encounter_date = _extract_path_metadata(rel_path, source)
 
-            assets.append(SourceAsset(
-                source=source,
-                asset_type=asset_type,
-                file_path=str(filepath),
-                file_name=filename,
-                file_size_kb=file_size_kb,
-                content_type=content_type,
-                title=title,
-                encounter_date=encounter_date,
-                encounter_id=encounter_id,
-            ))
+            assets.append(
+                SourceAsset(
+                    source=source,
+                    asset_type=asset_type,
+                    file_path=str(filepath),
+                    file_name=filename,
+                    file_size_kb=file_size_kb,
+                    content_type=content_type,
+                    title=title,
+                    encounter_date=encounter_date,
+                    encounter_id=encounter_id,
+                )
+            )
 
     return assets
 
@@ -159,10 +161,9 @@ def _extract_path_metadata(rel_path: Path, source: str) -> tuple[str, str, str]:
         # Epic: typically flat structure, use filename as title
         title = rel_path.stem.replace("_", " ")
 
-    elif "athena" in source.lower():
+    elif "athena" in source.lower() and len(parts) > 1:
         # athena: Document_XML/file.xml structure, use parent as category
-        if len(parts) > 1:
-            title = parts[0].replace("_", " ")
+        title = parts[0].replace("_", " ")
 
     return title, encounter_id, encounter_date
 
@@ -170,9 +171,18 @@ def _extract_path_metadata(rel_path: Path, source: str) -> tuple[str, str, str]:
 def _parse_meditech_date(date_str: str) -> str:
     """Parse MEDITECH date like '30-Jan-2026' to ISO format."""
     months = {
-        "jan": "01", "feb": "02", "mar": "03", "apr": "04",
-        "may": "05", "jun": "06", "jul": "07", "aug": "08",
-        "sep": "09", "oct": "10", "nov": "11", "dec": "12",
+        "jan": "01",
+        "feb": "02",
+        "mar": "03",
+        "apr": "04",
+        "may": "05",
+        "jun": "06",
+        "jul": "07",
+        "aug": "08",
+        "sep": "09",
+        "oct": "10",
+        "nov": "11",
+        "dec": "12",
     }
     match = re.match(r"(\d{2})-([A-Za-z]{3})-(\d{4})", date_str)
     if match:

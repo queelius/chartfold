@@ -13,7 +13,6 @@ import sqlite3
 import time
 from dataclasses import asdict, fields
 from datetime import datetime, timezone
-from importlib import resources
 from pathlib import Path
 
 from chartfold.models import (
@@ -29,7 +28,6 @@ from chartfold.models import (
     MedicationRecord,
     MentalStatusRecord,
     PathologyReport,
-    PatientRecord,
     ProcedureRecord,
     SocialHistoryRecord,
     SourceAsset,
@@ -120,7 +118,7 @@ class ChartfoldDB:
                 counts["patients"] = 0
 
             # Insert all record lists
-            for attr, table, dc_type in _TABLE_MAP:
+            for attr, table, _dc_type in _TABLE_MAP:
                 record_list = getattr(records, attr, [])
                 if not record_list:
                     counts[table] = 0
@@ -150,7 +148,9 @@ class ChartfoldDB:
                     mental_status_count, source_assets_count
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    source, now, duration,
+                    source,
+                    now,
+                    duration,
                     counts.get("patients", 0),
                     counts.get("documents", 0),
                     counts.get("encounters", 0),
@@ -177,14 +177,29 @@ class ChartfoldDB:
         """Execute a read-only SQL query and return results as list of dicts."""
         cursor = self.conn.execute(sql, params)
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
     def summary(self) -> dict[str, int]:
         """Return row counts for all main tables."""
-        tables = ["patients", "documents", "encounters", "lab_results", "vitals",
-                   "medications", "conditions", "procedures", "pathology_reports",
-                   "imaging_reports", "clinical_notes", "immunizations", "allergies",
-                   "social_history", "family_history", "mental_status", "source_assets"]
+        tables = [
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "source_assets",
+        ]
         result = {}
         for table in tables:
             row = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
@@ -262,11 +277,11 @@ class ChartfoldDB:
                 note_id = cursor.lastrowid
 
             for tag in tags:
-                tag = tag.strip()
-                if tag:
+                clean_tag = tag.strip()
+                if clean_tag:
                     self.conn.execute(
                         "INSERT OR IGNORE INTO note_tags (note_id, tag) VALUES (?, ?)",
-                        (note_id, tag),
+                        (note_id, clean_tag),
                     )
 
         return note_id

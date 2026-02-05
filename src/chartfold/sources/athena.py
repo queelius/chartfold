@@ -83,13 +83,15 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
         fname = os.path.basename(filepath)
         size_kb = os.path.getsize(filepath) // 1024
 
-        data["documents"].append({
-            "doc_id": fname,
-            "title": title,
-            "encounter_date": "",
-            "size_kb": size_kb,
-            "file_path": os.path.abspath(filepath),
-        })
+        data["documents"].append(
+            {
+                "doc_id": fname,
+                "title": title,
+                "encounter_date": "",
+                "size_kb": size_kb,
+                "file_path": os.path.abspath(filepath),
+            }
+        )
 
         print(f"  {fname}: {title}, {len(sections)} sections, {size_kb}KB")
         print(f"    Sections: {', '.join(sections.keys())}")
@@ -149,15 +151,19 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
                 if text_el is not None:
                     text = el_text(text_el)
                     if text.strip() and len(text.strip()) > 20:
-                        data["clinical_notes"].append({
-                            "type": sec_name,
-                            "content": text.strip(),
-                            "date": "",
-                        })
+                        data["clinical_notes"].append(
+                            {
+                                "type": sec_name,
+                                "content": text.strip(),
+                                "date": "",
+                            }
+                        )
 
-    print(f"\nathena extraction: {len(data['lab_results'])} labs, "
-          f"{len(data['vitals'])} vitals, {len(data['medications'])} meds, "
-          f"{len(data['conditions'])} conditions, {len(data['encounters'])} encounters")
+    print(
+        f"\nathena extraction: {len(data['lab_results'])} labs, "
+        f"{len(data['vitals'])} vitals, {len(data['medications'])} meds, "
+        f"{len(data['conditions'])} conditions, {len(data['encounters'])} encounters"
+    )
 
     return data
 
@@ -259,24 +265,44 @@ def _extract_results(section) -> list[dict]:
             if len(cells) < 5:
                 continue
 
-            test_name = cells[col_map["test"]].strip() if "test" in col_map and col_map["test"] < len(cells) else ""
+            test_name = (
+                cells[col_map["test"]].strip()
+                if "test" in col_map and col_map["test"] < len(cells)
+                else ""
+            )
             if not test_name:
                 continue
 
             obs_date = cells[col_map.get("obs_date", 0)].strip() if "obs_date" in col_map else ""
             if not obs_date:
-                obs_date = cells[col_map.get("created_date", 0)].strip() if "created_date" in col_map else ""
+                obs_date = (
+                    cells[col_map.get("created_date", 0)].strip()
+                    if "created_date" in col_map
+                    else ""
+                )
 
-            results.append({
-                "test_name": test_name,
-                "panel_name": cells[col_map["panel"]].strip() if "panel" in col_map and col_map["panel"] < len(cells) else "",
-                "value": cells[col_map["value"]].strip() if "value" in col_map and col_map["value"] < len(cells) else "",
-                "unit": cells[col_map["unit"]].strip() if "unit" in col_map and col_map["unit"] < len(cells) else "",
-                "ref_range": cells[col_map["range"]].strip() if "range" in col_map and col_map["range"] < len(cells) else "",
-                "interpretation": cells[col_map["abnormal"]].strip() if "abnormal" in col_map and col_map["abnormal"] < len(cells) else "",
-                "date": normalize_date_to_iso(obs_date),
-                "loinc": "",
-            })
+            results.append(
+                {
+                    "test_name": test_name,
+                    "panel_name": cells[col_map["panel"]].strip()
+                    if "panel" in col_map and col_map["panel"] < len(cells)
+                    else "",
+                    "value": cells[col_map["value"]].strip()
+                    if "value" in col_map and col_map["value"] < len(cells)
+                    else "",
+                    "unit": cells[col_map["unit"]].strip()
+                    if "unit" in col_map and col_map["unit"] < len(cells)
+                    else "",
+                    "ref_range": cells[col_map["range"]].strip()
+                    if "range" in col_map and col_map["range"] < len(cells)
+                    else "",
+                    "interpretation": cells[col_map["abnormal"]].strip()
+                    if "abnormal" in col_map and col_map["abnormal"] < len(cells)
+                    else "",
+                    "date": normalize_date_to_iso(obs_date),
+                    "loinc": "",
+                }
+            )
 
     return results
 
@@ -346,21 +372,45 @@ def _extract_vitals(section) -> list[dict]:
                         sys_text = el_text(contents[0]).strip().rstrip("/")
                         dia_text = el_text(contents[1]).strip()
                         sys_val = _parse_vital_value(sys_text)
-                        dia_val, dia_unit = _parse_vital_value_unit(dia_text)
+                        dia_val, _dia_unit = _parse_vital_value_unit(dia_text)
                         if sys_val is not None:
-                            vitals.append({"type": "bp_systolic", "value": sys_val,
-                                           "unit": "mm[Hg]", "date": recorded_date})
+                            vitals.append(
+                                {
+                                    "type": "bp_systolic",
+                                    "value": sys_val,
+                                    "unit": "mm[Hg]",
+                                    "date": recorded_date,
+                                }
+                            )
                         if dia_val is not None:
-                            vitals.append({"type": "bp_diastolic", "value": dia_val,
-                                           "unit": "mm[Hg]", "date": recorded_date})
+                            vitals.append(
+                                {
+                                    "type": "bp_diastolic",
+                                    "value": dia_val,
+                                    "unit": "mm[Hg]",
+                                    "date": recorded_date,
+                                }
+                            )
                     else:
                         # Fallback: parse "120/80 mm[Hg]"
                         m = re.match(r"(\d+)\s*/\s*(\d+)", cell_text)
                         if m:
-                            vitals.append({"type": "bp_systolic", "value": float(m.group(1)),
-                                           "unit": "mm[Hg]", "date": recorded_date})
-                            vitals.append({"type": "bp_diastolic", "value": float(m.group(2)),
-                                           "unit": "mm[Hg]", "date": recorded_date})
+                            vitals.append(
+                                {
+                                    "type": "bp_systolic",
+                                    "value": float(m.group(1)),
+                                    "unit": "mm[Hg]",
+                                    "date": recorded_date,
+                                }
+                            )
+                            vitals.append(
+                                {
+                                    "type": "bp_diastolic",
+                                    "value": float(m.group(2)),
+                                    "unit": "mm[Hg]",
+                                    "date": recorded_date,
+                                }
+                            )
                 elif vital_type == "weight":
                     val, unit = _parse_vital_value_unit(cell_text)
                     if val is not None:
@@ -368,13 +418,15 @@ def _extract_vitals(section) -> list[dict]:
                         if unit == "g":
                             val = round(val / 1000.0, 2)
                             unit = "kg"
-                        vitals.append({"type": "weight", "value": val,
-                                       "unit": unit, "date": recorded_date})
+                        vitals.append(
+                            {"type": "weight", "value": val, "unit": unit, "date": recorded_date}
+                        )
                 else:
                     val, unit = _parse_vital_value_unit(cell_text)
                     if val is not None:
-                        vitals.append({"type": vital_type, "value": val,
-                                       "unit": unit, "date": recorded_date})
+                        vitals.append(
+                            {"type": vital_type, "value": val, "unit": unit, "date": recorded_date}
+                        )
 
     return vitals
 
@@ -407,17 +459,31 @@ def _extract_medications(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            name = cells[col_map["name"]].strip() if "name" in col_map and col_map["name"] < len(cells) else ""
+            name = (
+                cells[col_map["name"]].strip()
+                if "name" in col_map and col_map["name"] < len(cells)
+                else ""
+            )
             if not name:
                 continue
 
-            meds.append({
-                "name": name,
-                "sig": cells[col_map["sig"]].strip() if "sig" in col_map and col_map["sig"] < len(cells) else "",
-                "start_date": cells[col_map.get("start_date", -1)].strip() if "start_date" in col_map and col_map["start_date"] < len(cells) else "",
-                "stop_date": cells[col_map.get("stop_date", -1)].strip() if "stop_date" in col_map and col_map["stop_date"] < len(cells) else "",
-                "status": cells[col_map["status"]].strip() if "status" in col_map and col_map["status"] < len(cells) else "",
-            })
+            meds.append(
+                {
+                    "name": name,
+                    "sig": cells[col_map["sig"]].strip()
+                    if "sig" in col_map and col_map["sig"] < len(cells)
+                    else "",
+                    "start_date": cells[col_map.get("start_date", -1)].strip()
+                    if "start_date" in col_map and col_map["start_date"] < len(cells)
+                    else "",
+                    "stop_date": cells[col_map.get("stop_date", -1)].strip()
+                    if "stop_date" in col_map and col_map["stop_date"] < len(cells)
+                    else "",
+                    "status": cells[col_map["status"]].strip()
+                    if "status" in col_map and col_map["status"] < len(cells)
+                    else "",
+                }
+            )
 
     return meds
 
@@ -450,16 +516,28 @@ def _extract_problems(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            name = cells[col_map["name"]].strip() if "name" in col_map and col_map["name"] < len(cells) else ""
+            name = (
+                cells[col_map["name"]].strip()
+                if "name" in col_map and col_map["name"] < len(cells)
+                else ""
+            )
             if not name:
                 continue
 
-            conditions.append({
-                "name": name,
-                "snomed": cells[col_map["snomed"]].strip() if "snomed" in col_map and col_map["snomed"] < len(cells) else "",
-                "status": cells[col_map["status"]].strip().lower() if "status" in col_map and col_map["status"] < len(cells) else "",
-                "onset": cells[col_map["onset"]].strip() if "onset" in col_map and col_map["onset"] < len(cells) else "",
-            })
+            conditions.append(
+                {
+                    "name": name,
+                    "snomed": cells[col_map["snomed"]].strip()
+                    if "snomed" in col_map and col_map["snomed"] < len(cells)
+                    else "",
+                    "status": cells[col_map["status"]].strip().lower()
+                    if "status" in col_map and col_map["status"] < len(cells)
+                    else "",
+                    "onset": cells[col_map["onset"]].strip()
+                    if "onset" in col_map and col_map["onset"] < len(cells)
+                    else "",
+                }
+            )
 
     return conditions
 
@@ -490,15 +568,25 @@ def _extract_procedures(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            name = cells[col_map.get("name", 0)].strip() if "name" in col_map and col_map["name"] < len(cells) else ""
+            name = (
+                cells[col_map.get("name", 0)].strip()
+                if "name" in col_map and col_map["name"] < len(cells)
+                else ""
+            )
             if not name:
                 continue
 
-            procedures.append({
-                "name": name,
-                "date": cells[col_map["date"]].strip() if "date" in col_map and col_map["date"] < len(cells) else "",
-                "snomed": cells[col_map["snomed"]].strip() if "snomed" in col_map and col_map["snomed"] < len(cells) else "",
-            })
+            procedures.append(
+                {
+                    "name": name,
+                    "date": cells[col_map["date"]].strip()
+                    if "date" in col_map and col_map["date"] < len(cells)
+                    else "",
+                    "snomed": cells[col_map["snomed"]].strip()
+                    if "snomed" in col_map and col_map["snomed"] < len(cells)
+                    else "",
+                }
+            )
 
     return procedures
 
@@ -529,16 +617,28 @@ def _extract_allergies(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            allergen = cells[col_map.get("allergen", 0)].strip() if "allergen" in col_map and col_map["allergen"] < len(cells) else ""
+            allergen = (
+                cells[col_map.get("allergen", 0)].strip()
+                if "allergen" in col_map and col_map["allergen"] < len(cells)
+                else ""
+            )
             if not allergen:
                 continue
 
-            allergies.append({
-                "allergen": allergen,
-                "reaction": cells[col_map["reaction"]].strip() if "reaction" in col_map and col_map["reaction"] < len(cells) else "",
-                "severity": cells[col_map["severity"]].strip() if "severity" in col_map and col_map["severity"] < len(cells) else "",
-                "status": cells[col_map["status"]].strip() if "status" in col_map and col_map["status"] < len(cells) else "active",
-            })
+            allergies.append(
+                {
+                    "allergen": allergen,
+                    "reaction": cells[col_map["reaction"]].strip()
+                    if "reaction" in col_map and col_map["reaction"] < len(cells)
+                    else "",
+                    "severity": cells[col_map["severity"]].strip()
+                    if "severity" in col_map and col_map["severity"] < len(cells)
+                    else "",
+                    "status": cells[col_map["status"]].strip()
+                    if "status" in col_map and col_map["status"] < len(cells)
+                    else "active",
+                }
+            )
 
     return allergies
 
@@ -571,16 +671,28 @@ def _extract_immunizations(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            name = cells[col_map.get("name", 0)].strip() if "name" in col_map and col_map["name"] < len(cells) else ""
+            name = (
+                cells[col_map.get("name", 0)].strip()
+                if "name" in col_map and col_map["name"] < len(cells)
+                else ""
+            )
             if not name:
                 continue
 
-            immunizations.append({
-                "name": name,
-                "date": cells[col_map["date"]].strip() if "date" in col_map and col_map["date"] < len(cells) else "",
-                "lot": cells[col_map["lot"]].strip() if "lot" in col_map and col_map["lot"] < len(cells) else "",
-                "status": cells[col_map["status"]].strip() if "status" in col_map and col_map["status"] < len(cells) else "",
-            })
+            immunizations.append(
+                {
+                    "name": name,
+                    "date": cells[col_map["date"]].strip()
+                    if "date" in col_map and col_map["date"] < len(cells)
+                    else "",
+                    "lot": cells[col_map["lot"]].strip()
+                    if "lot" in col_map and col_map["lot"] < len(cells)
+                    else "",
+                    "status": cells[col_map["status"]].strip()
+                    if "status" in col_map and col_map["status"] < len(cells)
+                    else "",
+                }
+            )
 
     return immunizations
 
@@ -630,8 +742,16 @@ def _extract_family_history(section) -> list[dict]:
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            relation = cells[col_map.get("relation", 0)].strip() if "relation" in col_map and col_map["relation"] < len(cells) else ""
-            condition = cells[col_map.get("condition", 1)].strip() if "condition" in col_map and col_map["condition"] < len(cells) else ""
+            relation = (
+                cells[col_map.get("relation", 0)].strip()
+                if "relation" in col_map and col_map["relation"] < len(cells)
+                else ""
+            )
+            condition = (
+                cells[col_map.get("condition", 1)].strip()
+                if "condition" in col_map and col_map["condition"] < len(cells)
+                else ""
+            )
             if relation or condition:
                 entries.append({"relation": relation, "condition": condition})
 
@@ -676,14 +796,16 @@ def _extract_mental_status(section) -> list[dict]:
                 if time_idx is not None and time_idx < len(cells):
                     date = cells[time_idx].strip()
                 if question:
-                    entries.append({
-                        "instrument": "",
-                        "question": question,
-                        "answer": answer,
-                        "score": None,
-                        "total_score": None,
-                        "date": normalize_date_to_iso(date),
-                    })
+                    entries.append(
+                        {
+                            "instrument": "",
+                            "question": question,
+                            "answer": answer,
+                            "score": None,
+                            "total_score": None,
+                            "date": normalize_date_to_iso(date),
+                        }
+                    )
 
         elif "assessment" in header_types:
             # Type 2: Date + Assessment + Value (PHQ scores + individual items)
@@ -714,24 +836,28 @@ def _extract_mental_status(section) -> list[dict]:
                         current_total = int(value)
                     except (ValueError, TypeError):
                         current_total = None
-                    entries.append({
-                        "instrument": current_instrument,
-                        "question": "",
-                        "answer": "",
-                        "score": None,
-                        "total_score": current_total,
-                        "date": current_date,
-                    })
+                    entries.append(
+                        {
+                            "instrument": current_instrument,
+                            "question": "",
+                            "answer": "",
+                            "score": None,
+                            "total_score": current_total,
+                            "date": current_date,
+                        }
+                    )
                 else:
                     # Individual question row
-                    entries.append({
-                        "instrument": current_instrument,
-                        "question": assessment,
-                        "answer": value,
-                        "score": None,
-                        "total_score": None,
-                        "date": current_date,
-                    })
+                    entries.append(
+                        {
+                            "instrument": current_instrument,
+                            "question": assessment,
+                            "answer": value,
+                            "score": None,
+                            "total_score": None,
+                            "date": current_date,
+                        }
+                    )
 
     return entries
 
@@ -764,7 +890,13 @@ def _extract_encounters(section) -> list[dict]:
                 col_map["start_date"] = i
             elif "closed" in hl or ("end" in hl and "date" in hl):
                 col_map["end_date"] = i
-            elif "diagnosis" in hl and "snomed" not in hl and "icd" not in hl and "imo" not in hl and "note" not in hl:
+            elif (
+                "diagnosis" in hl
+                and "snomed" not in hl
+                and "icd" not in hl
+                and "imo" not in hl
+                and "note" not in hl
+            ):
                 col_map["diagnosis"] = i
             elif "snomed" in hl:
                 col_map["snomed"] = i
@@ -774,19 +906,47 @@ def _extract_encounters(section) -> list[dict]:
         current_encounter = None
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
-            enc_id = cells[col_map["id"]].strip() if "id" in col_map and col_map["id"] < len(cells) else ""
+            enc_id = (
+                cells[col_map["id"]].strip()
+                if "id" in col_map and col_map["id"] < len(cells)
+                else ""
+            )
 
             if enc_id:
                 # New encounter
                 if current_encounter is not None:
                     encounters.append(current_encounter)
 
-                provider = cells[col_map["provider"]].strip() if "provider" in col_map and col_map["provider"] < len(cells) else ""
-                facility = cells[col_map["facility"]].strip() if "facility" in col_map and col_map["facility"] < len(cells) else ""
-                start = cells[col_map["start_date"]].strip() if "start_date" in col_map and col_map["start_date"] < len(cells) else ""
-                end = cells[col_map["end_date"]].strip() if "end_date" in col_map and col_map["end_date"] < len(cells) else ""
-                diagnosis = cells[col_map["diagnosis"]].strip() if "diagnosis" in col_map and col_map["diagnosis"] < len(cells) else ""
-                icd10 = cells[col_map["icd10"]].strip() if "icd10" in col_map and col_map["icd10"] < len(cells) else ""
+                provider = (
+                    cells[col_map["provider"]].strip()
+                    if "provider" in col_map and col_map["provider"] < len(cells)
+                    else ""
+                )
+                facility = (
+                    cells[col_map["facility"]].strip()
+                    if "facility" in col_map and col_map["facility"] < len(cells)
+                    else ""
+                )
+                start = (
+                    cells[col_map["start_date"]].strip()
+                    if "start_date" in col_map and col_map["start_date"] < len(cells)
+                    else ""
+                )
+                end = (
+                    cells[col_map["end_date"]].strip()
+                    if "end_date" in col_map and col_map["end_date"] < len(cells)
+                    else ""
+                )
+                diagnosis = (
+                    cells[col_map["diagnosis"]].strip()
+                    if "diagnosis" in col_map and col_map["diagnosis"] < len(cells)
+                    else ""
+                )
+                icd10 = (
+                    cells[col_map["icd10"]].strip()
+                    if "icd10" in col_map and col_map["icd10"] < len(cells)
+                    else ""
+                )
 
                 current_encounter = {
                     "id": enc_id,
@@ -800,8 +960,16 @@ def _extract_encounters(section) -> list[dict]:
                 }
             elif current_encounter is not None:
                 # Continuation row — additional diagnosis
-                diagnosis = cells[col_map["diagnosis"]].strip() if "diagnosis" in col_map and col_map["diagnosis"] < len(cells) else ""
-                icd10 = cells[col_map["icd10"]].strip() if "icd10" in col_map and col_map["icd10"] < len(cells) else ""
+                diagnosis = (
+                    cells[col_map["diagnosis"]].strip()
+                    if "diagnosis" in col_map and col_map["diagnosis"] < len(cells)
+                    else ""
+                )
+                icd10 = (
+                    cells[col_map["icd10"]].strip()
+                    if "icd10" in col_map and col_map["icd10"] < len(cells)
+                    else ""
+                )
                 if diagnosis:
                     current_encounter["diagnoses"].append({"name": diagnosis, "icd10": icd10})
                     current_encounter["reason"] += f"; {diagnosis}"
@@ -813,6 +981,7 @@ def _extract_encounters(section) -> list[dict]:
 
 
 # ---- Helpers ----
+
 
 def _get_headers(table) -> list[str]:
     """Extract column headers from a CDA table."""
@@ -856,5 +1025,5 @@ def _parse_vital_value_unit(text: str) -> tuple[float | None, str]:
 def _clean_facility(text: str) -> str:
     """Clean up facility location text (remove address details)."""
     # Take just the first line/paragraph
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     return lines[0] if lines else text.strip()

@@ -2,8 +2,6 @@
 
 from collections import defaultdict
 
-from chartfold.core.cda import format_date
-
 
 class MarkdownWriter:
     """Builds markdown output incrementally."""
@@ -66,11 +64,18 @@ def format_epic_output(data: dict) -> str:
                 inv["title"],
                 f"{inv['size_kb']}KB",
                 ", ".join(
-                    s for s in inv["sections"]
-                    if s not in (
-                        "Allergies", "Immunizations", "Social History",
-                        "Last Filed Vital Signs", "Insurance",
-                        "Advance Directives", "Care Teams", "Medications",
+                    s
+                    for s in inv["sections"]
+                    if s
+                    not in (
+                        "Allergies",
+                        "Immunizations",
+                        "Social History",
+                        "Last Filed Vital Signs",
+                        "Insurance",
+                        "Advance Directives",
+                        "Care Teams",
+                        "Medications",
                         "Active Problems",
                     )
                 ),

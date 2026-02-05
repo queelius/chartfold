@@ -1,18 +1,13 @@
 """Tests for chartfold.core modules."""
 
 import json
-import os
-import tempfile
 
 import pytest
-from lxml import etree
 
 from chartfold.sources.base import detect_source, resolve_epic_dir
 
 from chartfold.core.cda import (
     NS,
-    el_text,
-    extract_encounter_info,
     format_date,
     get_encounter_date,
     get_sections,
@@ -492,8 +487,20 @@ class TestCEAExtractors:
         from chartfold.extractors.labs import extract_cea_from_labs
 
         labs = [
-            {"test": "Carcinoembryonic Antigen", "date_iso": "2021-11-23", "value": "1.4", "unit": "ng/mL", "ref_range": "0.0-3.0"},
-            {"test": "White Blood Count", "date_iso": "2021-11-23", "value": "3.8", "unit": "K/mm3", "ref_range": "4.5-10.0"},
+            {
+                "test": "Carcinoembryonic Antigen",
+                "date_iso": "2021-11-23",
+                "value": "1.4",
+                "unit": "ng/mL",
+                "ref_range": "0.0-3.0",
+            },
+            {
+                "test": "White Blood Count",
+                "date_iso": "2021-11-23",
+                "value": "3.8",
+                "unit": "K/mm3",
+                "ref_range": "4.5-10.0",
+            },
         ]
         result = extract_cea_from_labs(labs)
         assert len(result) == 1
@@ -556,7 +563,13 @@ class TestMarkdownWriter:
 
         data = {
             "inventory": [
-                {"doc_id": "DOC0001", "date": "N/A", "title": "Test", "size_kb": 100, "sections": ["Results"]},
+                {
+                    "doc_id": "DOC0001",
+                    "date": "N/A",
+                    "title": "Test",
+                    "size_kb": 100,
+                    "sections": ["Results"],
+                },
             ],
             "errors": [],
             "cea_values": [{"date": "01/15/2026", "value": "1.8", "ref_range": "<=5.0"}],
@@ -671,7 +684,10 @@ class TestDeriveSourceName:
         assert derive_source_name("/path/to/my export", "epic") == "epic_my_export"
 
     def test_normalizes_special_chars(self):
-        assert derive_source_name("/path/to/dr-tan's_records", "meditech") == "meditech_dr_tan_s_records"
+        assert (
+            derive_source_name("/path/to/dr-tan's_records", "meditech")
+            == "meditech_dr_tan_s_records"
+        )
 
     def test_normalizes_case(self):
         assert derive_source_name("/path/to/Anderson", "epic") == "epic_anderson"

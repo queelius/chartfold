@@ -17,8 +17,15 @@ DEFAULT_CONFIG_PATH = "chartfold.toml"
 
 # Default key tests when no config exists and no DB data to auto-generate from
 FALLBACK_KEY_TESTS = [
-    "CEA", "Hemoglobin", "Creatinine", "TSH", "WBC", "Platelets",
-    "Glucose", "ALT", "AST",
+    "CEA",
+    "Hemoglobin",
+    "Creatinine",
+    "TSH",
+    "WBC",
+    "Platelets",
+    "Glucose",
+    "ALT",
+    "AST",
 ]
 
 DEFAULT_CONFIG_TEMPLATE = """\
@@ -40,7 +47,8 @@ dashboard_recent_labs = 10
 @dataclass
 class LabTestConfig:
     """One chartable lab test with its matching rules."""
-    name: str                             # display name / chart title
+
+    name: str  # display name / chart title
     match: list[str] = field(default_factory=list)  # exact names to match (case-insensitive)
 
 
@@ -71,9 +79,7 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict:
         config["lab_tests"] = []
         for entry in raw["lab_tests"]:
             if "name" in entry and "match" in entry:
-                config["lab_tests"].append(
-                    LabTestConfig(name=entry["name"], match=entry["match"])
-                )
+                config["lab_tests"].append(LabTestConfig(name=entry["name"], match=entry["match"]))
     elif "key_tests" in raw:
         # Legacy format: [key_tests] with tests = [...] and [key_tests.aliases]
         kt = raw["key_tests"]
@@ -141,8 +147,7 @@ KNOWN_ABBREVIATIONS: dict[str, list[str]] = {
     "BUN": ["Blood Urea Nitrogen"],
     "Glucose": ["Glucose Level", "Glucose, Serum"],
     "Creatinine": ["Serum Creatinine", "Creatinine, Serum"],
-    "eGFR": ["Estimated Glomerular Filtration Rate",
-             "Glomerular Filtration Rate"],
+    "eGFR": ["Estimated Glomerular Filtration Rate", "Glomerular Filtration Rate"],
     "Potassium": ["K", "K+", "Potassium, Serum"],
     "Sodium": ["Na", "Na+", "Sodium, Serum"],
     "Calcium": ["Ca", "Calcium, Total", "Calcium, Serum"],
@@ -170,9 +175,7 @@ KNOWN_ABBREVIATIONS: dict[str, list[str]] = {
 }
 
 
-def _group_test_names(
-    db: ChartfoldDB, key_tests: list[str]
-) -> list[tuple[str, list[str]]]:
+def _group_test_names(db: ChartfoldDB, key_tests: list[str]) -> list[tuple[str, list[str]]]:
     """Group test names by identity, returning (canonical_name, all_match_names).
 
     Strategy:
@@ -185,9 +188,7 @@ def _group_test_names(
     Tests that exist under only one name get a single-element match list.
     """
     # Get all distinct test names in the DB (lowered for matching)
-    all_tests = db.query(
-        "SELECT DISTINCT test_name FROM lab_results"
-    )
+    all_tests = db.query("SELECT DISTINCT test_name FROM lab_results")
     db_test_names = {r["test_name"] for r in all_tests}
     db_names_lower = {n.lower(): n for n in db_test_names}
 
@@ -218,9 +219,8 @@ def _group_test_names(
                 if alias.lower() in db_names_lower:
                     match_sets[abbrev].add(db_names_lower[alias.lower()])
         for alias in known_aliases:
-            if alias in match_sets:
-                if abbrev.lower() in db_names_lower:
-                    match_sets[alias].add(db_names_lower[abbrev.lower()])
+            if alias in match_sets and abbrev.lower() in db_names_lower:
+                match_sets[alias].add(db_names_lower[abbrev.lower()])
 
     return [(kt, sorted(match_sets[kt])) for kt in key_tests]
 
@@ -231,8 +231,9 @@ def _format_lab_test_stanza(name: str, match: list[str]) -> str:
     return f'[[lab_tests]]\nname = "{name}"\nmatch = [{match_str}]'
 
 
-def generate_config(db: ChartfoldDB, config_path: str = DEFAULT_CONFIG_PATH,
-                     top_n: int = 25) -> str:
+def generate_config(
+    db: ChartfoldDB, config_path: str = DEFAULT_CONFIG_PATH, top_n: int = 25
+) -> str:
     """Auto-generate a config file from the database contents.
 
     Picks the top N most frequent lab tests as key tests and auto-detects
@@ -276,11 +277,10 @@ def generate_config(db: ChartfoldDB, config_path: str = DEFAULT_CONFIG_PATH,
         existing_lower = {t.lower() for t in tests}
         for ft in FALLBACK_KEY_TESTS:
             canonical = canonical_map.get(ft.lower(), ft)
-            if canonical.lower() not in existing_lower:
-                # Only include if the test actually exists in the DB
-                if canonical in merged:
-                    tests.append(canonical)
-                    existing_lower.add(canonical.lower())
+            # Only include if not already present AND exists in DB
+            if canonical.lower() not in existing_lower and canonical in merged:
+                tests.append(canonical)
+                existing_lower.add(canonical.lower())
     else:
         tests = list(FALLBACK_KEY_TESTS)
 

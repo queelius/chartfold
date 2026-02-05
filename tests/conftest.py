@@ -1,9 +1,5 @@
 """Shared test fixtures for chartfold tests."""
 
-import json
-import sqlite3
-import tempfile
-
 import pytest
 
 from chartfold.db import ChartfoldDB
@@ -182,27 +178,81 @@ def sample_epic_data():
             },
         ],
         "medications": [
-            {"name": "Capecitabine 500mg", "rxnorm": "200328", "status": "active", "route": "oral", "dose": "1 {tbl}", "sig": "1 {tbl}, oral", "start_date": "", "stop_date": ""},
-            {"name": "Ondansetron 8mg", "rxnorm": "312087", "status": "active", "route": "oral", "dose": "1 {tbl}", "sig": "1 {tbl}, oral", "start_date": "", "stop_date": ""},
+            {
+                "name": "Capecitabine 500mg",
+                "rxnorm": "200328",
+                "status": "active",
+                "route": "oral",
+                "dose": "1 {tbl}",
+                "sig": "1 {tbl}, oral",
+                "start_date": "",
+                "stop_date": "",
+            },
+            {
+                "name": "Ondansetron 8mg",
+                "rxnorm": "312087",
+                "status": "active",
+                "route": "oral",
+                "dose": "1 {tbl}",
+                "sig": "1 {tbl}, oral",
+                "start_date": "",
+                "stop_date": "",
+            },
         ],
         "problems": [
-            {"name": "Colon cancer", "icd10": "C18.9", "snomed": "363406005", "status": "Active", "onset_date": "20211122"},
-            {"name": "Hypertension", "icd10": "I10", "snomed": "38341003", "status": "Active", "onset_date": "20200101"},
+            {
+                "name": "Colon cancer",
+                "icd10": "C18.9",
+                "snomed": "363406005",
+                "status": "Active",
+                "onset_date": "20211122",
+            },
+            {
+                "name": "Hypertension",
+                "icd10": "I10",
+                "snomed": "38341003",
+                "status": "Active",
+                "onset_date": "20200101",
+            },
         ],
         "vitals": [
             {"type": "bp_systolic", "value": 130.0, "unit": "mmHg", "date": "20250115"},
         ],
         "immunizations": [
-            {"name": "Influenza", "cvx_code": "158", "date": "20241015", "status": "completed", "lot": "ABC123"},
+            {
+                "name": "Influenza",
+                "cvx_code": "158",
+                "date": "20241015",
+                "status": "completed",
+                "lot": "ABC123",
+            },
         ],
         "allergies": [
-            {"allergen": "Penicillin", "reaction": "Rash", "severity": "moderate", "status": "active"},
+            {
+                "allergen": "Penicillin",
+                "reaction": "Rash",
+                "severity": "moderate",
+                "status": "active",
+            },
         ],
         "social_history": [
-            {"category": "tobacco_smoking_status", "value": "Never smoker", "loinc": "72166-2", "date": "20250115"},
+            {
+                "category": "tobacco_smoking_status",
+                "value": "Never smoker",
+                "loinc": "72166-2",
+                "date": "20250115",
+            },
         ],
         "procedures": [
-            {"name": "Colonoscopy", "code_value": "73761001", "code_system": "2.16.840.1.113883.6.96", "date": "20211122", "status": "completed", "provider": "John Smith", "source_doc": "DOC0003"},
+            {
+                "name": "Colonoscopy",
+                "code_value": "73761001",
+                "code_system": "2.16.840.1.113883.6.96",
+                "date": "20211122",
+                "status": "completed",
+                "provider": "John Smith",
+                "source_doc": "DOC0003",
+            },
         ],
         "encounter_timeline": [
             {
@@ -423,8 +473,20 @@ def sample_athena_data():
             },
         ],
         "vitals": [
-            {"type": "weight", "value": 82.5, "value_text": "82.5", "unit": "kg", "date": "01/20/2025"},
-            {"type": "bp_systolic", "value": 130, "value_text": "130", "unit": "mmHg", "date": "01/20/2025"},
+            {
+                "type": "weight",
+                "value": 82.5,
+                "value_text": "82.5",
+                "unit": "kg",
+                "date": "01/20/2025",
+            },
+            {
+                "type": "bp_systolic",
+                "value": 130,
+                "value_text": "130",
+                "unit": "mmHg",
+                "date": "01/20/2025",
+            },
         ],
         "medications": [
             {
@@ -447,10 +509,21 @@ def sample_athena_data():
             },
         ],
         "immunizations": [
-            {"name": "Influenza", "cvx": "158", "date": "10/15/2024", "lot": "ABC123", "status": "completed"},
+            {
+                "name": "Influenza",
+                "cvx": "158",
+                "date": "10/15/2024",
+                "lot": "ABC123",
+                "status": "completed",
+            },
         ],
         "allergies": [
-            {"allergen": "Penicillin", "reaction": "Rash", "severity": "moderate", "status": "active"},
+            {
+                "allergen": "Penicillin",
+                "reaction": "Rash",
+                "severity": "moderate",
+                "status": "active",
+            },
         ],
         "social_history": [
             {"category": "smoking", "value": "Never smoker", "date": "01/20/2025"},
@@ -469,10 +542,22 @@ def sample_athena_data():
             },
         ],
         "clinical_notes": [
-            {"type": "Assessment", "author": "Dr. PCP", "date": "01/20/2025", "content": "Diabetes stable."},
+            {
+                "type": "Assessment",
+                "author": "Dr. PCP",
+                "date": "01/20/2025",
+                "content": "Diabetes stable.",
+            },
         ],
         "procedures": [
-            {"name": "Colonoscopy", "snomed": "", "cpt": "45378", "date": "11/22/2021", "provider": "Dr. GI", "facility": "Anderson"},
+            {
+                "name": "Colonoscopy",
+                "snomed": "",
+                "cpt": "45378",
+                "date": "11/22/2021",
+                "provider": "Dr. GI",
+                "facility": "Anderson",
+            },
         ],
     }
 

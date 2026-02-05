@@ -1,32 +1,34 @@
 """Tests for chartfold.db SQLite database layer."""
 
-import sqlite3
-
-import pytest
-
 from chartfold.db import ChartfoldDB
 from chartfold.models import (
-    ConditionRecord,
-    DocumentRecord,
-    EncounterRecord,
     LabResult,
-    MedicationRecord,
-    PatientRecord,
     UnifiedRecords,
 )
 
 
 class TestSchemaCreation:
     def test_creates_all_tables(self, tmp_db):
-        tables = tmp_db.query(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        tables = tmp_db.query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         table_names = {t["name"] for t in tables}
         expected = {
-            "patients", "documents", "encounters", "lab_results", "vitals",
-            "medications", "conditions", "procedures", "pathology_reports",
-            "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status", "load_log",
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "load_log",
         }
         assert expected.issubset(table_names)
 
@@ -41,9 +43,7 @@ class TestSchemaCreation:
     def test_idempotent_schema(self, tmp_db):
         """Running init_schema twice should not error."""
         tmp_db.init_schema()
-        tables = tmp_db.query(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
+        tables = tmp_db.query("SELECT name FROM sqlite_master WHERE type='table'")
         assert len(tables) > 10
 
 
@@ -120,7 +120,9 @@ class TestIdempotentReload:
         source2 = UnifiedRecords(
             source="other_source",
             lab_results=[
-                LabResult(source="other_source", test_name="Glucose", value="95", value_numeric=95.0),
+                LabResult(
+                    source="other_source", test_name="Glucose", value="95", value_numeric=95.0
+                ),
             ],
         )
         loaded_db.load_source(source2)
@@ -169,7 +171,5 @@ class TestContextManager:
         # After context exits, connection should be closed
         # Verify by creating new connection
         with ChartfoldDB(db_path) as db2:
-            tables = db2.query(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            tables = db2.query("SELECT name FROM sqlite_master WHERE type='table'")
             assert len(tables) > 0

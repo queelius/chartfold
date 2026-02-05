@@ -37,12 +37,18 @@ def main():
         p = load_sub.add_parser(src, help=f"Load {src} source")
         p.add_argument("input_dir", help="Directory containing source files")
         p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
-        p.add_argument("--source-name", default="", help="Source name override (default: derived from directory)")
+        p.add_argument(
+            "--source-name",
+            default="",
+            help="Source name override (default: derived from directory)",
+        )
 
     auto_parser = load_sub.add_parser("auto", help="Auto-detect source type and load")
     auto_parser.add_argument("input_dir", help="Directory containing source files")
     auto_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
-    auto_parser.add_argument("--source-name", default="", help="Source name override (default: derived from directory)")
+    auto_parser.add_argument(
+        "--source-name", default="", help="Source name override (default: derived from directory)"
+    )
 
     all_parser = load_sub.add_parser("all", help="Load all sources at once")
     all_parser.add_argument("--epic-dir", help="Epic source directory")
@@ -50,12 +56,16 @@ def main():
     all_parser.add_argument("--athena-dir", help="athenahealth/SIHF source directory")
     all_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     all_parser.add_argument("--epic-source-name", default="", help="Epic source name override")
-    all_parser.add_argument("--meditech-source-name", default="", help="MEDITECH source name override")
+    all_parser.add_argument(
+        "--meditech-source-name", default="", help="MEDITECH source name override"
+    )
     all_parser.add_argument("--athena-source-name", default="", help="athena source name override")
 
     # --- diff ---
     diff_parser = sub.add_parser("diff", help="Show what's new since a given date")
-    diff_parser.add_argument("since_date", help="ISO date (YYYY-MM-DD) — show changes since this date")
+    diff_parser.add_argument(
+        "since_date", help="ISO date (YYYY-MM-DD) — show changes since this date"
+    )
     diff_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
 
     # --- query ---
@@ -79,11 +89,19 @@ def main():
     md_parser = export_sub.add_parser("markdown", help="Export as Markdown")
     md_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     md_parser.add_argument("--output", default="chartfold_export.md", help="Output file path")
-    md_parser.add_argument("--lookback", type=int, default=6, help="Months of recent data to include")
-    md_parser.add_argument("--full", action="store_true", help="Export all data (full database dump)")
+    md_parser.add_argument(
+        "--lookback", type=int, default=6, help="Months of recent data to include"
+    )
+    md_parser.add_argument(
+        "--full", action="store_true", help="Export all data (full database dump)"
+    )
     md_parser.add_argument("--pdf", action="store_true", help="Generate PDF via pandoc")
-    md_parser.add_argument("--include-load-log", action="store_true", help="Include audit log in full JSON export")
-    md_parser.add_argument("--exclude-notes", action="store_true", help="Exclude personal notes from full export")
+    md_parser.add_argument(
+        "--include-load-log", action="store_true", help="Include audit log in full JSON export"
+    )
+    md_parser.add_argument(
+        "--exclude-notes", action="store_true", help="Exclude personal notes from full export"
+    )
 
     # export json (for full exports)
     json_parser = export_sub.add_parser("json", help="Export as JSON (full database dump)")
@@ -96,8 +114,12 @@ def main():
     html_parser = export_sub.add_parser("html", help="Export as self-contained HTML with charts")
     html_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     html_parser.add_argument("--output", default="chartfold_export.html", help="Output file path")
-    html_parser.add_argument("--lookback", type=int, default=6, help="Months of recent data to include")
-    html_parser.add_argument("--full", action="store_true", help="Export all data (full database dump)")
+    html_parser.add_argument(
+        "--lookback", type=int, default=6, help="Months of recent data to include"
+    )
+    html_parser.add_argument(
+        "--full", action="store_true", help="Export all data (full database dump)"
+    )
     html_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
 
     # export hugo (moved from generate-site)
@@ -105,18 +127,27 @@ def main():
     hugo_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     hugo_parser.add_argument("--output", default="./site", help="Hugo output directory")
     hugo_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
-    hugo_parser.add_argument("--linked-sources", action="store_true",
-                             help="Copy source EHR assets into Hugo static folder")
+    hugo_parser.add_argument(
+        "--linked-sources",
+        action="store_true",
+        help="Copy source EHR assets into Hugo static folder",
+    )
 
     # --- import ---
     import_parser = sub.add_parser("import", help="Import data from JSON export")
     import_parser.add_argument("input_file", help="Path to JSON export file")
     import_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
-    import_parser.add_argument("--validate-only", action="store_true", help="Validate without importing")
-    import_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing database")
+    import_parser.add_argument(
+        "--validate-only", action="store_true", help="Validate without importing"
+    )
+    import_parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing database"
+    )
 
     # --- init-config ---
-    config_parser = sub.add_parser("init-config", help="Generate chartfold.toml config from database")
+    config_parser = sub.add_parser(
+        "init-config", help="Generate chartfold.toml config from database"
+    )
     config_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     config_parser.add_argument("--output", default="chartfold.toml", help="Config file output path")
 
@@ -141,11 +172,13 @@ def main():
     assets_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     assets_sub = assets_parser.add_subparsers(dest="assets_action")
 
-    assets_summary_parser = assets_sub.add_parser("summary", help="Show asset summary by source and type (default)")
+    assets_sub.add_parser("summary", help="Show asset summary by source and type (default)")
 
     assets_list_parser = assets_sub.add_parser("list", help="List assets")
     assets_list_parser.add_argument("--source", default="", help="Filter by source")
-    assets_list_parser.add_argument("--type", default="", help="Filter by asset type (pdf, png, etc.)")
+    assets_list_parser.add_argument(
+        "--type", default="", help="Filter by asset type (pdf, png, etc.)"
+    )
     assets_list_parser.add_argument("--limit", type=int, default=50, help="Max assets to show")
 
     assets_find_parser = assets_sub.add_parser("find", help="Find assets for a specific record")
@@ -220,8 +253,9 @@ def _handle_load(args):
         _print_db_summary(db)
 
 
-def _print_stage_comparison(parser_counts: dict[str, int], adapter_counts: dict[str, int],
-                            db_counts: dict[str, int]) -> None:
+def _print_stage_comparison(
+    parser_counts: dict[str, int], adapter_counts: dict[str, int], db_counts: dict[str, int]
+) -> None:
     """Print a comparison table of parser vs adapter vs DB record counts."""
     # Collect all table names that have at least one non-zero count
     all_keys = sorted(
@@ -250,7 +284,7 @@ def _print_stage_comparison(parser_counts: dict[str, int], adapter_counts: dict[
 
     print("\n  Stage Comparison:")
     print(f"    {'Table':<25} {'Parser':>7}  {'Adapter':>7}  {'DB':>7}")
-    print(f"    {'-'*25} {'-'*7}  {'-'*7}  {'-'*7}")
+    print(f"    {'-' * 25} {'-' * 7}  {'-' * 7}  {'-' * 7}")
     for key, p, a, d, flag in rows:
         p_str = str(p) if p != "" else "-"
         a_str = str(a) if a != "" else "-"
@@ -369,17 +403,25 @@ def _handle_export(args):
         if args.export_format == "markdown":
             if getattr(args, "full", False):
                 from chartfold.export_full import export_full_markdown
+
                 path = export_full_markdown(db, output_path=args.output)
             elif getattr(args, "pdf", False):
                 from chartfold.export import export_pdf
-                output = args.output if args.output.endswith(".pdf") else args.output.replace(".md", ".pdf")
+
+                output = (
+                    args.output
+                    if args.output.endswith(".pdf")
+                    else args.output.replace(".md", ".pdf")
+                )
                 path = export_pdf(db, output_path=output, lookback_months=args.lookback)
             else:
                 from chartfold.export import export_markdown
+
                 path = export_markdown(db, output_path=args.output, lookback_months=args.lookback)
 
         elif args.export_format == "json":
             from chartfold.export_full import export_full_json
+
             include_notes = not getattr(args, "exclude_notes", False)
             include_load_log = getattr(args, "include_load_log", False)
             path = export_full_json(
@@ -391,6 +433,7 @@ def _handle_export(args):
 
         elif args.export_format == "html":
             from chartfold.export_html import export_html, export_html_full
+
             if getattr(args, "full", False):
                 path = export_html_full(
                     db,
@@ -407,8 +450,10 @@ def _handle_export(args):
 
         elif args.export_format == "hugo":
             from chartfold.hugo.generate import generate_site
+
             generate_site(
-                args.db, args.output,
+                args.db,
+                args.output,
                 config_path=getattr(args, "config", ""),
                 linked_sources=getattr(args, "linked_sources", False),
             )
@@ -466,18 +511,34 @@ def _handle_diff(args):
         db.init_schema()
         diff = visit_diff(db, since_date=args.since_date)
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Changes since {diff['since_date']}")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     sections = [
-        ("New Labs", "new_labs", ["test_name", "value", "unit", "interpretation", "result_date", "source"]),
+        (
+            "New Labs",
+            "new_labs",
+            ["test_name", "value", "unit", "interpretation", "result_date", "source"],
+        ),
         ("New Imaging", "new_imaging", ["study_name", "modality", "study_date", "source"]),
         ("New Pathology", "new_pathology", ["report_date", "specimen", "diagnosis", "source"]),
-        ("Medication Changes", "medication_changes", ["name", "status", "start_date", "stop_date", "source"]),
+        (
+            "Medication Changes",
+            "medication_changes",
+            ["name", "status", "start_date", "stop_date", "source"],
+        ),
         ("New Notes", "new_notes", ["note_type", "author", "note_date", "source"]),
-        ("New Conditions", "new_conditions", ["condition_name", "clinical_status", "onset_date", "source"]),
-        ("New Encounters", "new_encounters", ["encounter_date", "encounter_type", "facility", "provider"]),
+        (
+            "New Conditions",
+            "new_conditions",
+            ["condition_name", "clinical_status", "onset_date", "source"],
+        ),
+        (
+            "New Encounters",
+            "new_encounters",
+            ["encounter_date", "encounter_type", "facility", "provider"],
+        ),
         ("New Procedures", "new_procedures", ["name", "procedure_date", "facility", "source"]),
     ]
 
@@ -486,8 +547,10 @@ def _handle_diff(args):
         if not rows:
             continue
         print(f"\n  {title} ({len(rows)}):")
-        col_widths = [max(len(h), max((len(str(r.get(h, "") or "")[:40]) for r in rows), default=0))
-                      for h in headers]
+        col_widths = [
+            max(len(h), max((len(str(r.get(h, "") or "")[:40]) for r in rows), default=0))
+            for h in headers
+        ]
         fmt = "    " + " | ".join(f"{{:<{w}}}" for w in col_widths)
         print(fmt.format(*headers))
         print("    " + "-+-".join("-" * w for w in col_widths))
@@ -548,13 +611,13 @@ def _print_db_summary(db):
     counts = db.summary()
     sources = db.sources()
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("Database Summary")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     for table, count in counts.items():
         if count > 0:
             print(f"  {table:<25} {count:>6}")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     if sources:
         print("\nLoad History:")
@@ -595,7 +658,7 @@ def _handle_notes_list(db, limit: int = 20):
 
     rows = rows[:limit]
     print(f"\n{'ID':>5}  {'Title':<40}  {'Tags':<25}  {'Updated':<20}")
-    print(f"{'─'*5}  {'─'*40}  {'─'*25}  {'─'*20}")
+    print(f"{'─' * 5}  {'─' * 40}  {'─' * 25}  {'─' * 20}")
     for r in rows:
         tags = ", ".join(r.get("tags", []))
         updated = (r.get("updated_at") or "")[:19]
@@ -616,7 +679,7 @@ def _handle_notes_search(db, args):
         return
 
     print(f"\n{'ID':>5}  {'Title':<40}  {'Tags':<25}  {'Updated':<20}")
-    print(f"{'─'*5}  {'─'*40}  {'─'*25}  {'─'*20}")
+    print(f"{'─' * 5}  {'─' * 40}  {'─' * 25}  {'─' * 20}")
     for r in rows:
         tags = ", ".join(r.get("tags", []))
         updated = (r.get("updated_at") or "")[:19]
@@ -633,14 +696,14 @@ def _handle_notes_show(db, note_id: int):
         sys.exit(1)
 
     tags = ", ".join(note.get("tags", []))
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Note #{note['id']}: {note['title']}")
     if tags:
         print(f"Tags: {tags}")
     if note.get("ref_table"):
         print(f"Linked to: {note['ref_table']} #{note.get('ref_id', '')}")
     print(f"Created: {note['created_at'][:19]}  Updated: {note['updated_at'][:19]}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
     print(note["content"])
     print()
 
@@ -674,7 +737,7 @@ def _handle_assets_summary(db):
         return
 
     print(f"\n{'Source':<25} {'Type':<10} {'Count':>8} {'Size (MB)':>12}")
-    print(f"{'─'*25} {'─'*10} {'─'*8} {'─'*12}")
+    print(f"{'─' * 25} {'─' * 10} {'─' * 8} {'─' * 12}")
 
     current_source = None
     for r in rows:
@@ -687,7 +750,7 @@ def _handle_assets_summary(db):
 
     # Total
     total = db.query("SELECT COUNT(*) as c, SUM(file_size_kb) as kb FROM source_assets")[0]
-    print(f"\n{'Total':<36} {total['c']:>8} {(total['kb'] or 0)/1024:>12.1f} MB")
+    print(f"\n{'Total':<36} {total['c']:>8} {(total['kb'] or 0) / 1024:>12.1f} MB")
 
 
 def _handle_assets_list(db, args):
@@ -708,7 +771,7 @@ def _handle_assets_list(db, args):
         f"SELECT id, source, asset_type, file_name, file_size_kb, title, encounter_date "
         f"FROM source_assets{where} ORDER BY source, encounter_date DESC, file_name "
         f"LIMIT ?",
-        tuple(params) + (args.limit,),
+        (*tuple(params), args.limit),
     )
 
     if not rows:
@@ -716,12 +779,14 @@ def _handle_assets_list(db, args):
         return
 
     print(f"\n{'ID':>6} {'Source':<20} {'Type':<6} {'File':<30} {'Size':>6} {'Date':<12}")
-    print(f"{'─'*6} {'─'*20} {'─'*6} {'─'*30} {'─'*6} {'─'*12}")
+    print(f"{'─' * 6} {'─' * 20} {'─' * 6} {'─' * 30} {'─' * 6} {'─' * 12}")
 
     for r in rows:
         fname = (r["file_name"] or "")[:30]
         date = r["encounter_date"] or ""
-        print(f"{r['id']:>6} {r['source']:<20} {r['asset_type']:<6} {fname:<30} {r['file_size_kb'] or 0:>6} {date:<12}")
+        size = r["file_size_kb"] or 0
+        atype = r["asset_type"]
+        print(f"{r['id']:>6} {r['source']:<20} {atype:<6} {fname:<30} {size:>6} {date:<12}")
 
     print(f"\n({len(rows)} assets)")
 
@@ -734,9 +799,20 @@ def _handle_assets_find(db, args):
 
     # Validate table name against known tables
     valid_tables = [
-        "lab_results", "vitals", "medications", "conditions", "procedures",
-        "pathology_reports", "imaging_reports", "clinical_notes", "immunizations",
-        "allergies", "encounters", "social_history", "family_history", "mental_status",
+        "lab_results",
+        "vitals",
+        "medications",
+        "conditions",
+        "procedures",
+        "pathology_reports",
+        "imaging_reports",
+        "clinical_notes",
+        "immunizations",
+        "allergies",
+        "encounters",
+        "social_history",
+        "family_history",
+        "mental_status",
     ]
     if table not in valid_tables:
         print(f"Unknown table: {table}")
@@ -786,7 +862,7 @@ def _handle_assets_find(db, args):
 
     print(f"\nAssets linked to {table}#{record_id}:")
     print(f"{'ID':>6} {'Type':<6} {'File':<40} {'Title':<30}")
-    print(f"{'─'*6} {'─'*6} {'─'*40} {'─'*30}")
+    print(f"{'─' * 6} {'─' * 6} {'─' * 40} {'─' * 30}")
 
     for a in assets:
         fname = (a["file_name"] or "")[:40]

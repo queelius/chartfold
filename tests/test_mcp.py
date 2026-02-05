@@ -3,8 +3,6 @@
 Tests the tool functions directly (not via MCP protocol).
 """
 
-import os
-
 import pytest
 
 from chartfold.db import ChartfoldDB
@@ -32,17 +30,29 @@ def mcp_db(tmp_path, monkeypatch):
     records = UnifiedRecords(
         source="test",
         lab_results=[
-            LabResult(source="test", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-06-15"),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
         ],
         medications=[
-            MedicationRecord(source="test", name="Capecitabine 500mg", status="active",
-                             sig="2 tabs twice daily"),
+            MedicationRecord(
+                source="test", name="Capecitabine 500mg", status="active", sig="2 tabs twice daily"
+            ),
         ],
         conditions=[
-            ConditionRecord(source="test", condition_name="Colon cancer",
-                            icd10_code="C18.9", clinical_status="active"),
+            ConditionRecord(
+                source="test",
+                condition_name="Colon cancer",
+                icd10_code="C18.9",
+                clinical_status="active",
+            ),
         ],
     )
     db.load_source(records)
@@ -50,6 +60,7 @@ def mcp_db(tmp_path, monkeypatch):
 
     # Reload the module to pick up new env var
     import chartfold.mcp.server as srv
+
     monkeypatch.setattr(srv, "DB_PATH", db_path)
     yield srv
 
@@ -66,54 +77,114 @@ def mcp_multi_db(tmp_path, monkeypatch):
     epic = UnifiedRecords(
         source="epic",
         lab_results=[
-            LabResult(source="epic", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-06-15"),
-            LabResult(source="epic", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", ref_range="13.0-17.0", interpretation="L",
-                      result_date="2025-06-15"),
-            LabResult(source="epic", test_name="CEA", value="3.2", value_numeric=3.2,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="",
-                      result_date="2025-01-10"),
+            LabResult(
+                source="epic",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
+            LabResult(
+                source="epic",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                interpretation="L",
+                result_date="2025-06-15",
+            ),
+            LabResult(
+                source="epic",
+                test_name="CEA",
+                value="3.2",
+                value_numeric=3.2,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="",
+                result_date="2025-01-10",
+            ),
         ],
         medications=[
-            MedicationRecord(source="epic", name="Capecitabine 500mg", status="active",
-                             sig="2 tabs twice daily", start_date="2025-01-01"),
+            MedicationRecord(
+                source="epic",
+                name="Capecitabine 500mg",
+                status="active",
+                sig="2 tabs twice daily",
+                start_date="2025-01-01",
+            ),
         ],
         encounters=[
-            EncounterRecord(source="epic", encounter_date="2025-06-15",
-                            encounter_type="office visit", facility="Anderson",
-                            provider="Dr. Smith"),
+            EncounterRecord(
+                source="epic",
+                encounter_date="2025-06-15",
+                encounter_type="office visit",
+                facility="Anderson",
+                provider="Dr. Smith",
+            ),
         ],
         procedures=[
-            ProcedureRecord(source="epic", name="Right hemicolectomy",
-                            procedure_date="2024-07-01", facility="Anderson"),
+            ProcedureRecord(
+                source="epic",
+                name="Right hemicolectomy",
+                procedure_date="2024-07-01",
+                facility="Anderson",
+            ),
         ],
         pathology_reports=[
-            PathologyReport(source="epic", report_date="2024-07-03",
-                            specimen="Right colon", diagnosis="Adenocarcinoma",
-                            staging="pT3N2a", margins="Negative"),
+            PathologyReport(
+                source="epic",
+                report_date="2024-07-03",
+                specimen="Right colon",
+                diagnosis="Adenocarcinoma",
+                staging="pT3N2a",
+                margins="Negative",
+            ),
         ],
         imaging_reports=[
-            ImagingReport(source="epic", study_name="CT Abdomen", modality="CT",
-                          study_date="2024-06-01", impression="Mass in right colon."),
+            ImagingReport(
+                source="epic",
+                study_name="CT Abdomen",
+                modality="CT",
+                study_date="2024-06-01",
+                impression="Mass in right colon.",
+            ),
         ],
     )
     meditech = UnifiedRecords(
         source="meditech",
         lab_results=[
-            LabResult(source="meditech", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-5.0", interpretation="H",
-                      result_date="2025-06-15"),
+            LabResult(
+                source="meditech",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
         ],
         medications=[
-            MedicationRecord(source="meditech", name="Capecitabine 500mg", status="completed",
-                             sig="2 tabs twice daily", start_date="2025-01-01",
-                             stop_date="2025-06-01"),
+            MedicationRecord(
+                source="meditech",
+                name="Capecitabine 500mg",
+                status="completed",
+                sig="2 tabs twice daily",
+                start_date="2025-01-01",
+                stop_date="2025-06-01",
+            ),
         ],
         encounters=[
-            EncounterRecord(source="meditech", encounter_date="2025-06-15",
-                            encounter_type="lab visit", facility="Anderson Lab"),
+            EncounterRecord(
+                source="meditech",
+                encounter_date="2025-06-15",
+                encounter_type="lab visit",
+                facility="Anderson Lab",
+            ),
         ],
     )
     db.load_source(epic)
@@ -121,6 +192,7 @@ def mcp_multi_db(tmp_path, monkeypatch):
     db.close()
 
     import chartfold.mcp.server as srv
+
     monkeypatch.setattr(srv, "DB_PATH", db_path)
     yield srv
 
@@ -144,9 +216,7 @@ class TestRunSQL:
         assert "Error" in result
 
     def test_allows_with(self, mcp_db):
-        result = mcp_db.run_sql(
-            "WITH recent AS (SELECT * FROM lab_results) SELECT * FROM recent"
-        )
+        result = mcp_db.run_sql("WITH recent AS (SELECT * FROM lab_results) SELECT * FROM recent")
         assert len(result) == 1
 
     def test_sql_error(self, mcp_db):
@@ -327,6 +397,7 @@ class TestGetDataQualityReport:
 
 # --- Notes MCP tools ---
 
+
 @pytest.fixture
 def mcp_notes_db(tmp_path, monkeypatch):
     """Database with a few pre-saved notes for MCP notes tool testing."""
@@ -338,12 +409,16 @@ def mcp_notes_db(tmp_path, monkeypatch):
     db.save_note(title="CEA Trend", content="CEA rising from 3.2 to 5.8", tags=["oncology", "cea"])
     db.save_note(title="Visit Prep Feb", content="Questions for Dr. Tan", tags=["visit-prep"])
     db.save_note(
-        title="Lab Analysis", content="Hemoglobin trending down",
-        tags=["oncology"], ref_table="lab_results", ref_id=1,
+        title="Lab Analysis",
+        content="Hemoglobin trending down",
+        tags=["oncology"],
+        ref_table="lab_results",
+        ref_id=1,
     )
     db.close()
 
     import chartfold.mcp.server as srv
+
     monkeypatch.setattr(srv, "DB_PATH", db_path)
     yield srv
 
@@ -358,9 +433,7 @@ class TestSaveNoteTool:
 
     def test_update(self, mcp_notes_db):
         created = mcp_notes_db.save_note(title="Draft", content="v1")
-        result = mcp_notes_db.save_note(
-            title="Final", content="v2", note_id=created["id"]
-        )
+        result = mcp_notes_db.save_note(title="Final", content="v2", note_id=created["id"])
         assert result["status"] == "updated"
         assert result["id"] == created["id"]
 

@@ -1,7 +1,5 @@
 """Tests for chartfold.adapters — source-to-UnifiedRecords bridges."""
 
-import pytest
-
 from chartfold.adapters.athena_adapter import athena_to_unified
 from chartfold.adapters.epic_adapter import epic_to_unified, _guess_modality
 from chartfold.adapters.meditech_adapter import meditech_to_unified
@@ -156,7 +154,11 @@ class TestMeditechAdapter:
     def test_fhir_labs(self, sample_meditech_data):
         records = meditech_to_unified(sample_meditech_data)
         cea = next(
-            (lr for lr in records.lab_results if "CEA" in lr.test_name.upper() or "carcinoembryonic" in lr.test_name.lower()),
+            (
+                lr
+                for lr in records.lab_results
+                if "CEA" in lr.test_name.upper() or "carcinoembryonic" in lr.test_name.lower()
+            ),
             None,
         )
         assert cea is not None
@@ -178,7 +180,9 @@ class TestMeditechAdapter:
 
     def test_ccda_problems_merged(self, sample_meditech_data):
         records = meditech_to_unified(sample_meditech_data)
-        htn = next((c for c in records.conditions if "hypertension" in c.condition_name.lower()), None)
+        htn = next(
+            (c for c in records.conditions if "hypertension" in c.condition_name.lower()), None
+        )
         assert htn is not None
 
     def test_medications(self, sample_meditech_data):
@@ -216,7 +220,9 @@ class TestMeditechAdapter:
     def test_ccda_social_history(self, sample_meditech_data):
         records = meditech_to_unified(sample_meditech_data)
         assert len(records.social_history) >= 1
-        smoking = next((s for s in records.social_history if s.category == "tobacco_smoking_status"), None)
+        smoking = next(
+            (s for s in records.social_history if s.category == "tobacco_smoking_status"), None
+        )
         assert smoking is not None
         assert smoking.value == "Never smoker"
 
@@ -236,16 +242,18 @@ class TestMeditechAdapter:
 
     def test_fhir_vitals_from_observations(self, sample_meditech_data):
         """FHIR vital-signs category observations should be mapped to vitals."""
-        sample_meditech_data["fhir_data"]["observations"].append({
-            "text": "Heart Rate",
-            "display": "Heart Rate",
-            "loinc": "8867-4",
-            "value": 72,
-            "unit": "bpm",
-            "date_iso": "2025-01-15",
-            "category": "vital-signs",
-            "status": "final",
-        })
+        sample_meditech_data["fhir_data"]["observations"].append(
+            {
+                "text": "Heart Rate",
+                "display": "Heart Rate",
+                "loinc": "8867-4",
+                "value": 72,
+                "unit": "bpm",
+                "date_iso": "2025-01-15",
+                "category": "vital-signs",
+                "status": "final",
+            }
+        )
         records = meditech_to_unified(sample_meditech_data)
         hr = next((v for v in records.vitals if v.vital_type == "heart_rate"), None)
         assert hr is not None

@@ -1,8 +1,5 @@
 """Tests for Epic source parser."""
 
-import os
-import tempfile
-
 import pytest
 from lxml import etree
 
@@ -89,6 +86,7 @@ class TestEpicResultItems:
     @pytest.fixture
     def results_section(self):
         from lxml import etree
+
         return etree.fromstring(EPIC_RESULTS_XML)
 
     def test_extract_items(self, results_section):

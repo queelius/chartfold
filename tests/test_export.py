@@ -13,7 +13,6 @@ from chartfold.models import (
     MedicationRecord,
     PathologyReport,
     PatientRecord,
-    ProcedureRecord,
     UnifiedRecords,
 )
 
@@ -26,42 +25,85 @@ def export_db(tmp_path):
 
     records = UnifiedRecords(
         source="test_source",
-        patient=PatientRecord(source="test_source", name="Test Patient",
-                              date_of_birth="1975-06-15", gender="male"),
+        patient=PatientRecord(
+            source="test_source", name="Test Patient", date_of_birth="1975-06-15", gender="male"
+        ),
         lab_results=[
-            LabResult(source="test_source", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-12-15"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", ref_range="13.0-17.0", interpretation="L",
-                      result_date="2025-12-15"),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-12-15",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                interpretation="L",
+                result_date="2025-12-15",
+            ),
         ],
         medications=[
-            MedicationRecord(source="test_source", name="Capecitabine 500mg", status="active",
-                             sig="2 tabs twice daily", route="oral"),
+            MedicationRecord(
+                source="test_source",
+                name="Capecitabine 500mg",
+                status="active",
+                sig="2 tabs twice daily",
+                route="oral",
+            ),
         ],
         conditions=[
-            ConditionRecord(source="test_source", condition_name="Colon cancer",
-                            icd10_code="C18.9", clinical_status="active",
-                            onset_date="2021-11-22"),
+            ConditionRecord(
+                source="test_source",
+                condition_name="Colon cancer",
+                icd10_code="C18.9",
+                clinical_status="active",
+                onset_date="2021-11-22",
+            ),
         ],
         encounters=[
-            EncounterRecord(source="test_source", encounter_date="2025-12-15",
-                            encounter_type="office visit", facility="Anderson",
-                            provider="Dr. Smith"),
+            EncounterRecord(
+                source="test_source",
+                encounter_date="2025-12-15",
+                encounter_type="office visit",
+                facility="Anderson",
+                provider="Dr. Smith",
+            ),
         ],
         imaging_reports=[
-            ImagingReport(source="test_source", study_name="CT Abdomen", modality="CT",
-                          study_date="2025-12-01", impression="No recurrence."),
+            ImagingReport(
+                source="test_source",
+                study_name="CT Abdomen",
+                modality="CT",
+                study_date="2025-12-01",
+                impression="No recurrence.",
+            ),
         ],
         pathology_reports=[
-            PathologyReport(source="test_source", report_date="2024-07-03",
-                            specimen="Right colon", diagnosis="Adenocarcinoma",
-                            staging="pT3N2a", margins="Negative"),
+            PathologyReport(
+                source="test_source",
+                report_date="2024-07-03",
+                specimen="Right colon",
+                diagnosis="Adenocarcinoma",
+                staging="pT3N2a",
+                margins="Negative",
+            ),
         ],
         allergies=[
-            AllergyRecord(source="test_source", allergen="Penicillin",
-                          reaction="Rash", severity="moderate", status="active"),
+            AllergyRecord(
+                source="test_source",
+                allergen="Penicillin",
+                reaction="Rash",
+                severity="moderate",
+                status="active",
+            ),
         ],
     )
     db.load_source(records)

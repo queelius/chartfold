@@ -41,9 +41,7 @@ class TestSaveNote:
 
 class TestSaveNoteWithTags:
     def test_tags_stored(self, notes_db):
-        note_id = notes_db.save_note(
-            title="Tagged", content="Content", tags=["oncology", "cea"]
-        )
+        note_id = notes_db.save_note(title="Tagged", content="Content", tags=["oncology", "cea"])
         note = notes_db.get_note(note_id)
         assert sorted(note["tags"]) == ["cea", "oncology"]
 
@@ -53,23 +51,17 @@ class TestSaveNoteWithTags:
         assert note["tags"] == []
 
     def test_duplicate_tags_ignored(self, notes_db):
-        note_id = notes_db.save_note(
-            title="Dupes", content="Content", tags=["a", "a", "b"]
-        )
+        note_id = notes_db.save_note(title="Dupes", content="Content", tags=["a", "a", "b"])
         note = notes_db.get_note(note_id)
         assert sorted(note["tags"]) == ["a", "b"]
 
     def test_whitespace_tags_stripped(self, notes_db):
-        note_id = notes_db.save_note(
-            title="Spaces", content="Content", tags=["  foo  ", "bar"]
-        )
+        note_id = notes_db.save_note(title="Spaces", content="Content", tags=["  foo  ", "bar"])
         note = notes_db.get_note(note_id)
         assert sorted(note["tags"]) == ["bar", "foo"]
 
     def test_empty_string_tags_skipped(self, notes_db):
-        note_id = notes_db.save_note(
-            title="Blanks", content="Content", tags=["", "  ", "valid"]
-        )
+        note_id = notes_db.save_note(title="Blanks", content="Content", tags=["", "  ", "valid"])
         note = notes_db.get_note(note_id)
         assert note["tags"] == ["valid"]
 
@@ -77,8 +69,10 @@ class TestSaveNoteWithTags:
 class TestSaveNoteWithRef:
     def test_ref_stored(self, notes_db):
         note_id = notes_db.save_note(
-            title="Linked", content="Analysis of lab",
-            ref_table="lab_results", ref_id=42,
+            title="Linked",
+            content="Analysis of lab",
+            ref_table="lab_results",
+            ref_id=42,
         )
         note = notes_db.get_note(note_id)
         assert note["ref_table"] == "lab_results"
@@ -122,19 +116,13 @@ class TestUpdateNote:
 
 class TestUpdateNoteTags:
     def test_replaces_tags(self, notes_db):
-        note_id = notes_db.save_note(
-            title="T", content="C", tags=["old1", "old2"]
-        )
-        notes_db.save_note(
-            title="T", content="C", tags=["new1"], note_id=note_id
-        )
+        note_id = notes_db.save_note(title="T", content="C", tags=["old1", "old2"])
+        notes_db.save_note(title="T", content="C", tags=["new1"], note_id=note_id)
         note = notes_db.get_note(note_id)
         assert note["tags"] == ["new1"]
 
     def test_clear_tags(self, notes_db):
-        note_id = notes_db.save_note(
-            title="T", content="C", tags=["tag1"]
-        )
+        note_id = notes_db.save_note(title="T", content="C", tags=["tag1"])
         notes_db.save_note(title="T", content="C", tags=[], note_id=note_id)
         note = notes_db.get_note(note_id)
         assert note["tags"] == []
@@ -143,8 +131,11 @@ class TestUpdateNoteTags:
 class TestGetNote:
     def test_get_all_fields(self, notes_db):
         note_id = notes_db.save_note(
-            title="Full Note", content="Body text",
-            tags=["alpha", "beta"], ref_table="encounters", ref_id=7,
+            title="Full Note",
+            content="Body text",
+            tags=["alpha", "beta"],
+            ref_table="encounters",
+            ref_id=7,
         )
         note = notes_db.get_note(note_id)
         assert note["id"] == note_id
@@ -250,23 +241,21 @@ class TestDeleteNote:
         note_id = notes_db.save_note(title="T", content="C", tags=["a", "b"])
         notes_db.delete_note(note_id)
         # Verify tags are gone too
-        tag_rows = notes_db.query(
-            "SELECT * FROM note_tags WHERE note_id = ?", (note_id,)
-        )
+        tag_rows = notes_db.query("SELECT * FROM note_tags WHERE note_id = ?", (note_id,))
         assert tag_rows == []
 
 
 class TestSearchOrderedByUpdated:
     def test_most_recent_first(self, notes_db):
-        id1 = notes_db.save_note(title="First", content="C1")
-        id2 = notes_db.save_note(title="Second", content="C2")
+        notes_db.save_note(title="First", content="C1")
+        notes_db.save_note(title="Second", content="C2")
         results = notes_db.search_notes_personal()
         assert results[0]["title"] == "Second"
         assert results[1]["title"] == "First"
 
     def test_updated_note_moves_to_top(self, notes_db):
         id1 = notes_db.save_note(title="First", content="C1")
-        id2 = notes_db.save_note(title="Second", content="C2")
+        notes_db.save_note(title="Second", content="C2")
         # Update first note — it should now appear before second
         notes_db.save_note(title="First Updated", content="C1v2", note_id=id1)
         results = notes_db.search_notes_personal()

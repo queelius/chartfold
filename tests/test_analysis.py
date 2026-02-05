@@ -37,37 +37,83 @@ def analysis_db(tmp_path):
     records = UnifiedRecords(
         source="test",
         lab_results=[
-            LabResult(source="test", test_name="CEA", value="1.4", value_numeric=1.4,
-                      unit="ng/mL", ref_range="0.0-3.0", result_date="2025-01-01"),
-            LabResult(source="test", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-06-15"),
-            LabResult(source="test", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", ref_range="13.0-17.0", interpretation="L",
-                      result_date="2025-06-15"),
-            LabResult(source="test", test_name="WBC", value="6.2", value_numeric=6.2,
-                      unit="K/mm3", result_date="2024-01-15"),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="1.4",
+                value_numeric=1.4,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-01-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
+            LabResult(
+                source="test",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                interpretation="L",
+                result_date="2025-06-15",
+            ),
+            LabResult(
+                source="test",
+                test_name="WBC",
+                value="6.2",
+                value_numeric=6.2,
+                unit="K/mm3",
+                result_date="2024-01-15",
+            ),
         ],
         medications=[
-            MedicationRecord(source="test", name="Capecitabine 500mg", status="active",
-                             sig="2 tablets twice daily"),
-            MedicationRecord(source="test", name="Ondansetron 8mg", status="active",
-                             sig="As needed for nausea"),
-            MedicationRecord(source="test", name="Oxycodone 5mg", status="completed",
-                             sig="PRN pain"),
+            MedicationRecord(
+                source="test",
+                name="Capecitabine 500mg",
+                status="active",
+                sig="2 tablets twice daily",
+            ),
+            MedicationRecord(
+                source="test", name="Ondansetron 8mg", status="active", sig="As needed for nausea"
+            ),
+            MedicationRecord(
+                source="test", name="Oxycodone 5mg", status="completed", sig="PRN pain"
+            ),
         ],
         encounters=[
-            EncounterRecord(source="test", encounter_date="2025-06-15",
-                            encounter_type="office visit", facility="Anderson",
-                            provider="Dr. Smith"),
+            EncounterRecord(
+                source="test",
+                encounter_date="2025-06-15",
+                encounter_type="office visit",
+                facility="Anderson",
+                provider="Dr. Smith",
+            ),
         ],
         conditions=[
-            ConditionRecord(source="test", condition_name="Colon cancer",
-                            icd10_code="C18.9", clinical_status="active"),
+            ConditionRecord(
+                source="test",
+                condition_name="Colon cancer",
+                icd10_code="C18.9",
+                clinical_status="active",
+            ),
         ],
         imaging_reports=[
-            ImagingReport(source="test", study_name="CT Abdomen", modality="CT",
-                          study_date="2025-06-01", impression="No recurrence."),
+            ImagingReport(
+                source="test",
+                study_name="CT Abdomen",
+                modality="CT",
+                study_date="2025-06-01",
+                impression="No recurrence.",
+            ),
         ],
     )
     db.load_source(records)
@@ -112,25 +158,60 @@ def multi_source_db(tmp_path):
     epic_records = UnifiedRecords(
         source="epic_anderson",
         lab_results=[
-            LabResult(source="epic_anderson", test_name="CEA", value="1.4", value_numeric=1.4,
-                      unit="ng/mL", ref_range="0.0-3.0", result_date="2025-01-01"),
-            LabResult(source="epic_anderson", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-06-15"),
-            LabResult(source="epic_anderson", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", ref_range="13.0-17.0", interpretation="L",
-                      result_date="2025-06-15"),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                value="1.4",
+                value_numeric=1.4,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-01-01",
+            ),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
+            LabResult(
+                source="epic_anderson",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                interpretation="L",
+                result_date="2025-06-15",
+            ),
         ],
     )
     meditech_records = UnifiedRecords(
         source="meditech_anderson",
         lab_results=[
-            LabResult(source="meditech_anderson", test_name="CEA", value="3.2", value_numeric=3.2,
-                      unit="ng/mL", ref_range="0.0-5.0", interpretation="",
-                      result_date="2025-03-15"),
-            LabResult(source="meditech_anderson", test_name="CEA", value="4.1", value_numeric=4.1,
-                      unit="ng/mL", ref_range="0.0-5.0", interpretation="",
-                      result_date="2025-08-01"),
+            LabResult(
+                source="meditech_anderson",
+                test_name="CEA",
+                value="3.2",
+                value_numeric=3.2,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                interpretation="",
+                result_date="2025-03-15",
+            ),
+            LabResult(
+                source="meditech_anderson",
+                test_name="CEA",
+                value="4.1",
+                value_numeric=4.1,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                interpretation="",
+                result_date="2025-08-01",
+            ),
         ],
     )
     db.load_source(epic_records)
@@ -148,30 +229,62 @@ def synonym_db(tmp_path):
     epic_records = UnifiedRecords(
         source="epic_anderson",
         lab_results=[
-            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
-                      value="1.4", value_numeric=1.4, unit="ng/mL",
-                      ref_range="0.0-3.0", result_date="2025-01-15"),
-            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
-                      value="5.8", value_numeric=5.8, unit="ng/mL",
-                      ref_range="0.0-3.0", interpretation="H",
-                      result_date="2025-06-15"),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                test_loinc="2039-6",
+                value="1.4",
+                value_numeric=1.4,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-01-15",
+            ),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                test_loinc="2039-6",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
         ],
     )
     meditech_records = UnifiedRecords(
         source="meditech_siteman",
         lab_results=[
-            LabResult(source="meditech_siteman",
-                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
-                      value="4.1", value_numeric=4.1, unit="ng/mL",
-                      ref_range="0.0-5.0", result_date="2024-11-01"),
-            LabResult(source="meditech_siteman",
-                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
-                      value="2.5", value_numeric=2.5, unit="ng/mL",
-                      ref_range="0.0-5.0", result_date="2025-03-01"),
-            LabResult(source="meditech_siteman",
-                      test_name="Carcinoembryonic Antigen", test_loinc="2039-6",
-                      value="3.8", value_numeric=3.8, unit="ng/mL",
-                      ref_range="0.0-5.0", result_date="2025-08-01"),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Carcinoembryonic Antigen",
+                test_loinc="2039-6",
+                value="4.1",
+                value_numeric=4.1,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2024-11-01",
+            ),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Carcinoembryonic Antigen",
+                test_loinc="2039-6",
+                value="2.5",
+                value_numeric=2.5,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2025-03-01",
+            ),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Carcinoembryonic Antigen",
+                test_loinc="2039-6",
+                value="3.8",
+                value_numeric=3.8,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2025-08-01",
+            ),
         ],
     )
     db.load_source(epic_records)
@@ -207,23 +320,22 @@ class TestLabTrendMultiName:
 
     def test_loinc_takes_precedence_over_test_names(self, synonym_db):
         """LOINC filter should be preferred over test_names if both provided."""
-        results = get_lab_trend(synonym_db, test_loinc="2039-6",
-                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        results = get_lab_trend(
+            synonym_db, test_loinc="2039-6", test_names=["CEA", "Carcinoembryonic Antigen"]
+        )
         # test_loinc matches all 5 since both names share the same LOINC
         assert len(results) == 5
 
 
 class TestLabSeriesMultiName:
     def test_multi_name_series(self, synonym_db):
-        series = get_lab_series(synonym_db,
-                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        series = get_lab_series(synonym_db, test_names=["CEA", "Carcinoembryonic Antigen"])
         assert len(series["results"]) == 5
         assert "epic_anderson" in series["sources"]
         assert "meditech_siteman" in series["sources"]
 
     def test_multi_name_ref_range_discrepancy(self, synonym_db):
-        series = get_lab_series(synonym_db,
-                                test_names=["CEA", "Carcinoembryonic Antigen"])
+        series = get_lab_series(synonym_db, test_names=["CEA", "Carcinoembryonic Antigen"])
         assert series["ref_range_discrepancy"] is True
 
     def test_single_name_series_misses_synonyms(self, synonym_db):
@@ -316,48 +428,104 @@ def visit_diff_db(tmp_path):
     records = UnifiedRecords(
         source="test",
         lab_results=[
-            LabResult(source="test", test_name="CEA", value="1.4", value_numeric=1.4,
-                      unit="ng/mL", result_date="2025-01-01"),
-            LabResult(source="test", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", interpretation="H", result_date="2025-06-15"),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="1.4",
+                value_numeric=1.4,
+                unit="ng/mL",
+                result_date="2025-01-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                interpretation="H",
+                result_date="2025-06-15",
+            ),
         ],
         imaging_reports=[
-            ImagingReport(source="test", study_name="CT Abdomen", modality="CT",
-                          study_date="2025-05-01", impression="No recurrence."),
-            ImagingReport(source="test", study_name="PET/CT", modality="PET",
-                          study_date="2025-07-01", impression="New uptake noted."),
+            ImagingReport(
+                source="test",
+                study_name="CT Abdomen",
+                modality="CT",
+                study_date="2025-05-01",
+                impression="No recurrence.",
+            ),
+            ImagingReport(
+                source="test",
+                study_name="PET/CT",
+                modality="PET",
+                study_date="2025-07-01",
+                impression="New uptake noted.",
+            ),
         ],
         medications=[
-            MedicationRecord(source="test", name="Capecitabine", status="active",
-                             start_date="2025-01-01"),
-            MedicationRecord(source="test", name="Ondansetron", status="active",
-                             start_date="2025-06-01"),
-            MedicationRecord(source="test", name="Oxycodone", status="completed",
-                             start_date="2024-06-01", stop_date="2025-06-01"),
+            MedicationRecord(
+                source="test", name="Capecitabine", status="active", start_date="2025-01-01"
+            ),
+            MedicationRecord(
+                source="test", name="Ondansetron", status="active", start_date="2025-06-01"
+            ),
+            MedicationRecord(
+                source="test",
+                name="Oxycodone",
+                status="completed",
+                start_date="2024-06-01",
+                stop_date="2025-06-01",
+            ),
         ],
         clinical_notes=[
-            ClinicalNote(source="test", note_type="progress", author="Dr. Smith",
-                         note_date="2025-06-15", content="Follow up visit."),
+            ClinicalNote(
+                source="test",
+                note_type="progress",
+                author="Dr. Smith",
+                note_date="2025-06-15",
+                content="Follow up visit.",
+            ),
         ],
         conditions=[
-            ConditionRecord(source="test", condition_name="Colon cancer",
-                            clinical_status="active", onset_date="2021-11-22"),
-            ConditionRecord(source="test", condition_name="Anemia",
-                            clinical_status="active", onset_date="2025-06-01"),
+            ConditionRecord(
+                source="test",
+                condition_name="Colon cancer",
+                clinical_status="active",
+                onset_date="2021-11-22",
+            ),
+            ConditionRecord(
+                source="test",
+                condition_name="Anemia",
+                clinical_status="active",
+                onset_date="2025-06-01",
+            ),
         ],
         encounters=[
-            EncounterRecord(source="test", encounter_date="2025-01-15",
-                            encounter_type="office visit", facility="Anderson"),
-            EncounterRecord(source="test", encounter_date="2025-06-15",
-                            encounter_type="office visit", facility="Anderson"),
+            EncounterRecord(
+                source="test",
+                encounter_date="2025-01-15",
+                encounter_type="office visit",
+                facility="Anderson",
+            ),
+            EncounterRecord(
+                source="test",
+                encounter_date="2025-06-15",
+                encounter_type="office visit",
+                facility="Anderson",
+            ),
         ],
         procedures=[
-            ProcedureRecord(source="test", name="Colonoscopy",
-                            procedure_date="2025-03-01", facility="Anderson"),
+            ProcedureRecord(
+                source="test", name="Colonoscopy", procedure_date="2025-03-01", facility="Anderson"
+            ),
         ],
         pathology_reports=[
-            PathologyReport(source="test", report_date="2025-03-03",
-                            specimen="Colon biopsy", diagnosis="No dysplasia"),
+            PathologyReport(
+                source="test",
+                report_date="2025-03-03",
+                specimen="Colon biopsy",
+                diagnosis="No dysplasia",
+            ),
         ],
     )
     db.load_source(records)
@@ -529,27 +697,43 @@ def cross_source_encounter_db(tmp_path):
     epic = UnifiedRecords(
         source="epic_anderson",
         encounters=[
-            EncounterRecord(source="epic_anderson", encounter_date="2025-06-15",
-                            encounter_type="office visit", facility="Anderson Hospital",
-                            provider="Dr. Oncologist"),
-            EncounterRecord(source="epic_anderson", encounter_date="2025-01-10",
-                            encounter_type="inpatient", facility="Anderson Hospital"),
+            EncounterRecord(
+                source="epic_anderson",
+                encounter_date="2025-06-15",
+                encounter_type="office visit",
+                facility="Anderson Hospital",
+                provider="Dr. Oncologist",
+            ),
+            EncounterRecord(
+                source="epic_anderson",
+                encounter_date="2025-01-10",
+                encounter_type="inpatient",
+                facility="Anderson Hospital",
+            ),
         ],
     )
     meditech = UnifiedRecords(
         source="meditech_anderson",
         encounters=[
-            EncounterRecord(source="meditech_anderson", encounter_date="2025-06-15",
-                            encounter_type="inpatient", facility="Anderson Hospital",
-                            provider="Dr. Surgeon"),
+            EncounterRecord(
+                source="meditech_anderson",
+                encounter_date="2025-06-15",
+                encounter_type="inpatient",
+                facility="Anderson Hospital",
+                provider="Dr. Surgeon",
+            ),
         ],
     )
     athena = UnifiedRecords(
         source="athena_sihf",
         encounters=[
-            EncounterRecord(source="athena_sihf", encounter_date="2025-06-16",
-                            encounter_type="office visit", facility="SIHF",
-                            provider="Dr. PCP"),
+            EncounterRecord(
+                source="athena_sihf",
+                encounter_date="2025-06-16",
+                encounter_type="office visit",
+                facility="SIHF",
+                provider="Dr. PCP",
+            ),
         ],
     )
     db.load_source(epic)

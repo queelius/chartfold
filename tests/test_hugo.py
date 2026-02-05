@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 
 from chartfold.db import ChartfoldDB
 from chartfold.hugo.generate import (
@@ -45,8 +44,7 @@ class TestMakeLinkedTable:
     def test_basic_linked_table(self):
         table = _make_linked_table(
             ["Date", "Name"],
-            [[("2025-01-01", "/items/1/"), "Item A"],
-             [("2025-02-01", "/items/2/"), "Item B"]],
+            [[("2025-01-01", "/items/1/"), "Item A"], [("2025-02-01", "/items/2/"), "Item B"]],
             link_col=0,
         )
         assert "[2025-01-01](/items/1/)" in table
@@ -99,7 +97,7 @@ class TestWritePage:
 
     def test_extra_frontmatter(self, tmp_path):
         filepath = tmp_path / "test.md"
-        _write_page(filepath, "Title", "Body", extra_frontmatter='weight: 1\n')
+        _write_page(filepath, "Title", "Body", extra_frontmatter="weight: 1\n")
         content = filepath.read_text()
         assert "weight: 1" in content
 
@@ -114,6 +112,7 @@ class TestWriteJson:
 
     def test_handles_dates(self, tmp_path):
         from datetime import date
+
         filepath = tmp_path / "data.json"
         _write_json(filepath, {"d": date(2025, 1, 15)})
         loaded = json.loads(filepath.read_text())
@@ -277,17 +276,26 @@ class TestGenerateSite:
     def test_clinical_notes_section(self, tmp_path):
         """Clinical notes section generates index and detail pages."""
         from chartfold.models import ClinicalNote
+
         db = ChartfoldDB(str(tmp_path / "notes.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
             clinical_notes=[
-                ClinicalNote(source="test", note_type="Progress",
-                             author="Dr. A", note_date="2025-01-15",
-                             content="Patient doing well."),
-                ClinicalNote(source="test", note_type="H&P",
-                             author="Dr. B", note_date="2025-01-20",
-                             content="Comprehensive exam performed."),
+                ClinicalNote(
+                    source="test",
+                    note_type="Progress",
+                    author="Dr. A",
+                    note_date="2025-01-15",
+                    content="Patient doing well.",
+                ),
+                ClinicalNote(
+                    source="test",
+                    note_type="H&P",
+                    author="Dr. B",
+                    note_date="2025-01-20",
+                    content="Comprehensive exam performed.",
+                ),
             ],
         )
         db.load_source(records)
@@ -411,15 +419,19 @@ tests = ["CEA"]
             source="test",
             encounters=[
                 EncounterRecord(
-                    source="test", encounter_date="2025-01-15",
-                    encounter_type="Office Visit", facility="Test Clinic",
+                    source="test",
+                    encounter_date="2025-01-15",
+                    encounter_type="Office Visit",
+                    facility="Test Clinic",
                     provider="Dr. A",
                 ),
             ],
             clinical_notes=[
                 ClinicalNote(
-                    source="test", note_type="Progress",
-                    author="Dr. A", note_date="2025-01-15",
+                    source="test",
+                    note_type="Progress",
+                    author="Dr. A",
+                    note_date="2025-01-15",
                     content="Patient doing well after chemo.",
                 ),
             ],
@@ -509,8 +521,7 @@ class TestLinkedSources:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(pdf_file), "report.pdf", 10,
-             "Test Report", "2025-01-15"),
+            ("test_source", "pdf", str(pdf_file), "report.pdf", 10, "Test Report", "2025-01-15"),
         )
         loaded_db.conn.commit()
 
@@ -537,8 +548,14 @@ class TestLinkedSources:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title) VALUES (?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/nonexistent/path/report.pdf", "report.pdf",
-             10, "Missing File"),
+            (
+                "test_source",
+                "pdf",
+                "/nonexistent/path/report.pdf",
+                "report.pdf",
+                10,
+                "Missing File",
+            ),
         )
         loaded_db.conn.commit()
 
@@ -684,8 +701,15 @@ class TestLinkedSources:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "visit_summary.pdf", 15,
-             "Visit Summary PDF", "2025-01-15"),
+            (
+                "test_source",
+                "pdf",
+                str(f1),
+                "visit_summary.pdf",
+                15,
+                "Visit Summary PDF",
+                "2025-01-15",
+            ),
         )
         loaded_db.conn.commit()
 
@@ -725,18 +749,27 @@ class TestRenderSourceDocs:
     def test_render_with_ref_match(self):
         """Direct ref_table/ref_id match renders source doc links."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {
             "by_ref": {
                 ("encounters", 5): [
-                    {"id": 1, "file_name": "visit.pdf", "asset_type": "pdf",
-                     "file_size_kb": 42, "source": "epic", "title": "Visit Summary"},
+                    {
+                        "id": 1,
+                        "file_name": "visit.pdf",
+                        "asset_type": "pdf",
+                        "file_size_kb": 42,
+                        "source": "epic",
+                        "title": "Visit Summary",
+                    },
                 ],
             },
             "by_date_source": {},
         }
         result = _render_source_docs_section(
-            asset_lookup, {1: "/sources/epic/1_visit.pdf"},
-            ref_table="encounters", ref_id=5,
+            asset_lookup,
+            {1: "/sources/epic/1_visit.pdf"},
+            ref_table="encounters",
+            ref_id=5,
         )
         assert "Source Documents" in result
         assert "visit.pdf" in result or "Visit Summary" in result
@@ -745,18 +778,27 @@ class TestRenderSourceDocs:
     def test_render_with_date_source_fallback(self):
         """When no ref match, falls back to date+source matching."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {
             "by_ref": {},
             "by_date_source": {
                 ("2025-01-15", "epic"): [
-                    {"id": 2, "file_name": "labs.pdf", "asset_type": "pdf",
-                     "file_size_kb": 18, "source": "epic", "title": ""},
+                    {
+                        "id": 2,
+                        "file_name": "labs.pdf",
+                        "asset_type": "pdf",
+                        "file_size_kb": 18,
+                        "source": "epic",
+                        "title": "",
+                    },
                 ],
             },
         }
         result = _render_source_docs_section(
-            asset_lookup, {2: "/sources/epic/2_labs.pdf"},
-            date="2025-01-15", source="epic",
+            asset_lookup,
+            {2: "/sources/epic/2_labs.pdf"},
+            date="2025-01-15",
+            source="epic",
         )
         assert "labs.pdf" in result
         assert "/sources/epic/2_labs.pdf" in result
@@ -764,26 +806,39 @@ class TestRenderSourceDocs:
     def test_render_no_matches_returns_empty(self):
         """When no assets match, returns empty string."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {"by_ref": {}, "by_date_source": {}}
         result = _render_source_docs_section(
-            asset_lookup, {},
-            ref_table="encounters", ref_id=999,
+            asset_lookup,
+            {},
+            ref_table="encounters",
+            ref_id=999,
         )
         assert result == ""
 
     def test_render_deduplicates(self):
         """Asset appearing in both ref and date match is shown only once."""
         from chartfold.hugo.generate import _render_source_docs_section
-        shared_asset = {"id": 1, "file_name": "report.pdf", "asset_type": "pdf",
-                        "file_size_kb": 10, "source": "epic", "title": ""}
+
+        shared_asset = {
+            "id": 1,
+            "file_name": "report.pdf",
+            "asset_type": "pdf",
+            "file_size_kb": 10,
+            "source": "epic",
+            "title": "",
+        }
         asset_lookup = {
             "by_ref": {("encounters", 5): [shared_asset]},
             "by_date_source": {("2025-01-15", "epic"): [shared_asset]},
         }
         result = _render_source_docs_section(
-            asset_lookup, {1: "/sources/epic/1_report.pdf"},
-            ref_table="encounters", ref_id=5,
-            date="2025-01-15", source="epic",
+            asset_lookup,
+            {1: "/sources/epic/1_report.pdf"},
+            ref_table="encounters",
+            ref_id=5,
+            date="2025-01-15",
+            source="epic",
         )
         # The display text [report.pdf] should appear exactly once
         assert result.count("[report.pdf]") == 1
@@ -795,12 +850,21 @@ class TestAssetLookup:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, ref_table, ref_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/report.pdf", "report.pdf",
-             10, "Lab Report", "lab_results", 1),
+            (
+                "test_source",
+                "pdf",
+                "/tmp/report.pdf",
+                "report.pdf",
+                10,
+                "Lab Report",
+                "lab_results",
+                1,
+            ),
         )
         loaded_db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert ("lab_results", 1) in lookup["by_ref"]
@@ -813,12 +877,12 @@ class TestAssetLookup:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/visit.pdf", "visit.pdf",
-             20, "Visit Doc", "2025-01-15"),
+            ("test_source", "pdf", "/tmp/visit.pdf", "visit.pdf", 20, "Visit Doc", "2025-01-15"),
         )
         loaded_db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert ("2025-01-15", "test_source") in lookup["by_date_source"]
@@ -826,6 +890,7 @@ class TestAssetLookup:
     def test_build_asset_lookup_empty_db(self, loaded_db):
         """Empty source_assets returns empty lookups."""
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert lookup["by_ref"] == {}
@@ -898,8 +963,17 @@ class TestBidirectionalLinking:
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date, ref_table, ref_id) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "specific_lab.pdf", 5,
-             "Specific Lab Report", "2025-01-15", "encounters", enc_id),
+            (
+                "test_source",
+                "pdf",
+                str(f1),
+                "specific_lab.pdf",
+                5,
+                "Specific Lab Report",
+                "2025-01-15",
+                "encounters",
+                enc_id,
+            ),
         )
         loaded_db.conn.commit()
 
@@ -915,7 +989,11 @@ class TestBidirectionalLinking:
 def _make_lab(name, value, date):
     """Helper to create a LabResult for testing."""
     from chartfold.models import LabResult
+
     return LabResult(
-        source="test", test_name=name, value=value,
-        unit="ng/mL", result_date=date,
+        source="test",
+        test_name=name,
+        value=value,
+        unit="ng/mL",
+        result_date=date,
     )

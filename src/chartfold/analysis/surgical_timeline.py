@@ -42,11 +42,19 @@ def build_surgical_timeline(
     unlinked = [p for p in pathology if not p.get("procedure_id")]
     if unlinked and procedures:
         links = link_pathology_to_procedures(
-            [{"id": p["id"], "report_date": p["report_date"],
-              "specimen": p.get("specimen", ""), "diagnosis": p.get("diagnosis", "")}
-             for p in unlinked],
-            [{"id": p["id"], "procedure_date": p["procedure_date"], "name": p["name"]}
-             for p in procedures],
+            [
+                {
+                    "id": p["id"],
+                    "report_date": p["report_date"],
+                    "specimen": p.get("specimen", ""),
+                    "diagnosis": p.get("diagnosis", ""),
+                }
+                for p in unlinked
+            ],
+            [
+                {"id": p["id"], "procedure_date": p["procedure_date"], "name": p["name"]}
+                for p in procedures
+            ],
         )
         # Apply links
         for path_id, proc_id in links:
@@ -73,8 +81,7 @@ def build_surgical_timeline(
 
     # Query medications for procedure-concurrent linking
     medications = db.query(
-        "SELECT name, status, start_date, stop_date, source "
-        "FROM medications ORDER BY name"
+        "SELECT name, status, start_date, stop_date, source FROM medications ORDER BY name"
     )
 
     for proc in procedures:
@@ -110,6 +117,7 @@ def build_surgical_timeline(
         if proc_date:
             try:
                 from datetime import date
+
                 pd = date.fromisoformat(proc_date)
             except ValueError:
                 pd = None
@@ -124,15 +132,21 @@ def build_surgical_timeline(
                             # delta > 0: imaging before procedure
                             # delta < 0: imaging after procedure
                             if -post_op_imaging_days <= delta <= pre_op_imaging_days:
-                                entry["related_imaging"].append({
-                                    "id": img["id"],
-                                    "study": img["study_name"],
-                                    "modality": img["modality"],
-                                    "date": img_date,
-                                    "impression": img.get("impression", ""),
-                                    "source": img.get("source", ""),
-                                    "timing": "pre-op" if delta > 0 else "post-op" if delta < 0 else "same-day",
-                                })
+                                entry["related_imaging"].append(
+                                    {
+                                        "id": img["id"],
+                                        "study": img["study_name"],
+                                        "modality": img["modality"],
+                                        "date": img_date,
+                                        "impression": img.get("impression", ""),
+                                        "source": img.get("source", ""),
+                                        "timing": "pre-op"
+                                        if delta > 0
+                                        else "post-op"
+                                        if delta < 0
+                                        else "same-day",
+                                    }
+                                )
                         except ValueError:
                             pass
 
@@ -143,19 +157,23 @@ def build_surgical_timeline(
                     status = (med.get("status") or "").lower()
                     # Include if: active with no stop date, or start <= proc_date <= stop
                     if status == "active" and not stop:
-                        entry["related_medications"].append({
-                            "name": med["name"],
-                            "source": med["source"],
-                        })
+                        entry["related_medications"].append(
+                            {
+                                "name": med["name"],
+                                "source": med["source"],
+                            }
+                        )
                     elif start and stop:
                         try:
                             sd = date.fromisoformat(start)
                             ed = date.fromisoformat(stop)
                             if sd <= pd <= ed:
-                                entry["related_medications"].append({
-                                    "name": med["name"],
-                                    "source": med["source"],
-                                })
+                                entry["related_medications"].append(
+                                    {
+                                        "name": med["name"],
+                                        "source": med["source"],
+                                    }
+                                )
                         except ValueError:
                             pass
 

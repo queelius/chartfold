@@ -43,15 +43,17 @@ def match_encounters_by_date(db: ChartfoldDB, tolerance_days: int = 0) -> list[d
         for date, encs in sorted(by_date.items()):
             sources = {e["source"] for e in encs}
             if len(sources) > 1:
-                matches.append({
-                    "date": date,
-                    "encounters": encs,
-                    "sources": sorted(sources),
-                })
+                matches.append(
+                    {
+                        "date": date,
+                        "encounters": encs,
+                        "sources": sorted(sources),
+                    }
+                )
         return matches
 
     # Date-range matching
-    from datetime import date as dt_date, timedelta
+    from datetime import date as dt_date
 
     matched = []
     dates = sorted(by_date.keys())
@@ -68,7 +70,7 @@ def match_encounters_by_date(db: ChartfoldDB, tolerance_days: int = 0) -> list[d
         group = list(by_date[d1])
         group_sources = {e["source"] for e in group}
 
-        for d2 in dates[i + 1:]:
+        for d2 in dates[i + 1 :]:
             if d2 in used:
                 continue
             try:
@@ -83,11 +85,13 @@ def match_encounters_by_date(db: ChartfoldDB, tolerance_days: int = 0) -> list[d
                     used.add(d2)
 
         if len(group_sources) > 1:
-            matched.append({
-                "date": d1,
-                "encounters": group,
-                "sources": sorted(group_sources),
-            })
+            matched.append(
+                {
+                    "date": d1,
+                    "encounters": group,
+                    "sources": sorted(group_sources),
+                }
+            )
             used.add(d1)
 
     return matched

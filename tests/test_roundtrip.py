@@ -7,11 +7,15 @@ These tests verify that record counts are preserved (or intentionally reduced
 via deduplication) at each stage transition.
 """
 
-import pytest
-
 from chartfold.adapters.epic_adapter import epic_to_unified, _parser_counts as epic_parser_counts
-from chartfold.adapters.meditech_adapter import meditech_to_unified, _parser_counts as meditech_parser_counts
-from chartfold.adapters.athena_adapter import athena_to_unified, _parser_counts as athena_parser_counts
+from chartfold.adapters.meditech_adapter import (
+    meditech_to_unified,
+    _parser_counts as meditech_parser_counts,
+)
+from chartfold.adapters.athena_adapter import (
+    athena_to_unified,
+    _parser_counts as athena_parser_counts,
+)
 
 
 class TestUnifiedRecordsCounts:
@@ -19,13 +23,27 @@ class TestUnifiedRecordsCounts:
 
     def test_counts_empty(self):
         from chartfold.models import UnifiedRecords
+
         records = UnifiedRecords(source="test")
         counts = records.counts()
         expected_keys = {
-            "patients", "documents", "encounters", "lab_results", "vitals",
-            "medications", "conditions", "procedures", "pathology_reports",
-            "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status", "source_assets",
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "source_assets",
         }
         assert set(counts.keys()) == expected_keys
         assert all(v == 0 for v in counts.values())
@@ -67,12 +85,24 @@ class TestEpicRoundTrip:
         records = epic_to_unified(sample_epic_data)
         adapter_counts = records.counts()
 
-        for key in ("documents", "encounters", "lab_results", "imaging_reports",
-                     "pathology_reports", "clinical_notes", "medications",
-                     "conditions", "vitals", "immunizations", "allergies",
-                     "social_history", "procedures"):
-            assert adapter_counts[key] == parser_counts[key], \
+        for key in (
+            "documents",
+            "encounters",
+            "lab_results",
+            "imaging_reports",
+            "pathology_reports",
+            "clinical_notes",
+            "medications",
+            "conditions",
+            "vitals",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "procedures",
+        ):
+            assert adapter_counts[key] == parser_counts[key], (
                 f"{key}: parser={parser_counts[key]}, adapter={adapter_counts[key]}"
+            )
 
     def test_db_preserves_all_adapter_records(self, tmp_db, sample_epic_data):
         """DB should store exactly what the adapter produces."""
@@ -81,8 +111,9 @@ class TestEpicRoundTrip:
         db_counts = tmp_db.load_source(records)
 
         for key in adapter_counts:
-            assert db_counts[key] == adapter_counts[key], \
+            assert db_counts[key] == adapter_counts[key], (
                 f"{key}: adapter={adapter_counts[key]}, db={db_counts[key]}"
+            )
 
     def test_full_pipeline_roundtrip(self, tmp_db, sample_epic_data):
         """End-to-end: parser counts == DB counts for Epic (no dedup)."""
@@ -90,11 +121,21 @@ class TestEpicRoundTrip:
         records = epic_to_unified(sample_epic_data)
         db_counts = tmp_db.load_source(records)
 
-        for key in ("documents", "encounters", "lab_results", "medications",
-                     "conditions", "vitals", "immunizations", "allergies",
-                     "social_history", "procedures"):
-            assert db_counts[key] == parser_counts[key], \
+        for key in (
+            "documents",
+            "encounters",
+            "lab_results",
+            "medications",
+            "conditions",
+            "vitals",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "procedures",
+        ):
+            assert db_counts[key] == parser_counts[key], (
                 f"{key}: parser={parser_counts[key]}, db={db_counts[key]}"
+            )
 
     def test_empty_epic_data(self):
         """Empty parser output should produce empty UnifiedRecords."""
@@ -116,8 +157,8 @@ class TestMeditechRoundTrip:
         assert isinstance(counts, dict)
         assert counts["patients"] == 1
         assert counts["documents"] == 1
-        assert counts["lab_results"] == 2   # 1 FHIR + 1 CCDA
-        assert counts["conditions"] == 2    # 1 FHIR + 1 CCDA
+        assert counts["lab_results"] == 2  # 1 FHIR + 1 CCDA
+        assert counts["conditions"] == 2  # 1 FHIR + 1 CCDA
 
     def test_adapter_output_lte_combined_parser_input(self, sample_meditech_data):
         """Adapter may dedup, so count <= parser count for all keys."""
@@ -125,12 +166,25 @@ class TestMeditechRoundTrip:
         records = meditech_to_unified(sample_meditech_data)
         adapter_counts = records.counts()
 
-        for key in ("lab_results", "conditions", "medications", "vitals",
-                     "immunizations", "patients", "documents", "encounters",
-                     "procedures", "clinical_notes", "allergies",
-                     "social_history", "family_history", "mental_status"):
-            assert adapter_counts[key] <= parser_counts[key], \
+        for key in (
+            "lab_results",
+            "conditions",
+            "medications",
+            "vitals",
+            "immunizations",
+            "patients",
+            "documents",
+            "encounters",
+            "procedures",
+            "clinical_notes",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+        ):
+            assert adapter_counts[key] <= parser_counts[key], (
                 f"{key}: adapter={adapter_counts[key]} > parser={parser_counts[key]}"
+            )
 
     def test_adapter_never_creates_extra_records(self, sample_meditech_data):
         """Adapter should never produce MORE records than the parser provided."""
@@ -138,13 +192,25 @@ class TestMeditechRoundTrip:
         records = meditech_to_unified(sample_meditech_data)
         adapter_counts = records.counts()
 
-        for key in ("patients", "documents", "encounters", "procedures",
-                     "clinical_notes", "allergies", "social_history",
-                     "family_history", "mental_status",
-                     "lab_results", "conditions", "medications",
-                     "vitals", "immunizations"):
-            assert adapter_counts[key] <= parser_counts[key], \
+        for key in (
+            "patients",
+            "documents",
+            "encounters",
+            "procedures",
+            "clinical_notes",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "lab_results",
+            "conditions",
+            "medications",
+            "vitals",
+            "immunizations",
+        ):
+            assert adapter_counts[key] <= parser_counts[key], (
                 f"{key}: adapter={adapter_counts[key]} > parser={parser_counts[key]}"
+            )
 
     def test_db_preserves_all_adapter_records(self, tmp_db, sample_meditech_data):
         """DB should store exactly what the adapter produces."""
@@ -153,8 +219,9 @@ class TestMeditechRoundTrip:
         db_counts = tmp_db.load_source(records)
 
         for key in adapter_counts:
-            assert db_counts[key] == adapter_counts[key], \
+            assert db_counts[key] == adapter_counts[key], (
                 f"{key}: adapter={adapter_counts[key]}, db={db_counts[key]}"
+            )
 
     def test_empty_meditech_data(self):
         """Empty parser output should produce empty UnifiedRecords."""
@@ -182,12 +249,25 @@ class TestAthenaRoundTrip:
         records = athena_to_unified(sample_athena_data)
         adapter_counts = records.counts()
 
-        for key in ("patients", "documents", "encounters", "lab_results",
-                     "vitals", "medications", "conditions", "immunizations",
-                     "allergies", "social_history", "family_history",
-                     "mental_status", "clinical_notes", "procedures"):
-            assert adapter_counts[key] == parser_counts[key], \
+        for key in (
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "clinical_notes",
+            "procedures",
+        ):
+            assert adapter_counts[key] == parser_counts[key], (
                 f"{key}: parser={parser_counts[key]}, adapter={adapter_counts[key]}"
+            )
 
     def test_db_preserves_all_adapter_records(self, tmp_db, sample_athena_data):
         """DB should store exactly what the adapter produces."""
@@ -196,8 +276,9 @@ class TestAthenaRoundTrip:
         db_counts = tmp_db.load_source(records)
 
         for key in adapter_counts:
-            assert db_counts[key] == adapter_counts[key], \
+            assert db_counts[key] == adapter_counts[key], (
                 f"{key}: adapter={adapter_counts[key]}, db={db_counts[key]}"
+            )
 
     def test_full_pipeline_roundtrip(self, tmp_db, sample_athena_data):
         """End-to-end: parser counts == DB counts for Athena (no dedup)."""
@@ -205,12 +286,25 @@ class TestAthenaRoundTrip:
         records = athena_to_unified(sample_athena_data)
         db_counts = tmp_db.load_source(records)
 
-        for key in ("patients", "documents", "encounters", "lab_results",
-                     "vitals", "medications", "conditions", "immunizations",
-                     "allergies", "social_history", "family_history",
-                     "mental_status", "clinical_notes", "procedures"):
-            assert db_counts[key] == parser_counts[key], \
+        for key in (
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "clinical_notes",
+            "procedures",
+        ):
+            assert db_counts[key] == parser_counts[key], (
                 f"{key}: parser={parser_counts[key]}, db={db_counts[key]}"
+            )
 
     def test_empty_athena_data(self):
         """Empty parser output should produce empty UnifiedRecords."""
@@ -253,8 +347,9 @@ class TestLastLoadCounts:
         log_counts = tmp_db.last_load_counts("test_source")
         assert log_counts is not None
         for key in db_counts:
-            assert log_counts[key] == db_counts[key], \
+            assert log_counts[key] == db_counts[key], (
                 f"{key}: load_source={db_counts[key]}, last_load_counts={log_counts[key]}"
+            )
 
 
 class TestIdempotentLoad:

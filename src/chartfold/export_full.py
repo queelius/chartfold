@@ -357,7 +357,7 @@ def import_json(
             counts[table] = len(rows)
 
         # Phase 3: Notes tables
-        if "notes" in tables and tables["notes"]:
+        if tables.get("notes"):
             rows = tables["notes"]
             id_map["notes"] = {}
 
@@ -378,7 +378,7 @@ def import_json(
             db.conn.commit()
             counts["notes"] = len(rows)
 
-        if "note_tags" in tables and tables["note_tags"]:
+        if tables.get("note_tags"):
             rows = tables["note_tags"]
             notes_map = id_map.get("notes", {})
 
@@ -401,7 +401,7 @@ def import_json(
             counts["note_tags"] = len(rows)
 
         # Phase 4: load_log (optional, included if present)
-        if "load_log" in tables and tables["load_log"]:
+        if tables.get("load_log"):
             rows = tables["load_log"]
             for row in rows:
                 row.pop("id", None)  # Remove auto-increment id

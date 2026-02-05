@@ -1,12 +1,8 @@
 """Tests for source asset tracking functionality."""
 
 import json
-import os
-import tempfile
 
-import pytest
 
-from chartfold.db import ChartfoldDB
 from chartfold.models import DocumentRecord, SourceAsset, UnifiedRecords
 from chartfold.sources.assets import (
     EXTENSION_TO_TYPE,
@@ -268,8 +264,12 @@ class TestDatabaseSourceAssets:
         records1 = UnifiedRecords(
             source="test_source",
             source_assets=[
-                SourceAsset(source="test_source", asset_type="pdf", file_path="/a.pdf", file_name="a.pdf"),
-                SourceAsset(source="test_source", asset_type="pdf", file_path="/b.pdf", file_name="b.pdf"),
+                SourceAsset(
+                    source="test_source", asset_type="pdf", file_path="/a.pdf", file_name="a.pdf"
+                ),
+                SourceAsset(
+                    source="test_source", asset_type="pdf", file_path="/b.pdf", file_name="b.pdf"
+                ),
             ],
         )
         tmp_db.load_source(records1)
@@ -278,7 +278,9 @@ class TestDatabaseSourceAssets:
         records2 = UnifiedRecords(
             source="test_source",
             source_assets=[
-                SourceAsset(source="test_source", asset_type="pdf", file_path="/c.pdf", file_name="c.pdf"),
+                SourceAsset(
+                    source="test_source", asset_type="pdf", file_path="/c.pdf", file_name="c.pdf"
+                ),
             ],
         )
         tmp_db.load_source(records2)
@@ -292,7 +294,9 @@ class TestDatabaseSourceAssets:
         records = UnifiedRecords(
             source="test_source",
             source_assets=[
-                SourceAsset(source="test_source", asset_type="pdf", file_path="/a.pdf", file_name="a.pdf"),
+                SourceAsset(
+                    source="test_source", asset_type="pdf", file_path="/a.pdf", file_name="a.pdf"
+                ),
             ],
         )
         tmp_db.load_source(records)

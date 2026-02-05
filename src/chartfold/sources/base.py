@@ -50,8 +50,12 @@ EPIC_CONFIG = SourceConfig(
     medication_sections=["Medications"],
     problem_sections=["Active Problems"],
     note_sections=[
-        "Progress Notes", "H&P Notes", "Discharge Summaries",
-        "OR Notes", "Anesthesia Record", "Miscellaneous Notes",
+        "Progress Notes",
+        "H&P Notes",
+        "Discharge Summaries",
+        "OR Notes",
+        "Anesthesia Record",
+        "Miscellaneous Notes",
     ],
     file_pattern=r"DOC\d{4}\.XML",
     cumulative_doc_ids=["DOC0001", "DOC0002"],
@@ -68,6 +72,7 @@ ATHENA_CONFIG = SourceConfig(
     cumulative_doc_ids=[],
     recover_xml=False,
 )
+
 
 def detect_source(input_dir: str) -> str | None:
     """Auto-detect the EHR source type from directory contents.

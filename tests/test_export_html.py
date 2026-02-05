@@ -40,99 +40,146 @@ def export_db(tmp_path):
     records = UnifiedRecords(
         source="test_source",
         patient=PatientRecord(
-            source="test_source", name="Test Patient",
-            date_of_birth="1975-06-15", gender="male"
+            source="test_source", name="Test Patient", date_of_birth="1975-06-15", gender="male"
         ),
         lab_results=[
             LabResult(
-                source="test_source", test_name="CEA", value="5.8", value_numeric=5.8,
-                unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                result_date="2025-12-15"
+                source="test_source",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-12-15",
             ),
             LabResult(
-                source="test_source", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                unit="g/dL", ref_range="13.0-17.0", interpretation="L",
-                result_date="2025-12-15"
+                source="test_source",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                interpretation="L",
+                result_date="2025-12-15",
             ),
             LabResult(
-                source="test_source", test_name="CEA", value="4.2", value_numeric=4.2,
-                unit="ng/mL", ref_range="0.0-3.0", interpretation="H",
-                result_date="2025-11-01"
+                source="test_source",
+                test_name="CEA",
+                value="4.2",
+                value_numeric=4.2,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                interpretation="H",
+                result_date="2025-11-01",
             ),
         ],
         medications=[
             MedicationRecord(
-                source="test_source", name="Capecitabine 500mg", status="active",
-                sig="2 tabs twice daily", route="oral", start_date="2025-01-01"
+                source="test_source",
+                name="Capecitabine 500mg",
+                status="active",
+                sig="2 tabs twice daily",
+                route="oral",
+                start_date="2025-01-01",
             ),
             MedicationRecord(
-                source="test_source", name="Aspirin 81mg", status="discontinued",
-                sig="1 tab daily", route="oral", start_date="2024-01-01",
-                stop_date="2024-06-01"
+                source="test_source",
+                name="Aspirin 81mg",
+                status="discontinued",
+                sig="1 tab daily",
+                route="oral",
+                start_date="2024-01-01",
+                stop_date="2024-06-01",
             ),
         ],
         conditions=[
             ConditionRecord(
-                source="test_source", condition_name="Colon cancer",
-                icd10_code="C18.9", clinical_status="active",
-                onset_date="2021-11-22"
+                source="test_source",
+                condition_name="Colon cancer",
+                icd10_code="C18.9",
+                clinical_status="active",
+                onset_date="2021-11-22",
             ),
             ConditionRecord(
-                source="test_source", condition_name="Hypertension",
-                icd10_code="I10", clinical_status="resolved",
-                onset_date="2018-03-01"
+                source="test_source",
+                condition_name="Hypertension",
+                icd10_code="I10",
+                clinical_status="resolved",
+                onset_date="2018-03-01",
             ),
         ],
         encounters=[
             EncounterRecord(
-                source="test_source", encounter_date="2025-12-15",
-                encounter_type="office visit", facility="Anderson",
-                provider="Dr. Smith", reason="Chemotherapy follow-up"
+                source="test_source",
+                encounter_date="2025-12-15",
+                encounter_type="office visit",
+                facility="Anderson",
+                provider="Dr. Smith",
+                reason="Chemotherapy follow-up",
             ),
         ],
         imaging_reports=[
             ImagingReport(
-                source="test_source", study_name="CT Abdomen", modality="CT",
-                study_date="2025-12-01", impression="No recurrence."
+                source="test_source",
+                study_name="CT Abdomen",
+                modality="CT",
+                study_date="2025-12-01",
+                impression="No recurrence.",
             ),
         ],
         pathology_reports=[
             PathologyReport(
-                source="test_source", report_date="2024-07-03",
-                specimen="Right colon", diagnosis="Adenocarcinoma",
-                staging="pT3N2a", margins="Negative"
+                source="test_source",
+                report_date="2024-07-03",
+                specimen="Right colon",
+                diagnosis="Adenocarcinoma",
+                staging="pT3N2a",
+                margins="Negative",
             ),
         ],
         allergies=[
             AllergyRecord(
-                source="test_source", allergen="Penicillin",
-                reaction="Rash", severity="moderate", status="active"
+                source="test_source",
+                allergen="Penicillin",
+                reaction="Rash",
+                severity="moderate",
+                status="active",
             ),
         ],
         clinical_notes=[
             ClinicalNote(
-                source="test_source", note_type="Progress Note",
-                author="Dr. Smith", note_date="2025-12-15",
-                content="Patient doing well on chemotherapy."
+                source="test_source",
+                note_type="Progress Note",
+                author="Dr. Smith",
+                note_date="2025-12-15",
+                content="Patient doing well on chemotherapy.",
             ),
         ],
         procedures=[
             ProcedureRecord(
-                source="test_source", name="Right hemicolectomy",
-                procedure_date="2024-07-01", provider="Dr. Surgeon",
-                facility="General Hospital"
+                source="test_source",
+                name="Right hemicolectomy",
+                procedure_date="2024-07-01",
+                provider="Dr. Surgeon",
+                facility="General Hospital",
             ),
         ],
         vitals=[
             VitalRecord(
-                source="test_source", vital_type="Blood Pressure",
-                value_text="120/80", unit="mmHg", recorded_date="2025-12-15"
+                source="test_source",
+                vital_type="Blood Pressure",
+                value_text="120/80",
+                unit="mmHg",
+                recorded_date="2025-12-15",
             ),
         ],
         immunizations=[
             ImmunizationRecord(
-                source="test_source", vaccine_name="Flu Shot",
-                admin_date="2025-10-01", site="Left arm"
+                source="test_source",
+                vaccine_name="Flu Shot",
+                admin_date="2025-10-01",
+                site="Left arm",
             ),
         ],
     )
@@ -169,17 +216,11 @@ class TestHTMLHelpers:
         assert "sortable" not in result
 
     def test_html_table_highlight_abnormal(self):
-        result = _html_table(
-            ["Test", "Flag"], [["CEA", "H"]],
-            highlight_col=1
-        )
+        result = _html_table(["Test", "Flag"], [["CEA", "H"]], highlight_col=1)
         assert 'class="abnormal"' in result
 
     def test_html_table_highlight_normal(self):
-        result = _html_table(
-            ["Test", "Flag"], [["CEA", "Normal"]],
-            highlight_col=1
-        )
+        result = _html_table(["Test", "Flag"], [["CEA", "Normal"]], highlight_col=1)
         # "Normal" is not in the abnormal list
         assert 'class="abnormal"' not in result
 
@@ -194,12 +235,14 @@ class TestHTMLHelpers:
         assert result == ""
 
     def test_build_chart_js_with_data(self):
-        datasets = [{
-            "source": "test",
-            "labels": ["2025-01-01", "2025-02-01"],
-            "values": [5.0, 6.0],
-            "color": "#3b82f6",
-        }]
+        datasets = [
+            {
+                "source": "test",
+                "labels": ["2025-01-01", "2025-02-01"],
+                "values": [5.0, 6.0],
+                "color": "#3b82f6",
+            }
+        ]
         result = _build_chart_js("cea-chart", datasets, "ng/mL", "CEA Trend")
         assert 'id="cea-chart"' in result
         assert "new Chart" in result

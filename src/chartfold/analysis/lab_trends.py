@@ -127,9 +127,14 @@ def get_lab_series(
     - ref_ranges: Dict of source -> ref_range (flags discrepancies)
     - ref_range_discrepancy: True if sources report different reference ranges
     """
-    results = get_lab_trend(db, test_name=test_name, test_loinc=test_loinc,
-                            test_names=test_names,
-                            start_date=start_date, end_date=end_date)
+    results = get_lab_trend(
+        db,
+        test_name=test_name,
+        test_loinc=test_loinc,
+        test_names=test_names,
+        start_date=start_date,
+        end_date=end_date,
+    )
     if not results:
         return {
             "test_name": test_name or test_loinc or "",
@@ -150,9 +155,12 @@ def get_lab_series(
     # Flatten: one ref_range per source (use most common if multiple)
     ref_range_map: dict[str, str] = {}
     for src, ranges in ref_ranges.items():
-        ref_range_map[src] = max(ranges, key=lambda x: sum(
-            1 for r in results if r.get("source") == src and r.get("ref_range") == x
-        ))
+        ref_range_map[src] = max(
+            ranges,
+            key=lambda x: sum(
+                1 for r in results if r.get("source") == src and r.get("ref_range") == x
+            ),
+        )
 
     # Detect discrepancy: different non-empty ref ranges across sources
     unique_ranges = {rr for rr in ref_range_map.values() if rr}

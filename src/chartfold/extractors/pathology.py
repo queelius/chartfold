@@ -30,46 +30,58 @@ def parse_pathology_sections(text: str) -> dict:
         return result
 
     # Diagnosis
-    diag = _extract_section(text, [
-        r"(?:Final\s+)?Diagnosis[:\s]*",
-        r"DIAGNOSIS[:\s]*",
-        r"Pathologic\s+Diagnosis[:\s]*",
-    ], [
-        r"Gross\s+Description",
-        r"GROSS\s+DESCRIPTION",
-        r"Microscopic",
-        r"Comment[:\s]",
-        r"Clinical\s+Information",
-        r"By\s+this\s+signature",
-        r"Report\s+Electronically",
-        r"\b[a-z]{2,4}/\b",  # initials like "gp/" or "laha/"
-    ])
+    diag = _extract_section(
+        text,
+        [
+            r"(?:Final\s+)?Diagnosis[:\s]*",
+            r"DIAGNOSIS[:\s]*",
+            r"Pathologic\s+Diagnosis[:\s]*",
+        ],
+        [
+            r"Gross\s+Description",
+            r"GROSS\s+DESCRIPTION",
+            r"Microscopic",
+            r"Comment[:\s]",
+            r"Clinical\s+Information",
+            r"By\s+this\s+signature",
+            r"Report\s+Electronically",
+            r"\b[a-z]{2,4}/\b",  # initials like "gp/" or "laha/"
+        ],
+    )
     result["diagnosis"] = diag
 
     # Gross Description
-    gross = _extract_section(text, [
-        r"Gross\s+Description[:\s]*",
-        r"GROSS\s+DESCRIPTION[:\s]*",
-    ], [
-        r"Microscopic\s+Description",
-        r"MICROSCOPIC",
-        r"Comment[:\s]",
-        r"By\s+this\s+signature",
-        r"PA\(s\):",
-        r"\b[a-z]{2,4}/\b",
-    ])
+    gross = _extract_section(
+        text,
+        [
+            r"Gross\s+Description[:\s]*",
+            r"GROSS\s+DESCRIPTION[:\s]*",
+        ],
+        [
+            r"Microscopic\s+Description",
+            r"MICROSCOPIC",
+            r"Comment[:\s]",
+            r"By\s+this\s+signature",
+            r"PA\(s\):",
+            r"\b[a-z]{2,4}/\b",
+        ],
+    )
     result["gross_description"] = gross
 
     # Microscopic Description
-    micro = _extract_section(text, [
-        r"Microscopic\s+Description[:\s]*",
-        r"MICROSCOPIC[:\s]*",
-    ], [
-        r"Comment[:\s]",
-        r"By\s+this\s+signature",
-        r"Addendum",
-        r"(?:Final\s+)?Diagnosis[:\s]",
-    ])
+    micro = _extract_section(
+        text,
+        [
+            r"Microscopic\s+Description[:\s]*",
+            r"MICROSCOPIC[:\s]*",
+        ],
+        [
+            r"Comment[:\s]",
+            r"By\s+this\s+signature",
+            r"Addendum",
+            r"(?:Final\s+)?Diagnosis[:\s]",
+        ],
+    )
     result["microscopic_description"] = micro
 
     # Staging
@@ -180,7 +192,7 @@ def _extract_section(text: str, start_patterns: list[str], end_patterns: list[st
     for start_pat in start_patterns:
         m = re.search(start_pat, text, re.IGNORECASE)
         if m:
-            rest = text[m.end():]
+            rest = text[m.end() :]
             # Find the nearest end pattern
             earliest_end = len(rest)
             for end_pat in end_patterns:
@@ -195,6 +207,7 @@ def _days_between(date1: str, date2: str) -> int | None:
     """Calculate absolute days between two ISO dates."""
     try:
         from datetime import date
+
         d1 = date.fromisoformat(date1)
         d2 = date.fromisoformat(date2)
         return abs((d1 - d2).days)

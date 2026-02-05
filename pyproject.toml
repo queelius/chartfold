@@ -66,10 +66,21 @@ select = [
     "PL",         # Pylint rules
     "RUF",        # Ruff-specific
 ]
-ignore = ["PLR0913", "PLR2004"]
+ignore = [
+    "PLR0913",  # Too many arguments
+    "PLR2004",  # Magic value comparison
+    "PLR0912",  # Too many branches (to fix in Phase 4)
+    "PLR0911",  # Too many return statements
+    "PLR0915",  # Too many statements
+    "PLC0415",  # Import outside top-level (intentional lazy imports)
+    "PERF401",  # Manual list append (often more readable)
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["PLR2004"]
+"tests/*" = ["PLR2004", "E501"]  # Test XML fixtures can be long
+"**/__init__.py" = ["F401"]  # Re-exports are intentional
+"src/chartfold/export_html.py" = ["E501", "SIM102"]  # Embedded CSS/JS is long; nested if is clearer
+"src/chartfold/mcp/server.py" = ["E501", "PERF402"]  # MCP decorator strings; list.extend not clearer
 
 [tool.mypy]
 python_version = "3.11"

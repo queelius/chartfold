@@ -10,7 +10,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from pathlib import Path
@@ -18,7 +17,6 @@ from pathlib import Path
 from chartfold.analysis.lab_trends import (
     get_abnormal_labs,
     get_lab_series,
-    get_lab_trend,
     get_latest_labs,
 )
 from chartfold.analysis.medications import get_active_medications
@@ -129,8 +127,9 @@ def _render_source_docs_section(
     return "\n".join(lines)
 
 
-def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
-                   linked_sources: bool = False) -> None:
+def generate_site(
+    db_path: str, hugo_dir: str, config_path: str = "", linked_sources: bool = False
+) -> None:
     """Generate the full Hugo site from a chartfold database.
 
     Args:
@@ -176,13 +175,17 @@ def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
         else:
             asset_lookup = None
             asset_url_map = {}
-            _write_page(content / "sources.md", "Source Documents",
-                        "*Source documents not included. "
-                        "Run with `--linked-sources` to copy EHR assets into the site.*")
+            _write_page(
+                content / "sources.md",
+                "Source Documents",
+                "*Source documents not included. "
+                "Run with `--linked-sources` to copy EHR assets into the site.*",
+            )
 
         # Encounters
-        _generate_encounters(content, data, db,
-                             asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+        _generate_encounters(
+            content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map
+        )
 
         # Medications
         _generate_medications(content, data, db)
@@ -191,20 +194,22 @@ def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
         _generate_conditions(content, data, db)
 
         # Clinical Notes
-        _generate_clinical_notes(content, data, db,
-                                 asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+        _generate_clinical_notes(
+            content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map
+        )
 
         # Pathology
-        _generate_pathology(content, data, db,
-                            asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+        _generate_pathology(
+            content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map
+        )
 
         # Surgical Timeline
-        _generate_surgical(content, data, db,
-                           asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+        _generate_surgical(
+            content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map
+        )
 
         # Imaging
-        _generate_imaging(content, data, db,
-                          asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+        _generate_imaging(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
 
         print(f"\nHugo site generated at {hugo_dir}")
         print(f"Run: cd {hugo_dir} && hugo serve")
@@ -232,7 +237,7 @@ def _copy_scaffolding(out: Path) -> None:
 def _write_page(filepath: Path, title: str, content: str, extra_frontmatter: str = "") -> None:
     """Write a Hugo content page."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    fm = f"---\ntitle: \"{title}\"\n{extra_frontmatter}---\n\n"
+    fm = f'---\ntitle: "{title}"\n{extra_frontmatter}---\n\n'
     filepath.write_text(fm + content)
 
 
@@ -242,8 +247,14 @@ def _write_json(filepath: Path, data) -> None:
     filepath.write_text(json.dumps(data, indent=2, default=str))
 
 
-def _generate_dashboard(content: Path, data: Path, db: ChartfoldDB,
-                         summary: dict, sources: list, config: dict | None = None) -> None:
+def _generate_dashboard(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    summary: dict,
+    sources: list,
+    config: dict | None = None,
+) -> None:
     """Generate the dashboard/index page."""
     hugo_config = (config or {}).get("hugo", {})
     recent_labs_count = hugo_config.get("dashboard_recent_labs", 10)
@@ -251,8 +262,10 @@ def _generate_dashboard(content: Path, data: Path, db: ChartfoldDB,
     cards = []
     for table, count in summary.items():
         if count > 0:
-            cards.append(f'<div class="card"><h3>{table.replace("_", " ").title()}</h3>'
-                         f'<div class="value">{count}</div></div>')
+            cards.append(
+                f'<div class="card"><h3>{table.replace("_", " ").title()}</h3>'
+                f'<div class="value">{count}</div></div>'
+            )
 
     source_list = ""
     for s in sources:
@@ -262,8 +275,17 @@ def _generate_dashboard(content: Path, data: Path, db: ChartfoldDB,
     abnormal = get_abnormal_labs(db)[:recent_labs_count]
     abnormal_table = _make_table(
         ["Test", "Value", "Unit", "Flag", "Date", "Source"],
-        [[r["test_name"], r["value"], r["unit"], r["interpretation"],
-          r["result_date"], r["source"]] for r in abnormal],
+        [
+            [
+                r["test_name"],
+                r["value"],
+                r["unit"],
+                r["interpretation"],
+                r["result_date"],
+                r["source"],
+            ]
+            for r in abnormal
+        ],
     )
 
     # Active medications
@@ -280,8 +302,16 @@ def _generate_dashboard(content: Path, data: Path, db: ChartfoldDB,
     )
     enc_table = _make_table(
         ["Date", "Type", "Facility", "Provider", "Source"],
-        [[e["encounter_date"], e.get("encounter_type", ""), e.get("facility", ""),
-          e.get("provider", ""), e["source"]] for e in recent_enc],
+        [
+            [
+                e["encounter_date"],
+                e.get("encounter_type", ""),
+                e.get("facility", ""),
+                e.get("provider", ""),
+                e["source"],
+            ]
+            for e in recent_enc
+        ],
     )
 
     # Active conditions
@@ -292,8 +322,10 @@ def _generate_dashboard(content: Path, data: Path, db: ChartfoldDB,
     )
     cond_table = _make_table(
         ["Condition", "ICD-10", "Onset", "Source"],
-        [[c["condition_name"], c.get("icd10_code", ""), c.get("onset_date", ""),
-          c["source"]] for c in active_cond],
+        [
+            [c["condition_name"], c.get("icd10_code", ""), c.get("onset_date", ""), c["source"]]
+            for c in active_cond
+        ],
     )
 
     md = f"""
@@ -328,20 +360,47 @@ def _generate_timeline(content: Path, data: Path, db: ChartfoldDB) -> None:
     """Generate the unified timeline page with all event types."""
     events = []
 
-    for enc in db.query("SELECT id, encounter_date, encounter_type, facility, provider, source FROM encounters ORDER BY encounter_date DESC"):
-        events.append({"date": enc["encounter_date"], "type": "Encounter",
-                        "detail": f"{enc.get('encounter_type', '')} at {enc.get('facility', '')}",
-                        "source": enc["source"], "link": f"/encounters/{enc['id']}/"})
+    for enc in db.query(
+        "SELECT id, encounter_date, encounter_type, facility, provider, source "
+        "FROM encounters ORDER BY encounter_date DESC"
+    ):
+        events.append(
+            {
+                "date": enc["encounter_date"],
+                "type": "Encounter",
+                "detail": f"{enc.get('encounter_type', '')} at {enc.get('facility', '')}",
+                "source": enc["source"],
+                "link": f"/encounters/{enc['id']}/",
+            }
+        )
 
-    for proc in db.query("SELECT id, procedure_date, name, facility, source FROM procedures ORDER BY procedure_date DESC"):
-        events.append({"date": proc["procedure_date"], "type": "Procedure",
-                        "detail": proc["name"], "source": proc["source"],
-                        "link": f"/surgical/{proc['id']}/"})
+    for proc in db.query(
+        "SELECT id, procedure_date, name, facility, source "
+        "FROM procedures ORDER BY procedure_date DESC"
+    ):
+        events.append(
+            {
+                "date": proc["procedure_date"],
+                "type": "Procedure",
+                "detail": proc["name"],
+                "source": proc["source"],
+                "link": f"/surgical/{proc['id']}/",
+            }
+        )
 
-    for img in db.query("SELECT id, study_date, study_name, modality, source FROM imaging_reports ORDER BY study_date DESC"):
-        events.append({"date": img["study_date"], "type": "Imaging",
-                        "detail": f"{img.get('modality', '')} — {img['study_name']}",
-                        "source": img["source"], "link": f"/imaging/{img['id']}/"})
+    for img in db.query(
+        "SELECT id, study_date, study_name, modality, source "
+        "FROM imaging_reports ORDER BY study_date DESC"
+    ):
+        events.append(
+            {
+                "date": img["study_date"],
+                "type": "Imaging",
+                "detail": f"{img.get('modality', '')} — {img['study_name']}",
+                "source": img["source"],
+                "link": f"/imaging/{img['id']}/",
+            }
+        )
 
     # Add lab collection dates (grouped by date to avoid overwhelming the timeline)
     lab_dates = db.query(
@@ -349,36 +408,53 @@ def _generate_timeline(content: Path, data: Path, db: ChartfoldDB) -> None:
         "FROM lab_results GROUP BY result_date ORDER BY result_date DESC"
     )
     for ld in lab_dates:
-        events.append({"date": ld["result_date"], "type": "Labs",
-                        "detail": f"{ld['count']} lab results",
-                        "source": ld["sources"], "link": "/labs/"})
+        events.append(
+            {
+                "date": ld["result_date"],
+                "type": "Labs",
+                "detail": f"{ld['count']} lab results",
+                "source": ld["sources"],
+                "link": "/labs/",
+            }
+        )
 
     # Add pathology reports
-    for path in db.query("SELECT id, report_date, specimen, diagnosis, source FROM pathology_reports ORDER BY report_date DESC"):
-        events.append({"date": path["report_date"], "type": "Pathology",
-                        "detail": (path.get("diagnosis", "") or "")[:60],
-                        "source": path["source"], "link": f"/pathology/{path['id']}/"})
+    for path in db.query(
+        "SELECT id, report_date, specimen, diagnosis, source "
+        "FROM pathology_reports ORDER BY report_date DESC"
+    ):
+        events.append(
+            {
+                "date": path["report_date"],
+                "type": "Pathology",
+                "detail": (path.get("diagnosis", "") or "")[:60],
+                "source": path["source"],
+                "link": f"/pathology/{path['id']}/",
+            }
+        )
 
     events.sort(key=lambda e: e.get("date", ""), reverse=True)
     _write_json(data / "timeline.json", events)
 
     rows = []
     for e in events:
-        rows.append([
-            e["date"],
-            e["type"],
-            (e["detail"][:80], e["link"]),
-            e["source"],
-        ])
+        rows.append(
+            [
+                e["date"],
+                e["type"],
+                (e["detail"][:80], e["link"]),
+                e["source"],
+            ]
+        )
     table = _make_linked_table(
         ["Date", "Type", "Detail", "Source"],
-        rows, link_col=2,
+        rows,
+        link_col=2,
     )
     _write_page(content / "timeline.md", "Timeline", table)
 
 
-def _generate_labs(content: Path, data: Path, db: ChartfoldDB,
-                    config: dict | None = None) -> None:
+def _generate_labs(content: Path, data: Path, db: ChartfoldDB, config: dict | None = None) -> None:
     """Generate lab pages with trend charts."""
     labs_dir = content / "labs"
     labs_dir.mkdir(parents=True, exist_ok=True)
@@ -386,9 +462,18 @@ def _generate_labs(content: Path, data: Path, db: ChartfoldDB,
     latest = get_latest_labs(db)
     table = _make_table(
         ["Test", "Value", "Unit", "Range", "Flag", "Date", "Source"],
-        [[r["test_name"], r["value"], r["unit"], r["ref_range"],
-          r["interpretation"] or "", r["result_date"], r["source"]]
-         for r in latest],
+        [
+            [
+                r["test_name"],
+                r["value"],
+                r["unit"],
+                r["ref_range"],
+                r["interpretation"] or "",
+                r["result_date"],
+                r["source"],
+            ]
+            for r in latest
+        ],
     )
 
     # Individual trend pages for configured lab tests
@@ -407,15 +492,18 @@ def _generate_labs(content: Path, data: Path, db: ChartfoldDB,
         datasets = []
         for i, src in enumerate(sources):
             # Filter to results with numeric values to keep labels/values aligned
-            src_results = [r for r in trend
-                           if r["source"] == src and r["value_numeric"] is not None]
+            src_results = [
+                r for r in trend if r["source"] == src and r["value_numeric"] is not None
+            ]
             color = SOURCE_COLORS[i % len(SOURCE_COLORS)]
-            datasets.append({
-                "source": src,
-                "labels": [r["result_date"] for r in src_results],
-                "values": [r["value_numeric"] for r in src_results],
-                "color": color,
-            })
+            datasets.append(
+                {
+                    "source": src,
+                    "labels": [r["result_date"] for r in src_results],
+                    "values": [r["value_numeric"] for r in src_results],
+                    "color": color,
+                }
+            )
 
         chart_data = {
             "test_name": lt.name,
@@ -431,22 +519,31 @@ def _generate_labs(content: Path, data: Path, db: ChartfoldDB,
         ref_note = ""
         if series["ref_range_discrepancy"]:
             ranges_str = ", ".join(f"**{src}**: {rr}" for src, rr in series["ref_ranges"].items())
-            ref_note = (f"\n> **Note:** Reference ranges differ across sources: "
-                        f"{ranges_str}\n")
+            ref_note = f"\n> **Note:** Reference ranges differ across sources: {ranges_str}\n"
 
         table = _make_table(
             ["Date", "Value", "Unit", "Range", "Flag", "Source"],
-            [[r["result_date"], r["value"], r["unit"], r["ref_range"],
-              r["interpretation"] or "", r["source"]] for r in trend],
+            [
+                [
+                    r["result_date"],
+                    r["value"],
+                    r["unit"],
+                    r["ref_range"],
+                    r["interpretation"] or "",
+                    r["source"],
+                ]
+                for r in trend
+            ],
         )
 
         # Build Chart.js with per-source datasets
         datasets_js = []
         for ds in datasets:
             src_label = ds["source"]
+            data_points = json.dumps(list(zip(ds["labels"], ds["values"], strict=False)))
             datasets_js.append(
                 f"{{ label: '{src_label}', "
-                f"data: {json.dumps(list(zip(ds['labels'], ds['values'])))}.map(p => ({{x: p[0], y: p[1]}})), "
+                f"data: {data_points}.map(p => ({{x: p[0], y: p[1]}})), "
                 f"borderColor: '{ds['color']}', backgroundColor: '{ds['color']}', "
                 f"tension: 0.1, fill: false, pointRadius: 4 }}"
             )
@@ -487,18 +584,19 @@ new Chart(document.getElementById('{chart_id}-chart'), {{
     # Build index page with trend chart links above the latest-results table
     trend_links = ""
     if trend_pages:
-        links = " &nbsp;|&nbsp; ".join(
-            f"[{name}](/labs/{slug}/)" for name, slug in trend_pages
-        )
+        links = " &nbsp;|&nbsp; ".join(f"[{name}](/labs/{slug}/)" for name, slug in trend_pages)
         trend_links = f"## Trend Charts\n\n{links}\n\n"
 
-    _write_page(labs_dir / "_index.md", "Lab Results",
-                f"{trend_links}## Latest Results\n\n{table}")
+    _write_page(labs_dir / "_index.md", "Lab Results", f"{trend_links}## Latest Results\n\n{table}")
 
 
-def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
-                          asset_lookup: dict | None = None,
-                          asset_url_map: dict[int, str] | None = None) -> None:
+def _generate_encounters(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    asset_lookup: dict | None = None,
+    asset_url_map: dict[int, str] | None = None,
+) -> None:
     encounters = db.query(
         "SELECT id, encounter_date, encounter_type, facility, provider, "
         "reason, discharge_disposition, source "
@@ -548,13 +646,17 @@ def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
                 for n in related_notes:
                     nid = n["id"]
                     snippet = (n.get("content", "") or "")[:80].replace("\n", " ")
-                    note_rows.append([
-                        (n.get("note_type", "") or "Note", f"/notes/{nid}/"),
-                        n.get("author", "") or "",
-                        snippet,
-                    ])
+                    note_rows.append(
+                        [
+                            (n.get("note_type", "") or "Note", f"/notes/{nid}/"),
+                            n.get("author", "") or "",
+                            snippet,
+                        ]
+                    )
                 note_table = _make_linked_table(
-                    ["Type", "Author", "Content"], note_rows, link_col=0,
+                    ["Type", "Author", "Content"],
+                    note_rows,
+                    link_col=0,
                 )
                 related_sections.append(f"### Clinical Notes\n\n{note_table}")
 
@@ -573,20 +675,23 @@ def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
 
             # Procedures from the same date
             related_procs = db.query(
-                "SELECT id, name, provider FROM procedures "
-                "WHERE procedure_date = ? ORDER BY name",
+                "SELECT id, name, provider FROM procedures WHERE procedure_date = ? ORDER BY name",
                 (date,),
             )
             if related_procs:
                 proc_rows = []
                 for p in related_procs:
                     pid = p["id"]
-                    proc_rows.append([
-                        (p.get("name", ""), f"/surgical/{pid}/"),
-                        p.get("provider", "") or "",
-                    ])
+                    proc_rows.append(
+                        [
+                            (p.get("name", ""), f"/surgical/{pid}/"),
+                            p.get("provider", "") or "",
+                        ]
+                    )
                 proc_table = _make_linked_table(
-                    ["Procedure", "Provider"], proc_rows, link_col=0,
+                    ["Procedure", "Provider"],
+                    proc_rows,
+                    link_col=0,
                 )
                 related_sections.append(f"### Procedures\n\n{proc_table}")
 
@@ -595,9 +700,12 @@ def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
 
         if asset_lookup and asset_url_map:
             source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="encounters", ref_id=eid,
-                date=date, source=e.get("source", ""),
+                asset_lookup,
+                asset_url_map,
+                ref_table="encounters",
+                ref_id=eid,
+                date=date,
+                source=e.get("source", ""),
             )
             if source_docs:
                 body += "\n\n---\n\n" + source_docs
@@ -609,37 +717,57 @@ def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
     for e in encounters:
         eid = e["id"]
         date = e.get("encounter_date", "") or ""
-        rows.append([
-            (date, f"/encounters/{eid}/"),
-            e.get("encounter_type", "") or "",
-            e.get("facility", "") or "",
-            e.get("provider", "") or "",
-            (e.get("reason", "") or "")[:60],
-            e.get("source", ""),
-        ])
+        rows.append(
+            [
+                (date, f"/encounters/{eid}/"),
+                e.get("encounter_type", "") or "",
+                e.get("facility", "") or "",
+                e.get("provider", "") or "",
+                (e.get("reason", "") or "")[:60],
+                e.get("source", ""),
+            ]
+        )
     table = _make_linked_table(
         ["Date", "Type", "Facility", "Provider", "Reason", "Source"],
-        rows, link_col=0,
+        rows,
+        link_col=0,
     )
     _write_page(enc_dir / "_index.md", "Encounters", table)
 
 
 def _generate_medications(content: Path, data: Path, db: ChartfoldDB) -> None:
     active = get_active_medications(db)
-    all_meds = db.query("SELECT name, status, sig, start_date, stop_date, source FROM medications ORDER BY status, name")
+    all_meds = db.query(
+        "SELECT name, status, sig, start_date, stop_date, source "
+        "FROM medications ORDER BY status, name"
+    )
 
     active_table = _make_table(
         ["Name", "Sig", "Route", "Start Date", "Source"],
-        [[m["name"], m.get("sig", ""), m.get("route", ""), m.get("start_date", ""), m["source"]]
-         for m in active],
+        [
+            [m["name"], m.get("sig", ""), m.get("route", ""), m.get("start_date", ""), m["source"]]
+            for m in active
+        ],
     )
     all_table = _make_table(
         ["Name", "Status", "Sig", "Start", "Stop", "Source"],
-        [[m["name"], m["status"], m.get("sig", "")[:40], m.get("start_date", ""),
-          m.get("stop_date", ""), m["source"]] for m in all_meds],
+        [
+            [
+                m["name"],
+                m["status"],
+                m.get("sig", "")[:40],
+                m.get("start_date", ""),
+                m.get("stop_date", ""),
+                m["source"],
+            ]
+            for m in all_meds
+        ],
     )
-    _write_page(content / "medications.md", "Medications",
-                 f"## Active Medications\n\n{active_table}\n\n## All Medications\n\n{all_table}")
+    _write_page(
+        content / "medications.md",
+        "Medications",
+        f"## Active Medications\n\n{active_table}\n\n## All Medications\n\n{all_table}",
+    )
 
 
 def _generate_conditions(content: Path, data: Path, db: ChartfoldDB) -> None:
@@ -649,15 +777,27 @@ def _generate_conditions(content: Path, data: Path, db: ChartfoldDB) -> None:
     )
     table = _make_table(
         ["Condition", "ICD-10", "Status", "Onset", "Source"],
-        [[c["condition_name"], c.get("icd10_code", ""), c.get("clinical_status", ""),
-          c.get("onset_date", ""), c["source"]] for c in conditions],
+        [
+            [
+                c["condition_name"],
+                c.get("icd10_code", ""),
+                c.get("clinical_status", ""),
+                c.get("onset_date", ""),
+                c["source"],
+            ]
+            for c in conditions
+        ],
     )
     _write_page(content / "conditions.md", "Conditions", table)
 
 
-def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB,
-                              asset_lookup: dict | None = None,
-                              asset_url_map: dict[int, str] | None = None) -> None:
+def _generate_clinical_notes(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    asset_lookup: dict | None = None,
+    asset_url_map: dict[int, str] | None = None,
+) -> None:
     """Generate clinical notes index and detail pages."""
     notes = db.query(
         "SELECT id, note_type, author, note_date, content, content_format, source "
@@ -691,16 +831,18 @@ def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB,
             body_section = f"\n\n{note_content}"
         else:
             note_content = _format_report_text(note_content)
-            body_section = (f'\n\n<div class="report-body">\n\n'
-                            f"{note_content}\n\n</div>")
+            body_section = f'\n\n<div class="report-body">\n\n{note_content}\n\n</div>'
 
         body = meta + body_section
 
         if asset_lookup and asset_url_map:
             source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="clinical_notes", ref_id=nid,
-                date=date, source=n.get("source", ""),
+                asset_lookup,
+                asset_url_map,
+                ref_table="clinical_notes",
+                ref_id=nid,
+                date=date,
+                source=n.get("source", ""),
             )
             if source_docs:
                 body += "\n\n---\n\n" + source_docs
@@ -713,23 +855,30 @@ def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB,
         nid = n["id"]
         date = n.get("note_date", "") or ""
         snippet = (n.get("content", "") or "")[:80].replace("\n", " ")
-        rows.append([
-            (date, f"/notes/{nid}/"),
-            n.get("note_type", "") or "",
-            n.get("author", "") or "",
-            snippet,
-            n.get("source", ""),
-        ])
+        rows.append(
+            [
+                (date, f"/notes/{nid}/"),
+                n.get("note_type", "") or "",
+                n.get("author", "") or "",
+                snippet,
+                n.get("source", ""),
+            ]
+        )
     table = _make_linked_table(
         ["Date", "Type", "Author", "Content", "Source"],
-        rows, link_col=0,
+        rows,
+        link_col=0,
     )
     _write_page(notes_dir / "_index.md", "Clinical Notes", table)
 
 
-def _generate_pathology(content: Path, data: Path, db: ChartfoldDB,
-                         asset_lookup: dict | None = None,
-                         asset_url_map: dict[int, str] | None = None) -> None:
+def _generate_pathology(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    asset_lookup: dict | None = None,
+    asset_url_map: dict[int, str] | None = None,
+) -> None:
     reports = db.query(
         "SELECT p.id, p.report_date, p.specimen, p.diagnosis, p.staging, "
         "p.margins, p.lymph_nodes, p.gross_description, "
@@ -754,8 +903,9 @@ def _generate_pathology(content: Path, data: Path, db: ChartfoldDB,
         meta_parts = []
         if r.get("procedure_name"):
             proc_date = r.get("procedure_date", "") or ""
-            meta_parts.append(f"**Procedure:** {r['procedure_name']}"
-                              + (f" ({proc_date})" if proc_date else ""))
+            meta_parts.append(
+                f"**Procedure:** {r['procedure_name']}" + (f" ({proc_date})" if proc_date else "")
+            )
         if date:
             meta_parts.append(f"**Report Date:** {date}")
         if r.get("source"):
@@ -764,36 +914,51 @@ def _generate_pathology(content: Path, data: Path, db: ChartfoldDB,
 
         # Structured fields
         sections = []
-        for label, key in [("Diagnosis", "diagnosis"), ("Staging", "staging"),
-                           ("Margins", "margins"), ("Lymph Nodes", "lymph_nodes")]:
+        for label, key in [
+            ("Diagnosis", "diagnosis"),
+            ("Staging", "staging"),
+            ("Margins", "margins"),
+            ("Lymph Nodes", "lymph_nodes"),
+        ]:
             val = r.get(key, "") or ""
             if val:
-                sections.append(f'<div class="report-section">\n\n'
-                                f"### {label}\n\n"
-                                f'<div class="report-body">\n\n{val}\n\n</div>\n</div>')
+                sections.append(
+                    f'<div class="report-section">\n\n'
+                    f"### {label}\n\n"
+                    f'<div class="report-body">\n\n{val}\n\n</div>\n</div>'
+                )
 
-        for label, key in [("Gross Description", "gross_description"),
-                           ("Microscopic Description", "microscopic_description")]:
+        for label, key in [
+            ("Gross Description", "gross_description"),
+            ("Microscopic Description", "microscopic_description"),
+        ]:
             val = r.get(key, "") or ""
             if val:
                 val = _format_report_text(val)
-                sections.append(f'<div class="report-section">\n\n'
-                                f"### {label}\n\n"
-                                f'<div class="report-body">\n\n{val}\n\n</div>\n</div>')
+                sections.append(
+                    f'<div class="report-section">\n\n'
+                    f"### {label}\n\n"
+                    f'<div class="report-body">\n\n{val}\n\n</div>\n</div>'
+                )
 
         full = r.get("full_text", "") or ""
         if full:
             full = _format_report_text(full)
-            sections.append(f"\n<details>\n<summary>Full Report Text</summary>\n\n"
-                            f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>')
+            sections.append(
+                f"\n<details>\n<summary>Full Report Text</summary>\n\n"
+                f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>'
+            )
 
         body = f"{meta}\n\n" + "\n\n".join(sections) if sections else meta
 
         if asset_lookup and asset_url_map:
             source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="pathology_reports", ref_id=rid,
-                date=date, source=r.get("source", ""),
+                asset_lookup,
+                asset_url_map,
+                ref_table="pathology_reports",
+                ref_id=rid,
+                date=date,
+                source=r.get("source", ""),
             )
             if source_docs:
                 body += "\n\n---\n\n" + source_docs
@@ -805,25 +970,32 @@ def _generate_pathology(content: Path, data: Path, db: ChartfoldDB,
     for r in reports:
         rid = r["id"]
         date = r.get("report_date", "") or ""
-        rows.append([
-            (date, f"/pathology/{rid}/"),
-            r.get("procedure_name", "") or "",
-            r.get("specimen", "") or "",
-            (r.get("diagnosis", "") or "")[:80],
-            r.get("staging", "") or "",
-            r.get("margins", "") or "",
-            r.get("source", ""),
-        ])
+        rows.append(
+            [
+                (date, f"/pathology/{rid}/"),
+                r.get("procedure_name", "") or "",
+                r.get("specimen", "") or "",
+                (r.get("diagnosis", "") or "")[:80],
+                r.get("staging", "") or "",
+                r.get("margins", "") or "",
+                r.get("source", ""),
+            ]
+        )
     table = _make_linked_table(
         ["Date", "Procedure", "Specimen", "Diagnosis", "Staging", "Margins", "Source"],
-        rows, link_col=0,
+        rows,
+        link_col=0,
     )
     _write_page(path_dir / "_index.md", "Pathology Reports", table)
 
 
-def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
-                        asset_lookup: dict | None = None,
-                        asset_url_map: dict[int, str] | None = None) -> None:
+def _generate_surgical(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    asset_lookup: dict | None = None,
+    asset_url_map: dict[int, str] | None = None,
+) -> None:
     timeline = build_surgical_timeline(db)
     _write_json(data / "surgical_timeline.json", timeline)
 
@@ -858,16 +1030,16 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
         op_note = proc.get("operative_note", "") or ""
         if not op_note:
             # Try to get from DB directly
-            proc_row = db.query(
-                "SELECT operative_note FROM procedures WHERE id = ?", (proc_id,)
-            )
+            proc_row = db.query("SELECT operative_note FROM procedures WHERE id = ?", (proc_id,))
             if proc_row:
                 op_note = proc_row[0].get("operative_note", "") or ""
         if op_note:
             op_note = _format_report_text(op_note)
-            sections.append(f'<div class="report-section">\n\n'
-                            f"### Operative Note\n\n"
-                            f'<div class="report-body">\n\n{op_note}\n\n</div>\n</div>')
+            sections.append(
+                f'<div class="report-section">\n\n'
+                f"### Operative Note\n\n"
+                f'<div class="report-body">\n\n{op_note}\n\n</div>\n</div>'
+            )
 
         # Linked pathology
         path = entry.get("pathology") or {}
@@ -894,24 +1066,29 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
                 img_id = img.get("id")
                 img_date = img.get("date", "")
                 if img_id:
-                    img_rows.append([
-                        (img_date, f"/imaging/{img_id}/"),
-                        img.get("modality", ""),
-                        img.get("study", ""),
-                        img.get("timing", ""),
-                        (img.get("impression", "") or "")[:60],
-                    ])
+                    img_rows.append(
+                        [
+                            (img_date, f"/imaging/{img_id}/"),
+                            img.get("modality", ""),
+                            img.get("study", ""),
+                            img.get("timing", ""),
+                            (img.get("impression", "") or "")[:60],
+                        ]
+                    )
                 else:
-                    img_rows.append([
-                        img_date,
-                        img.get("modality", ""),
-                        img.get("study", ""),
-                        img.get("timing", ""),
-                        (img.get("impression", "") or "")[:60],
-                    ])
+                    img_rows.append(
+                        [
+                            img_date,
+                            img.get("modality", ""),
+                            img.get("study", ""),
+                            img.get("timing", ""),
+                            (img.get("impression", "") or "")[:60],
+                        ]
+                    )
             img_table = _make_linked_table(
                 ["Date", "Modality", "Study", "Timing", "Impression"],
-                img_rows, link_col=0,
+                img_rows,
+                link_col=0,
             )
             sections.append(f"### Related Imaging\n\n{img_table}")
 
@@ -925,9 +1102,12 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
 
         if asset_lookup and asset_url_map:
             source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="procedures", ref_id=proc_id,
-                date=proc_date, source=proc.get("source", ""),
+                asset_lookup,
+                asset_url_map,
+                ref_table="procedures",
+                ref_id=proc_id,
+                date=proc_date,
+                source=proc.get("source", ""),
             )
             if source_docs:
                 body += "\n\n---\n\n" + source_docs
@@ -940,25 +1120,32 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
         proc = entry["procedure"]
         proc_id = proc["id"]
         path = entry.get("pathology") or {}
-        rows.append([
-            (proc["date"], f"/surgical/{proc_id}/"),
-            proc["name"],
-            (path.get("diagnosis", "") or "")[:60],
-            path.get("staging", ""),
-            path.get("margins", ""),
-            proc["source"],
-        ])
+        rows.append(
+            [
+                (proc["date"], f"/surgical/{proc_id}/"),
+                proc["name"],
+                (path.get("diagnosis", "") or "")[:60],
+                path.get("staging", ""),
+                path.get("margins", ""),
+                proc["source"],
+            ]
+        )
 
     table = _make_linked_table(
         ["Date", "Procedure", "Pathology", "Stage", "Margins", "Source"],
-        rows, link_col=0,
+        rows,
+        link_col=0,
     )
     _write_page(surg_dir / "_index.md", "Surgical Timeline", table)
 
 
-def _generate_imaging(content: Path, data: Path, db: ChartfoldDB,
-                       asset_lookup: dict | None = None,
-                       asset_url_map: dict[int, str] | None = None) -> None:
+def _generate_imaging(
+    content: Path,
+    data: Path,
+    db: ChartfoldDB,
+    asset_lookup: dict | None = None,
+    asset_url_map: dict[int, str] | None = None,
+) -> None:
     reports = db.query(
         "SELECT id, study_name, modality, study_date, ordering_provider, "
         "findings, impression, full_text, source "
@@ -989,28 +1176,37 @@ def _generate_imaging(content: Path, data: Path, db: ChartfoldDB,
         sections = []
         findings = r.get("findings", "") or ""
         if findings:
-            sections.append(f'<div class="report-section">\n\n'
-                            f"### Findings\n\n"
-                            f'<div class="report-body">\n\n{findings}\n\n</div>\n</div>')
+            sections.append(
+                f'<div class="report-section">\n\n'
+                f"### Findings\n\n"
+                f'<div class="report-body">\n\n{findings}\n\n</div>\n</div>'
+            )
 
         impression = r.get("impression", "") or ""
         if impression:
-            sections.append(f'<div class="report-section">\n\n'
-                            f"### Impression\n\n"
-                            f'<div class="report-body">\n\n{impression}\n\n</div>\n</div>')
+            sections.append(
+                f'<div class="report-section">\n\n'
+                f"### Impression\n\n"
+                f'<div class="report-body">\n\n{impression}\n\n</div>\n</div>'
+            )
 
         full = r.get("full_text", "") or ""
-        if full and full != findings and full != impression:
-            sections.append(f"\n<details>\n<summary>Full Report Text</summary>\n\n"
-                            f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>')
+        if full and full not in (findings, impression):
+            sections.append(
+                f"\n<details>\n<summary>Full Report Text</summary>\n\n"
+                f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>'
+            )
 
         body = f"{meta}\n\n" + "\n\n".join(sections) if sections else meta
 
         if asset_lookup and asset_url_map:
             source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="imaging_reports", ref_id=rid,
-                date=date, source=r.get("source", ""),
+                asset_lookup,
+                asset_url_map,
+                ref_table="imaging_reports",
+                ref_id=rid,
+                date=date,
+                source=r.get("source", ""),
             )
             if source_docs:
                 body += "\n\n---\n\n" + source_docs
@@ -1022,16 +1218,19 @@ def _generate_imaging(content: Path, data: Path, db: ChartfoldDB,
     for r in reports:
         rid = r["id"]
         date = r.get("study_date", "") or ""
-        rows.append([
-            (date, f"/imaging/{rid}/"),
-            r.get("modality", "") or "",
-            r.get("study_name", "") or "",
-            (r.get("impression", "") or "")[:80],
-            r.get("source", ""),
-        ])
+        rows.append(
+            [
+                (date, f"/imaging/{rid}/"),
+                r.get("modality", "") or "",
+                r.get("study_name", "") or "",
+                (r.get("impression", "") or "")[:80],
+                r.get("source", ""),
+            ]
+        )
     table = _make_linked_table(
         ["Date", "Modality", "Study", "Impression", "Source"],
-        rows, link_col=0,
+        rows,
+        link_col=0,
     )
     _write_page(img_dir / "_index.md", "Imaging Reports", table)
 
@@ -1048,8 +1247,7 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         "FROM source_assets ORDER BY source, encounter_date, encounter_id, file_name"
     )
     if not assets:
-        _write_page(content / "sources.md", "Source Documents",
-                     "*No source assets available.*")
+        _write_page(content / "sources.md", "Source Documents", "*No source assets available.*")
         return {}
 
     sources_dir = static / "sources"
@@ -1128,12 +1326,14 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append([
-                (display, url),
-                a["asset_type"],
-                size_str,
-                a["source"],
-            ])
+            rows.append(
+                [
+                    (display, url),
+                    a["asset_type"],
+                    size_str,
+                    a["source"],
+                ]
+            )
         table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
         md_parts.append(table)
         md_parts.append("")
@@ -1143,13 +1343,8 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         group = by_encounter_id[enc_id]
         md_parts.append(f"## Encounter {enc_id}")
 
-        # Back-links: try to find matching encounters by encounter_id
+        # Back-links: try to find matching encounters by source_doc_id
         backlinks = []
-        for date, encs in encounters_by_date.items():
-            for e in encs:
-                # Check if any encounter date group has this encounter_id
-                pass
-        # Try source_doc_id match from encounters table
         enc_matches = db.query(
             "SELECT id, encounter_date, encounter_type FROM encounters "
             "WHERE source_doc_id = ? OR source_doc_id LIKE ?",
@@ -1169,12 +1364,14 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append([
-                (display, url),
-                a["asset_type"],
-                size_str,
-                a["source"],
-            ])
+            rows.append(
+                [
+                    (display, url),
+                    a["asset_type"],
+                    size_str,
+                    a["source"],
+                ]
+            )
         table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
         md_parts.append(table)
         md_parts.append("")
@@ -1187,12 +1384,14 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append([
-                (display, url),
-                a["asset_type"],
-                size_str,
-                a["source"],
-            ])
+            rows.append(
+                [
+                    (display, url),
+                    a["asset_type"],
+                    size_str,
+                    a["source"],
+                ]
+            )
         table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
         md_parts.append(table)
 
@@ -1281,6 +1480,7 @@ def _make_linked_table(headers: list[str], rows: list[list], link_col: int = 0) 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Generate Hugo site from chartfold DB")
     parser.add_argument("--db", default="chartfold.db", help="Database path")
     parser.add_argument("--hugo-dir", default="./site", help="Hugo output directory")

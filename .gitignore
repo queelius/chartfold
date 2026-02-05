@@ -30,3 +30,7 @@ venv/
 
 # Hugo output
 site/
+
+# Development and documentation directories (local only)
+dev/
+docs/

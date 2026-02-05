@@ -41,9 +41,7 @@ def reconcile_medications(db: ChartfoldDB) -> dict:
     - active: medications active in at least one source
     - discrepancies: medications with conflicting status across sources
     """
-    all_meds = db.query(
-        "SELECT name, status, sig, source FROM medications ORDER BY name"
-    )
+    all_meds = db.query("SELECT name, status, sig, source FROM medications ORDER BY name")
 
     # Group by normalized name
     by_name: dict[str, list[dict]] = {}
@@ -54,21 +52,25 @@ def reconcile_medications(db: ChartfoldDB) -> dict:
     active = []
     discrepancies = []
 
-    for key, entries in by_name.items():
+    for entries in by_name.values():
         statuses = {e.get("status", "").lower() for e in entries}
         sources = {e["source"] for e in entries}
 
         if "active" in statuses:
-            active.append({
-                "name": entries[0]["name"],
-                "sources": list(sources),
-                "statuses": list(statuses),
-            })
+            active.append(
+                {
+                    "name": entries[0]["name"],
+                    "sources": list(sources),
+                    "statuses": list(statuses),
+                }
+            )
 
         if len(statuses) > 1:
-            discrepancies.append({
-                "name": entries[0]["name"],
-                "entries": entries,
-            })
+            discrepancies.append(
+                {
+                    "name": entries[0]["name"],
+                    "entries": entries,
+                }
+            )
 
     return {"active": active, "discrepancies": discrepancies}

@@ -33,14 +33,10 @@ def get_encounter_date(root: etree._Element) -> str:
 
     Returns YYYYMMDD string or empty string.
     """
-    low = root.find(
-        f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime/{{{NS}}}low"
-    )
+    low = root.find(f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime/{{{NS}}}low")
     if low is not None:
         return low.get("value", "")[:8]
-    eff = root.find(
-        f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime"
-    )
+    eff = root.find(f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime")
     if eff is not None:
         return eff.get("value", "")[:8]
     return ""

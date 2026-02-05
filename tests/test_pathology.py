@@ -2,7 +2,6 @@
 
 import base64
 
-import pytest
 
 from chartfold.core.fhir import decode_presented_form
 from chartfold.extractors.pathology import (
@@ -66,7 +65,12 @@ class TestParsePathologySections:
 class TestLinkage:
     def test_link_by_date(self):
         pathology = [
-            {"id": 1, "report_date": "2021-12-30", "specimen": "colon", "diagnosis": "adenocarcinoma"},
+            {
+                "id": 1,
+                "report_date": "2021-12-30",
+                "specimen": "colon",
+                "diagnosis": "adenocarcinoma",
+            },
         ]
         procedures = [
             {"id": 10, "procedure_date": "2021-12-29", "name": "sigmoid colectomy"},

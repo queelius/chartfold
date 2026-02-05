@@ -10,7 +10,6 @@ Key characteristics:
 
 import os
 import re
-from collections import defaultdict
 
 from chartfold.core.cda import (
     NS,
@@ -24,6 +23,7 @@ from chartfold.core.cda import (
     section_text,
 )
 from chartfold.sources.base import EPIC_CONFIG, SourceConfig, discover_files
+import contextlib
 
 
 def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -> dict:
@@ -71,33 +71,43 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
             size_kb = os.path.getsize(filepath) // 1024
 
             section_names = list(sections.keys())
-            data["inventory"].append({
-                "doc_id": doc_id,
-                "date": format_date(enc_date) if enc_date else "N/A (cumulative)",
-                "title": title,
-                "size_kb": size_kb,
-                "sections": section_names,
-                "authors": enc_info.get("authors", []),
-                "facility": enc_info.get("facility", ""),
-                "file_path": os.path.abspath(filepath),
-            })
+            data["inventory"].append(
+                {
+                    "doc_id": doc_id,
+                    "date": format_date(enc_date) if enc_date else "N/A (cumulative)",
+                    "title": title,
+                    "size_kb": size_kb,
+                    "sections": section_names,
+                    "authors": enc_info.get("authors", []),
+                    "facility": enc_info.get("facility", ""),
+                    "file_path": os.path.abspath(filepath),
+                }
+            )
 
             if enc_date:
-                data["encounter_timeline"].append({
-                    "date": enc_date,
-                    "date_fmt": format_date(enc_date),
-                    "doc_id": doc_id,
-                    "title": title,
-                    "key_sections": [
-                        s for s in section_names
-                        if s not in (
-                            "Allergies", "Immunizations", "Social History",
-                            "Last Filed Vital Signs", "Insurance",
-                            "Advance Directives", "Care Teams",
-                        )
-                    ],
-                    "facility": enc_info.get("facility", ""),
-                })
+                data["encounter_timeline"].append(
+                    {
+                        "date": enc_date,
+                        "date_fmt": format_date(enc_date),
+                        "doc_id": doc_id,
+                        "title": title,
+                        "key_sections": [
+                            s
+                            for s in section_names
+                            if s
+                            not in (
+                                "Allergies",
+                                "Immunizations",
+                                "Social History",
+                                "Last Filed Vital Signs",
+                                "Insurance",
+                                "Advance Directives",
+                                "Care Teams",
+                            )
+                        ],
+                        "facility": enc_info.get("facility", ""),
+                    }
+                )
 
             # Results from cumulative docs
             if doc_id in config.cumulative_doc_ids:
@@ -113,12 +123,14 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                 if note_name in sections:
                     text = section_text(sections[note_name])
                     if text.strip():
-                        data["clinical_notes"].append({
-                            "doc_id": doc_id,
-                            "date": format_date(enc_date) if enc_date else "N/A",
-                            "section": note_name,
-                            "text": text,
-                        })
+                        data["clinical_notes"].append(
+                            {
+                                "doc_id": doc_id,
+                                "date": format_date(enc_date) if enc_date else "N/A",
+                                "section": note_name,
+                                "text": text,
+                            }
+                        )
 
             # Structured medications and problems from DOC0002
             if doc_id == "DOC0002":
@@ -146,7 +158,9 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
 
                 # Social History
                 if "Social History" in sections:
-                    data["social_history"] = _extract_epic_social_history(sections["Social History"])
+                    data["social_history"] = _extract_epic_social_history(
+                        sections["Social History"]
+                    )
 
             # Procedures from ALL docs that have them (encounter-specific)
             if "Procedures" in sections:
@@ -155,8 +169,10 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                     p["source_doc"] = doc_id
                 data["procedures"].extend(procs)
 
-            print(f"  {doc_id}: {title}, {enc_date or 'cumulative'}, "
-                  f"{len(sections)} sections, {size_kb}KB")
+            print(
+                f"  {doc_id}: {title}, {enc_date or 'cumulative'}, "
+                f"{len(sections)} sections, {size_kb}KB"
+            )
 
         except Exception as e:
             data["errors"].append({"doc_id": doc_id, "error": str(e)})
@@ -214,11 +230,13 @@ def _extract_epic_result_items(section) -> list[dict]:
                     comp_value = el_text(tds[1])
                     comp_ref = el_text(tds[2])
                     if comp_name and comp_value:
-                        components.append({
-                            "name": comp_name,
-                            "value": comp_value,
-                            "ref_range": comp_ref,
-                        })
+                        components.append(
+                            {
+                                "name": comp_name,
+                                "value": comp_value,
+                                "ref_range": comp_ref,
+                            }
+                        )
 
         result_type = ""
         for table in tables:
@@ -233,14 +251,16 @@ def _extract_epic_result_items(section) -> list[dict]:
             if result_type:
                 break
 
-        items.append({
-            "panel": panel_name,
-            "date": panel_date,
-            "time": panel_time,
-            "components": components,
-            "result_type": result_type,
-            "full_text": el_text(item),
-        })
+        items.append(
+            {
+                "panel": panel_name,
+                "date": panel_date,
+                "time": panel_time,
+                "components": components,
+                "result_type": result_type,
+                "full_text": el_text(item),
+            }
+        )
 
     return items
 
@@ -278,11 +298,13 @@ def _extract_cea(items: list[dict]) -> list[dict]:
             seen_dates.add(date)
             for comp in item["components"]:
                 if comp["name"].upper() == "CEA":
-                    cea_entries.append({
-                        "date": date,
-                        "value": comp["value"],
-                        "ref_range": comp["ref_range"],
-                    })
+                    cea_entries.append(
+                        {
+                            "date": date,
+                            "value": comp["value"],
+                            "ref_range": comp["ref_range"],
+                        }
+                    )
                     break
     return sorted(cea_entries, key=lambda x: x["date"])
 
@@ -297,13 +319,15 @@ def _extract_labs(items: list[dict]) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        labs.append({
-            "panel": item["panel"],
-            "date": item["date"],
-            "time": item["time"],
-            "components": item["components"],
-            "result_type": item["result_type"],
-        })
+        labs.append(
+            {
+                "panel": item["panel"],
+                "date": item["date"],
+                "time": item["time"],
+                "components": item["components"],
+                "result_type": item["result_type"],
+            }
+        )
     return sorted(labs, key=lambda x: x["date"], reverse=True)
 
 
@@ -322,13 +346,15 @@ def _extract_imaging(items: list[dict]) -> list[dict]:
         impression = ""
         imp_match = re.search(
             r"IMPRESSION:\s*(.*?)(?:Electronically signed|Dictated by|Authorizing Provider)",
-            text, re.DOTALL,
+            text,
+            re.DOTALL,
         )
         if not imp_match:
-            imp_match = re.search(
-                r"Impressions\d{2}/\d{2}/\d{4}\s+\d+:\d+\s*[AP]M\s*\w+\s*(.*?)(?:Electronically signed|Dictated by|Authorizing Provider|Narrative)",
-                text, re.DOTALL,
+            pattern = (
+                r"Impressions\d{2}/\d{2}/\d{4}\s+\d+:\d+\s*[AP]M\s*\w+\s*(.*?)"
+                r"(?:Electronically signed|Dictated by|Authorizing Provider|Narrative)"
             )
+            imp_match = re.search(pattern, text, re.DOTALL)
         if imp_match:
             impression = imp_match.group(1).strip()
             impression = re.sub(r"^\d{2}/\d{2}/\d{4}\s+\d+:\d+\s*[AP]M\s*\w+\s*", "", impression)
@@ -336,19 +362,22 @@ def _extract_imaging(items: list[dict]) -> list[dict]:
         findings = ""
         find_match = re.search(
             r"FINDINGS[:\s]*(.*?)(?:IMPRESSION|Electronically signed|Dictated by)",
-            text, re.DOTALL | re.IGNORECASE,
+            text,
+            re.DOTALL | re.IGNORECASE,
         )
         if find_match:
             findings = find_match.group(1).strip()
 
-        reports.append({
-            "study": item["panel"],
-            "date": item["date"],
-            "time": item["time"],
-            "impression": impression,
-            "findings": findings,
-            "full_text": text,
-        })
+        reports.append(
+            {
+                "study": item["panel"],
+                "date": item["date"],
+                "time": item["time"],
+                "impression": impression,
+                "findings": findings,
+                "full_text": text,
+            }
+        )
     return sorted(reports, key=lambda x: x["date"], reverse=True)
 
 
@@ -366,37 +395,42 @@ def _extract_pathology(items: list[dict]) -> list[dict]:
         text = item["full_text"]
 
         diagnosis = ""
-        diag_match = re.search(
-            r"Diagnosis:\s*(.*?)(?:gp/|laha/|bao2/|abpa/|Report Electronically|Gross Description|Microscopic|Comment|By this signature)",
-            text, re.DOTALL | re.IGNORECASE,
+        diag_pattern = (
+            r"Diagnosis:\s*(.*?)(?:gp/|laha/|bao2/|abpa/|Report Electronically|"
+            r"Gross Description|Microscopic|Comment|By this signature)"
         )
+        diag_match = re.search(diag_pattern, text, re.DOTALL | re.IGNORECASE)
         if diag_match:
             diagnosis = diag_match.group(1).strip()
 
         gross = ""
-        gross_match = re.search(
-            r"Gross Description:\s*(.*?)(?:Microscopic Description|Comment|By this signature|PA\(s\):|abpa/|bao2/)",
-            text, re.DOTALL | re.IGNORECASE,
+        gross_pattern = (
+            r"Gross Description:\s*(.*?)(?:Microscopic Description|Comment|"
+            r"By this signature|PA\(s\):|abpa/|bao2/)"
         )
+        gross_match = re.search(gross_pattern, text, re.DOTALL | re.IGNORECASE)
         if gross_match:
             gross = gross_match.group(1).strip()
 
         micro = ""
         micro_match = re.search(
             r"Microscopic Description:\s*(.*?)(?:Comment|By this signature|Addendum|Diagnosis:)",
-            text, re.DOTALL | re.IGNORECASE,
+            text,
+            re.DOTALL | re.IGNORECASE,
         )
         if micro_match:
             micro = micro_match.group(1).strip()
 
-        reports.append({
-            "panel": item["panel"],
-            "date": item["date"],
-            "diagnosis": diagnosis,
-            "gross": gross,
-            "microscopic": micro,
-            "full_text": text,
-        })
+        reports.append(
+            {
+                "panel": item["panel"],
+                "date": item["date"],
+                "diagnosis": diagnosis,
+                "gross": gross,
+                "microscopic": micro,
+                "full_text": text,
+            }
+        )
     return sorted(reports, key=lambda x: x["date"], reverse=True)
 
 
@@ -455,6 +489,7 @@ def _resolve_text_reference(section, ref_value: str) -> str:
 # 1. Medications
 # ---------------------------------------------------------------------------
 
+
 def _extract_epic_medications(section) -> list[dict]:
     """Extract structured medication entries from an Epic Medications section.
 
@@ -498,9 +533,7 @@ def _extract_epic_medications(section) -> list[dict]:
         # Drug code from manufacturedMaterial/code
         name = ""
         rxnorm = ""
-        code_el = sa.find(
-            f".//{{{NS}}}manufacturedMaterial/{{{NS}}}code"
-        )
+        code_el = sa.find(f".//{{{NS}}}manufacturedMaterial/{{{NS}}}code")
         if code_el is not None:
             # Try displayName first
             name = code_el.get("displayName", "")
@@ -521,16 +554,18 @@ def _extract_epic_medications(section) -> list[dict]:
             sig_parts.append(route)
         sig = ", ".join(sig_parts) if sig_parts else ""
 
-        results.append({
-            "name": name,
-            "rxnorm": rxnorm,
-            "status": status,
-            "route": route,
-            "dose": f"{dose_value} {dose_unit}".strip() if dose_value else "",
-            "sig": sig,
-            "start_date": start_date,
-            "stop_date": stop_date,
-        })
+        results.append(
+            {
+                "name": name,
+                "rxnorm": rxnorm,
+                "status": status,
+                "route": route,
+                "dose": f"{dose_value} {dose_unit}".strip() if dose_value else "",
+                "sig": sig,
+                "start_date": start_date,
+                "stop_date": stop_date,
+            }
+        )
 
     return results
 
@@ -538,6 +573,7 @@ def _extract_epic_medications(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 2. Problems / Conditions
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_problems(section) -> list[dict]:
     """Extract structured problem entries from an Epic Active Problems section.
@@ -560,9 +596,7 @@ def _extract_epic_problems(section) -> list[dict]:
                 onset_date = low.get("value", "")
 
         # Find the observation inside entryRelationship
-        obs = act.find(
-            f"{{{NS}}}entryRelationship/{{{NS}}}observation"
-        )
+        obs = act.find(f"{{{NS}}}entryRelationship/{{{NS}}}observation")
         if obs is None:
             continue
 
@@ -609,13 +643,15 @@ def _extract_epic_problems(section) -> list[dict]:
                         status = status_val.get("displayName", "")
                     break
 
-        results.append({
-            "name": name,
-            "icd10": icd10,
-            "snomed": snomed,
-            "status": status,
-            "onset_date": onset_date,
-        })
+        results.append(
+            {
+                "name": name,
+                "icd10": icd10,
+                "snomed": snomed,
+                "status": status,
+                "onset_date": onset_date,
+            }
+        )
 
     return results
 
@@ -623,6 +659,7 @@ def _extract_epic_problems(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 3. Vitals
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_vitals(section) -> list[dict]:
     """Extract structured vital signs from an Epic Last Filed Vital Signs section.
@@ -663,10 +700,8 @@ def _extract_epic_vitals(section) -> list[dict]:
                 raw_val = value_el.get("value", "")
                 unit = value_el.get("unit", "")
                 if raw_val:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         value = float(raw_val)
-                    except (ValueError, TypeError):
-                        pass
 
             # Date
             eff_el = obs.find(f"{{{NS}}}effectiveTime")
@@ -675,12 +710,14 @@ def _extract_epic_vitals(section) -> list[dict]:
                 date = eff_el.get("value", "")
 
             if vital_type and value is not None:
-                results.append({
-                    "type": vital_type,
-                    "value": value,
-                    "unit": unit,
-                    "date": date,
-                })
+                results.append(
+                    {
+                        "type": vital_type,
+                        "value": value,
+                        "unit": unit,
+                        "date": date,
+                    }
+                )
 
     return results
 
@@ -688,6 +725,7 @@ def _extract_epic_vitals(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 4. Immunizations
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_immunizations(section) -> list[dict]:
     """Extract structured immunization entries from an Epic Immunizations section.
@@ -740,13 +778,15 @@ def _extract_epic_immunizations(section) -> list[dict]:
             if lot_el is not None and lot_el.get("nullFlavor") is None:
                 lot = el_text(lot_el)
 
-        results.append({
-            "name": name,
-            "cvx_code": cvx_code,
-            "date": date,
-            "status": status,
-            "lot": lot,
-        })
+        results.append(
+            {
+                "name": name,
+                "cvx_code": cvx_code,
+                "date": date,
+                "status": status,
+                "lot": lot,
+            }
+        )
 
     return results
 
@@ -754,6 +794,7 @@ def _extract_epic_immunizations(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 5. Allergies
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_allergies(section) -> list[dict]:
     """Extract structured allergy entries from an Epic Allergies section.
@@ -812,12 +853,14 @@ def _extract_epic_allergies(section) -> list[dict]:
                 break
 
         if allergen:
-            results.append({
-                "allergen": allergen,
-                "reaction": reaction,
-                "severity": severity,
-                "status": act_status,
-            })
+            results.append(
+                {
+                    "allergen": allergen,
+                    "reaction": reaction,
+                    "severity": severity,
+                    "status": act_status,
+                }
+            )
 
     return results
 
@@ -825,6 +868,7 @@ def _extract_epic_allergies(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 6. Social History
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_social_history(section) -> list[dict]:
     """Extract structured social history from an Epic Social History section.
@@ -864,12 +908,14 @@ def _extract_epic_social_history(section) -> list[dict]:
         if eff_el is not None and eff_el.get("nullFlavor") is None:
             date = eff_el.get("value", "")
 
-        results.append({
-            "category": category,
-            "value": value,
-            "loinc": loinc,
-            "date": date,
-        })
+        results.append(
+            {
+                "category": category,
+                "value": value,
+                "loinc": loinc,
+                "date": date,
+            }
+        )
 
     return results
 
@@ -877,6 +923,7 @@ def _extract_epic_social_history(section) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 7. Procedures
 # ---------------------------------------------------------------------------
+
 
 def _extract_epic_procedures(section) -> list[dict]:
     """Extract structured procedure entries from an Epic Procedures section.
@@ -928,13 +975,15 @@ def _extract_epic_procedures(section) -> list[dict]:
                 parts.append(family.text.strip())
             provider = " ".join(parts)
 
-        results.append({
-            "name": name,
-            "code_value": code_value,
-            "code_system": code_system,
-            "date": date,
-            "status": status,
-            "provider": provider,
-        })
+        results.append(
+            {
+                "name": name,
+                "code_value": code_value,
+                "code_system": code_system,
+                "date": date,
+                "status": status,
+                "provider": provider,
+            }
+        )
 
     return results

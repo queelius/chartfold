@@ -74,148 +74,174 @@ def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedReco
 
     # Documents
     for doc in data.get("documents", []):
-        records.documents.append(DocumentRecord(
-            source=source,
-            doc_id=doc.get("doc_id", ""),
-            doc_type="CDA",
-            title=doc.get("title", ""),
-            encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
-            file_path=doc.get("file_path", ""),
-        ))
+        records.documents.append(
+            DocumentRecord(
+                source=source,
+                doc_id=doc.get("doc_id", ""),
+                doc_type="CDA",
+                title=doc.get("title", ""),
+                encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
+                file_path=doc.get("file_path", ""),
+            )
+        )
 
     # Encounters
     for enc in data.get("encounters", []):
-        records.encounters.append(EncounterRecord(
-            source=source,
-            encounter_date=normalize_date_to_iso(enc.get("date", "")),
-            encounter_type=enc.get("type", ""),
-            facility=enc.get("facility", ""),
-            provider=enc.get("provider", ""),
-            reason=enc.get("reason", ""),
-        ))
+        records.encounters.append(
+            EncounterRecord(
+                source=source,
+                encounter_date=normalize_date_to_iso(enc.get("date", "")),
+                encounter_type=enc.get("type", ""),
+                facility=enc.get("facility", ""),
+                provider=enc.get("provider", ""),
+                reason=enc.get("reason", ""),
+            )
+        )
 
     # Lab results
     for lab in data.get("lab_results", []):
         val = lab.get("value", "")
-        records.lab_results.append(LabResult(
-            source=source,
-            test_name=lab.get("test_name", ""),
-            test_loinc=lab.get("loinc", ""),
-            panel_name=lab.get("panel_name", ""),
-            value=val,
-            value_numeric=try_parse_numeric(val),
-            unit=lab.get("unit", ""),
-            ref_range=lab.get("ref_range", ""),
-            interpretation=lab.get("interpretation", ""),
-            result_date=normalize_date_to_iso(lab.get("date", "")),
-        ))
+        records.lab_results.append(
+            LabResult(
+                source=source,
+                test_name=lab.get("test_name", ""),
+                test_loinc=lab.get("loinc", ""),
+                panel_name=lab.get("panel_name", ""),
+                value=val,
+                value_numeric=try_parse_numeric(val),
+                unit=lab.get("unit", ""),
+                ref_range=lab.get("ref_range", ""),
+                interpretation=lab.get("interpretation", ""),
+                result_date=normalize_date_to_iso(lab.get("date", "")),
+            )
+        )
 
     # Vitals
     for vital in data.get("vitals", []):
-        records.vitals.append(VitalRecord(
-            source=source,
-            vital_type=vital.get("type", ""),
-            value=vital.get("value"),
-            value_text=vital.get("value_text", ""),
-            unit=vital.get("unit", ""),
-            recorded_date=normalize_date_to_iso(vital.get("date", "")),
-        ))
+        records.vitals.append(
+            VitalRecord(
+                source=source,
+                vital_type=vital.get("type", ""),
+                value=vital.get("value"),
+                value_text=vital.get("value_text", ""),
+                unit=vital.get("unit", ""),
+                recorded_date=normalize_date_to_iso(vital.get("date", "")),
+            )
+        )
 
     # Medications
     for med in data.get("medications", []):
-        records.medications.append(MedicationRecord(
-            source=source,
-            name=med.get("name", ""),
-            rxnorm_code=med.get("rxnorm", ""),
-            status=med.get("status", "active"),
-            sig=med.get("sig", ""),
-            route=med.get("route", ""),
-            start_date=normalize_date_to_iso(med.get("start_date", "")),
-            stop_date=normalize_date_to_iso(med.get("stop_date", "")),
-        ))
+        records.medications.append(
+            MedicationRecord(
+                source=source,
+                name=med.get("name", ""),
+                rxnorm_code=med.get("rxnorm", ""),
+                status=med.get("status", "active"),
+                sig=med.get("sig", ""),
+                route=med.get("route", ""),
+                start_date=normalize_date_to_iso(med.get("start_date", "")),
+                stop_date=normalize_date_to_iso(med.get("stop_date", "")),
+            )
+        )
 
     # Conditions
     for cond in data.get("conditions", []):
-        records.conditions.append(ConditionRecord(
-            source=source,
-            condition_name=cond.get("name", ""),
-            icd10_code=cond.get("icd10", ""),
-            snomed_code=cond.get("snomed", ""),
-            clinical_status=cond.get("status", ""),
-            onset_date=normalize_date_to_iso(cond.get("onset", "")),
-        ))
+        records.conditions.append(
+            ConditionRecord(
+                source=source,
+                condition_name=cond.get("name", ""),
+                icd10_code=cond.get("icd10", ""),
+                snomed_code=cond.get("snomed", ""),
+                clinical_status=cond.get("status", ""),
+                onset_date=normalize_date_to_iso(cond.get("onset", "")),
+            )
+        )
 
     # Immunizations
     for imm in data.get("immunizations", []):
-        records.immunizations.append(ImmunizationRecord(
-            source=source,
-            vaccine_name=imm.get("name", ""),
-            cvx_code=imm.get("cvx", ""),
-            admin_date=normalize_date_to_iso(imm.get("date", "")),
-            lot_number=imm.get("lot", ""),
-            status=imm.get("status", ""),
-        ))
+        records.immunizations.append(
+            ImmunizationRecord(
+                source=source,
+                vaccine_name=imm.get("name", ""),
+                cvx_code=imm.get("cvx", ""),
+                admin_date=normalize_date_to_iso(imm.get("date", "")),
+                lot_number=imm.get("lot", ""),
+                status=imm.get("status", ""),
+            )
+        )
 
     # Allergies
     for allergy in data.get("allergies", []):
-        records.allergies.append(AllergyRecord(
-            source=source,
-            allergen=allergy.get("allergen", ""),
-            reaction=allergy.get("reaction", ""),
-            severity=allergy.get("severity", ""),
-            status=allergy.get("status", "active"),
-        ))
+        records.allergies.append(
+            AllergyRecord(
+                source=source,
+                allergen=allergy.get("allergen", ""),
+                reaction=allergy.get("reaction", ""),
+                severity=allergy.get("severity", ""),
+                status=allergy.get("status", "active"),
+            )
+        )
 
     # Social history
     for sh in data.get("social_history", []):
-        records.social_history.append(SocialHistoryRecord(
-            source=source,
-            category=sh.get("category", ""),
-            value=sh.get("value", ""),
-            recorded_date=normalize_date_to_iso(sh.get("date", "")),
-        ))
+        records.social_history.append(
+            SocialHistoryRecord(
+                source=source,
+                category=sh.get("category", ""),
+                value=sh.get("value", ""),
+                recorded_date=normalize_date_to_iso(sh.get("date", "")),
+            )
+        )
 
     # Family history
     for fh in data.get("family_history", []):
-        records.family_history.append(FamilyHistoryRecord(
-            source=source,
-            relation=fh.get("relation", ""),
-            condition=fh.get("condition", ""),
-        ))
+        records.family_history.append(
+            FamilyHistoryRecord(
+                source=source,
+                relation=fh.get("relation", ""),
+                condition=fh.get("condition", ""),
+            )
+        )
 
     # Mental status
     for ms in data.get("mental_status", []):
-        records.mental_status.append(MentalStatusRecord(
-            source=source,
-            instrument=ms.get("instrument", ""),
-            question=ms.get("question", ""),
-            answer=ms.get("answer", ""),
-            score=ms.get("score"),
-            total_score=ms.get("total_score"),
-            recorded_date=normalize_date_to_iso(ms.get("date", "")),
-        ))
+        records.mental_status.append(
+            MentalStatusRecord(
+                source=source,
+                instrument=ms.get("instrument", ""),
+                question=ms.get("question", ""),
+                answer=ms.get("answer", ""),
+                score=ms.get("score"),
+                total_score=ms.get("total_score"),
+                recorded_date=normalize_date_to_iso(ms.get("date", "")),
+            )
+        )
 
     # Clinical notes
     for note in data.get("clinical_notes", []):
-        records.clinical_notes.append(ClinicalNote(
-            source=source,
-            note_type=note.get("type", ""),
-            author=note.get("author", ""),
-            note_date=normalize_date_to_iso(note.get("date", "")),
-            content=note.get("content", ""),
-        ))
+        records.clinical_notes.append(
+            ClinicalNote(
+                source=source,
+                note_type=note.get("type", ""),
+                author=note.get("author", ""),
+                note_date=normalize_date_to_iso(note.get("date", "")),
+                content=note.get("content", ""),
+            )
+        )
 
     # Procedures
     for proc in data.get("procedures", []):
-        records.procedures.append(ProcedureRecord(
-            source=source,
-            name=proc.get("name", ""),
-            snomed_code=proc.get("snomed", ""),
-            cpt_code=proc.get("cpt", ""),
-            procedure_date=normalize_date_to_iso(proc.get("date", "")),
-            provider=proc.get("provider", ""),
-            facility=proc.get("facility", ""),
-        ))
+        records.procedures.append(
+            ProcedureRecord(
+                source=source,
+                name=proc.get("name", ""),
+                snomed_code=proc.get("snomed", ""),
+                cpt_code=proc.get("cpt", ""),
+                procedure_date=normalize_date_to_iso(proc.get("date", "")),
+                provider=proc.get("provider", ""),
+                facility=proc.get("facility", ""),
+            )
+        )
 
     # Source assets (non-parsed files)
     if input_dir:

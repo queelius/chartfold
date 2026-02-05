@@ -26,32 +26,66 @@ def quality_db(tmp_path):
         source="epic_anderson",
         lab_results=[
             # Duplicate: same test, same date, same value
-            LabResult(source="epic_anderson", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-3.0", result_date="2025-06-15"),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-06-15",
+            ),
             # Not a duplicate: different date
-            LabResult(source="epic_anderson", test_name="CEA", value="3.2", value_numeric=3.2,
-                      unit="ng/mL", ref_range="0.0-3.0", result_date="2025-01-01"),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                value="3.2",
+                value_numeric=3.2,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-01-01",
+            ),
             # Unique to epic
-            LabResult(source="epic_anderson", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", result_date="2025-06-15"),
+            LabResult(
+                source="epic_anderson",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                result_date="2025-06-15",
+            ),
         ],
         medications=[
             MedicationRecord(source="epic_anderson", name="Capecitabine", status="active"),
         ],
         conditions=[
-            ConditionRecord(source="epic_anderson", condition_name="Colon cancer",
-                            clinical_status="active"),
+            ConditionRecord(
+                source="epic_anderson", condition_name="Colon cancer", clinical_status="active"
+            ),
         ],
     )
     meditech = UnifiedRecords(
         source="meditech_anderson",
         lab_results=[
             # Duplicate: same test, same date, same value
-            LabResult(source="meditech_anderson", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", ref_range="0.0-5.0", result_date="2025-06-15"),
+            LabResult(
+                source="meditech_anderson",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2025-06-15",
+            ),
             # Duplicate: same test, same date, DIFFERENT value
-            LabResult(source="meditech_anderson", test_name="Hemoglobin", value="12.8", value_numeric=12.8,
-                      unit="g/dL", result_date="2025-06-15"),
+            LabResult(
+                source="meditech_anderson",
+                test_name="Hemoglobin",
+                value="12.8",
+                value_numeric=12.8,
+                unit="g/dL",
+                result_date="2025-06-15",
+            ),
         ],
         medications=[
             MedicationRecord(source="meditech_anderson", name="Capecitabine", status="active"),

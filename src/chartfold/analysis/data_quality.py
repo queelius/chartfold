@@ -38,12 +38,14 @@ def find_duplicate_labs(db: ChartfoldDB) -> list[dict]:
             (d["test_name"], d["result_date"]),
         )
         values = {r["value"] for r in records}
-        results.append({
-            "test_name": d["test_name"],
-            "result_date": d["result_date"],
-            "records": records,
-            "value_match": len(values) == 1,
-        })
+        results.append(
+            {
+                "test_name": d["test_name"],
+                "result_date": d["result_date"],
+                "records": records,
+                "value_match": len(values) == 1,
+            }
+        )
 
     return results
 
@@ -57,16 +59,26 @@ def source_coverage_matrix(db: ChartfoldDB) -> dict:
     - summary: Dict of source_name -> total records
     """
     tables = [
-        "patients", "documents", "encounters", "lab_results", "vitals",
-        "medications", "conditions", "procedures", "pathology_reports",
-        "imaging_reports", "clinical_notes", "immunizations", "allergies",
-        "social_history", "family_history", "mental_status",
+        "patients",
+        "documents",
+        "encounters",
+        "lab_results",
+        "vitals",
+        "medications",
+        "conditions",
+        "procedures",
+        "pathology_reports",
+        "imaging_reports",
+        "clinical_notes",
+        "immunizations",
+        "allergies",
+        "social_history",
+        "family_history",
+        "mental_status",
     ]
 
     # Get all sources
-    sources_rows = db.query(
-        "SELECT DISTINCT source FROM load_log ORDER BY source"
-    )
+    sources_rows = db.query("SELECT DISTINCT source FROM load_log ORDER BY source")
     sources = [r["source"] for r in sources_rows]
 
     # If no load_log entries, try to discover sources from tables
@@ -79,12 +91,10 @@ def source_coverage_matrix(db: ChartfoldDB) -> dict:
         sources.sort()
 
     matrix: dict[str, dict[str, int]] = {}
-    source_totals: dict[str, int] = {s: 0 for s in sources}
+    source_totals: dict[str, int] = dict.fromkeys(sources, 0)
 
     for table in tables:
-        counts = db.query(
-            f"SELECT source, COUNT(*) as count FROM {table} GROUP BY source"
-        )
+        counts = db.query(f"SELECT source, COUNT(*) as count FROM {table} GROUP BY source")
         table_counts = {}
         for c in counts:
             src = c["source"]

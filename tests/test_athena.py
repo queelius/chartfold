@@ -1,11 +1,9 @@
 """Tests for chartfold.sources.athena parser."""
 
-import pytest
 from lxml import etree
 
 from chartfold.core.cda import NS
 from chartfold.sources.athena import (
-    _extract_allergies,
     _extract_encounters,
     _extract_family_history,
     _extract_medications,
@@ -64,7 +62,9 @@ class TestPatientExtraction:
 
 class TestResultsExtraction:
     def test_extract_lab_results(self):
-        section = _make_section("Results", """
+        section = _make_section(
+            "Results",
+            """
             <table>
                 <thead>
                     <tr>
@@ -101,7 +101,8 @@ class TestResultsExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         results = _extract_results(section)
         assert len(results) == 2
         assert results[0]["test_name"] == "WBC"
@@ -115,7 +116,9 @@ class TestResultsExtraction:
 
 class TestVitalsExtraction:
     def test_extract_vitals_basic(self):
-        section = _make_section("Vitals", """
+        section = _make_section(
+            "Vitals",
+            """
             <table>
                 <thead>
                     <tr>
@@ -138,7 +141,8 @@ class TestVitalsExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         vitals = _extract_vitals(section)
         assert len(vitals) >= 4
 
@@ -153,7 +157,9 @@ class TestVitalsExtraction:
         assert types["heart_rate"]["value"] == 64.0
 
     def test_extract_blood_pressure_content(self):
-        section = _make_section("Vitals", """
+        section = _make_section(
+            "Vitals",
+            """
             <table>
                 <thead>
                     <tr>
@@ -171,7 +177,8 @@ class TestVitalsExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         vitals = _extract_vitals(section)
         types = {v["type"]: v for v in vitals}
         assert "bp_systolic" in types
@@ -182,7 +189,9 @@ class TestVitalsExtraction:
 
 class TestMedicationExtraction:
     def test_extract_medications(self):
-        section = _make_section("Medications", """
+        section = _make_section(
+            "Medications",
+            """
             <table>
                 <thead>
                     <tr>
@@ -210,7 +219,8 @@ class TestMedicationExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         meds = _extract_medications(section)
         assert len(meds) == 2
         assert "erythromycin" in meds[0]["name"]
@@ -221,7 +231,9 @@ class TestMedicationExtraction:
 
 class TestProblemExtraction:
     def test_extract_problems(self):
-        section = _make_section("Problems", """
+        section = _make_section(
+            "Problems",
+            """
             <table>
                 <thead>
                     <tr>
@@ -242,7 +254,8 @@ class TestProblemExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         conditions = _extract_problems(section)
         assert len(conditions) == 1
         assert conditions[0]["name"] == "Sleep apnea"
@@ -252,7 +265,9 @@ class TestProblemExtraction:
 
 class TestMentalStatusExtraction:
     def test_question_answer_table(self):
-        section = _make_section("Mental Status", """
+        section = _make_section(
+            "Mental Status",
+            """
             <table>
                 <thead>
                     <tr>
@@ -275,7 +290,8 @@ class TestMentalStatusExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_mental_status(section)
         assert len(entries) == 1
         assert "stressed" in entries[0]["question"]
@@ -283,7 +299,9 @@ class TestMentalStatusExtraction:
         assert entries[0]["date"] == "2021-09-27"
 
     def test_phq_score_table(self):
-        section = _make_section("Mental Status", """
+        section = _make_section(
+            "Mental Status",
+            """
             <table>
                 <thead>
                     <tr>
@@ -322,7 +340,8 @@ class TestMentalStatusExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_mental_status(section)
         assert len(entries) == 3
         # First entry is the total score
@@ -335,7 +354,9 @@ class TestMentalStatusExtraction:
 
 class TestEncounterExtraction:
     def test_extract_encounters_with_continuation(self):
-        section = _make_section("Past Encounters", """
+        section = _make_section(
+            "Past Encounters",
+            """
             <table>
                 <thead>
                     <tr>
@@ -382,7 +403,8 @@ class TestEncounterExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         encounters = _extract_encounters(section)
         assert len(encounters) == 2
         # First encounter has 2 diagnoses (continuation row)
@@ -419,7 +441,9 @@ class TestVitalHelpers:
 class TestFamilyHistoryExtraction:
     def test_extract_with_description_header(self):
         """Test that 'Description' column header is recognized for conditions (athenahealth format)."""
-        section = _make_section("Family History", """
+        section = _make_section(
+            "Family History",
+            """
             <table>
                 <thead>
                     <tr>
@@ -438,7 +462,8 @@ class TestFamilyHistoryExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_family_history(section)
         assert len(entries) == 2
         assert entries[0]["relation"] == "Father"
@@ -448,7 +473,9 @@ class TestFamilyHistoryExtraction:
 
     def test_extract_with_diagnosis_header(self):
         """Test that 'Diagnosis' column header still works."""
-        section = _make_section("Family History", """
+        section = _make_section(
+            "Family History",
+            """
             <table>
                 <thead>
                     <tr>
@@ -463,7 +490,8 @@ class TestFamilyHistoryExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_family_history(section)
         assert len(entries) == 1
         assert entries[0]["relation"] == "Brother"
@@ -471,7 +499,9 @@ class TestFamilyHistoryExtraction:
 
     def test_extract_with_condition_header(self):
         """Test that 'Condition' column header still works."""
-        section = _make_section("Family History", """
+        section = _make_section(
+            "Family History",
+            """
             <table>
                 <thead>
                     <tr>
@@ -486,7 +516,8 @@ class TestFamilyHistoryExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_family_history(section)
         assert len(entries) == 1
         assert entries[0]["relation"] == "Sister"
@@ -494,7 +525,9 @@ class TestFamilyHistoryExtraction:
 
     def test_extract_with_name_header(self):
         """Test that 'Name' column header (exact match) still works."""
-        section = _make_section("Family History", """
+        section = _make_section(
+            "Family History",
+            """
             <table>
                 <thead>
                     <tr>
@@ -509,7 +542,8 @@ class TestFamilyHistoryExtraction:
                     </tr>
                 </tbody>
             </table>
-        """)
+        """,
+        )
         entries = _extract_family_history(section)
         assert len(entries) == 1
         assert entries[0]["relation"] == "Grandfather"

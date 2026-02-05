@@ -62,26 +62,32 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
 
     # Documents
     for inv in data.get("inventory", []):
-        records.documents.append(DocumentRecord(
-            source=source,
-            doc_id=inv["doc_id"],
-            doc_type="CDA",
-            title=inv.get("title", ""),
-            encounter_date=normalize_date_to_iso(inv.get("date", "")),
-            file_path=inv.get("file_path", ""),
-            file_size_kb=inv.get("size_kb", 0),
-        ))
+        records.documents.append(
+            DocumentRecord(
+                source=source,
+                doc_id=inv["doc_id"],
+                doc_type="CDA",
+                title=inv.get("title", ""),
+                encounter_date=normalize_date_to_iso(inv.get("date", "")),
+                file_path=inv.get("file_path", ""),
+                file_size_kb=inv.get("size_kb", 0),
+            )
+        )
 
     # Encounters
     for enc in data.get("encounter_timeline", []):
-        records.encounters.append(EncounterRecord(
-            source=source,
-            source_doc_id=enc.get("doc_id", ""),
-            encounter_date=normalize_date_to_iso(enc.get("date", "")),
-            encounter_type="",
-            facility=enc.get("facility", ""),
-            provider=", ".join(enc.get("authors", [])) if isinstance(enc.get("authors"), list) else "",
-        ))
+        records.encounters.append(
+            EncounterRecord(
+                source=source,
+                source_doc_id=enc.get("doc_id", ""),
+                encounter_date=normalize_date_to_iso(enc.get("date", "")),
+                encounter_type="",
+                facility=enc.get("facility", ""),
+                provider=", ".join(enc.get("authors", []))
+                if isinstance(enc.get("authors"), list)
+                else "",
+            )
+        )
 
     # Lab results — explode panels into individual rows
     for panel in data.get("lab_results", []):
@@ -90,151 +96,184 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
         source_doc = panel.get("source_doc", "")
         for comp in panel.get("components", []):
             val = comp.get("value", "")
-            records.lab_results.append(LabResult(
-                source=source,
-                source_doc_id=source_doc,
-                test_name=comp.get("name", ""),
-                panel_name=panel_name,
-                value=val,
-                value_numeric=try_parse_numeric(val),
-                ref_range=comp.get("ref_range", ""),
-                result_date=panel_date,
-            ))
+            records.lab_results.append(
+                LabResult(
+                    source=source,
+                    source_doc_id=source_doc,
+                    test_name=comp.get("name", ""),
+                    panel_name=panel_name,
+                    value=val,
+                    value_numeric=try_parse_numeric(val),
+                    ref_range=comp.get("ref_range", ""),
+                    result_date=panel_date,
+                )
+            )
 
     # CEA values (also lab results, but pre-extracted)
     for cea in data.get("cea_values", []):
         val = cea.get("value", "")
-        records.lab_results.append(LabResult(
-            source=source,
-            source_doc_id="",
-            test_name="CEA",
-            panel_name="CEA",
-            value=val,
-            value_numeric=try_parse_numeric(val),
-            ref_range=cea.get("ref_range", ""),
-            result_date=normalize_date_to_iso(cea.get("date", "")),
-        ))
+        records.lab_results.append(
+            LabResult(
+                source=source,
+                source_doc_id="",
+                test_name="CEA",
+                panel_name="CEA",
+                value=val,
+                value_numeric=try_parse_numeric(val),
+                ref_range=cea.get("ref_range", ""),
+                result_date=normalize_date_to_iso(cea.get("date", "")),
+            )
+        )
 
     # Imaging reports
     for img in data.get("imaging_reports", []):
-        records.imaging_reports.append(ImagingReport(
-            source=source,
-            study_name=img.get("study", ""),
-            modality=_guess_modality(img.get("study", "")),
-            study_date=normalize_date_to_iso(img.get("date", "")),
-            findings=img.get("findings", ""),
-            impression=img.get("impression", ""),
-            full_text=img.get("full_text", ""),
-        ))
+        records.imaging_reports.append(
+            ImagingReport(
+                source=source,
+                study_name=img.get("study", ""),
+                modality=_guess_modality(img.get("study", "")),
+                study_date=normalize_date_to_iso(img.get("date", "")),
+                findings=img.get("findings", ""),
+                impression=img.get("impression", ""),
+                full_text=img.get("full_text", ""),
+            )
+        )
 
     # Pathology reports
     for path in data.get("pathology_reports", []):
-        records.pathology_reports.append(PathologyReport(
-            source=source,
-            report_date=normalize_date_to_iso(path.get("date", "")),
-            specimen=path.get("panel", ""),
-            diagnosis=path.get("diagnosis", ""),
-            gross_description=path.get("gross", ""),
-            microscopic_description=path.get("microscopic", ""),
-            full_text=path.get("full_text", ""),
-        ))
+        records.pathology_reports.append(
+            PathologyReport(
+                source=source,
+                report_date=normalize_date_to_iso(path.get("date", "")),
+                specimen=path.get("panel", ""),
+                diagnosis=path.get("diagnosis", ""),
+                gross_description=path.get("gross", ""),
+                microscopic_description=path.get("microscopic", ""),
+                full_text=path.get("full_text", ""),
+            )
+        )
 
     # Clinical notes
     for note in data.get("clinical_notes", []):
-        records.clinical_notes.append(ClinicalNote(
-            source=source,
-            source_doc_id=note.get("doc_id", ""),
-            note_type=note.get("section", ""),
-            note_date=normalize_date_to_iso(note.get("date", "")),
-            content=note.get("text", ""),
-        ))
+        records.clinical_notes.append(
+            ClinicalNote(
+                source=source,
+                source_doc_id=note.get("doc_id", ""),
+                note_type=note.get("section", ""),
+                note_date=normalize_date_to_iso(note.get("date", "")),
+                content=note.get("text", ""),
+            )
+        )
 
     # Medications (structured)
     for med in data.get("medications", []):
         if isinstance(med, str):
             # Legacy text format fallback
             if med.strip() and not med.startswith("Medications"):
-                records.medications.append(MedicationRecord(source=source, name=med.strip(), status="active"))
+                records.medications.append(
+                    MedicationRecord(source=source, name=med.strip(), status="active")
+                )
             continue
-        records.medications.append(MedicationRecord(
-            source=source,
-            name=med.get("name", ""),
-            rxnorm_code=med.get("rxnorm", ""),
-            status=med.get("status", ""),
-            sig=med.get("sig", ""),
-            route=med.get("route", ""),
-            start_date=normalize_date_to_iso(med.get("start_date", "")),
-            stop_date=normalize_date_to_iso(med.get("stop_date", "")),
-        ))
+        records.medications.append(
+            MedicationRecord(
+                source=source,
+                name=med.get("name", ""),
+                rxnorm_code=med.get("rxnorm", ""),
+                status=med.get("status", ""),
+                sig=med.get("sig", ""),
+                route=med.get("route", ""),
+                start_date=normalize_date_to_iso(med.get("start_date", "")),
+                stop_date=normalize_date_to_iso(med.get("stop_date", "")),
+            )
+        )
 
     # Conditions (structured)
     for cond in data.get("problems", []):
         if isinstance(cond, str):
             # Legacy text format fallback
             if cond.strip() and not cond.startswith("Active Problems"):
-                records.conditions.append(ConditionRecord(source=source, condition_name=cond.strip(), clinical_status="active"))
+                records.conditions.append(
+                    ConditionRecord(
+                        source=source, condition_name=cond.strip(), clinical_status="active"
+                    )
+                )
             continue
-        records.conditions.append(ConditionRecord(
-            source=source,
-            condition_name=cond.get("name", ""),
-            icd10_code=cond.get("icd10", ""),
-            snomed_code=cond.get("snomed", ""),
-            clinical_status=cond.get("status", "active"),
-            onset_date=normalize_date_to_iso(cond.get("onset_date", "")),
-        ))
+        records.conditions.append(
+            ConditionRecord(
+                source=source,
+                condition_name=cond.get("name", ""),
+                icd10_code=cond.get("icd10", ""),
+                snomed_code=cond.get("snomed", ""),
+                clinical_status=cond.get("status", "active"),
+                onset_date=normalize_date_to_iso(cond.get("onset_date", "")),
+            )
+        )
 
     # Vitals
     for vital in data.get("vitals", []):
-        records.vitals.append(VitalRecord(
-            source=source,
-            vital_type=vital.get("type", ""),
-            value=vital.get("value"),
-            unit=vital.get("unit", ""),
-            recorded_date=normalize_date_to_iso(vital.get("date", "")),
-        ))
+        records.vitals.append(
+            VitalRecord(
+                source=source,
+                vital_type=vital.get("type", ""),
+                value=vital.get("value"),
+                unit=vital.get("unit", ""),
+                recorded_date=normalize_date_to_iso(vital.get("date", "")),
+            )
+        )
 
     # Immunizations
     for imm in data.get("immunizations", []):
-        records.immunizations.append(ImmunizationRecord(
-            source=source,
-            vaccine_name=imm.get("name", ""),
-            cvx_code=imm.get("cvx_code", ""),
-            admin_date=normalize_date_to_iso(imm.get("date", "")),
-            lot_number=imm.get("lot", ""),
-            status=imm.get("status", ""),
-        ))
+        records.immunizations.append(
+            ImmunizationRecord(
+                source=source,
+                vaccine_name=imm.get("name", ""),
+                cvx_code=imm.get("cvx_code", ""),
+                admin_date=normalize_date_to_iso(imm.get("date", "")),
+                lot_number=imm.get("lot", ""),
+                status=imm.get("status", ""),
+            )
+        )
 
     # Allergies
     for allergy in data.get("allergies", []):
-        records.allergies.append(AllergyRecord(
-            source=source,
-            allergen=allergy.get("allergen", ""),
-            reaction=allergy.get("reaction", ""),
-            severity=allergy.get("severity", ""),
-            status=allergy.get("status", "active"),
-        ))
+        records.allergies.append(
+            AllergyRecord(
+                source=source,
+                allergen=allergy.get("allergen", ""),
+                reaction=allergy.get("reaction", ""),
+                severity=allergy.get("severity", ""),
+                status=allergy.get("status", "active"),
+            )
+        )
 
     # Social History
     for sh in data.get("social_history", []):
-        records.social_history.append(SocialHistoryRecord(
-            source=source,
-            category=sh.get("category", ""),
-            value=sh.get("value", ""),
-            recorded_date=normalize_date_to_iso(sh.get("date", "")),
-        ))
+        records.social_history.append(
+            SocialHistoryRecord(
+                source=source,
+                category=sh.get("category", ""),
+                value=sh.get("value", ""),
+                recorded_date=normalize_date_to_iso(sh.get("date", "")),
+            )
+        )
 
     # Procedures
     from chartfold.sources.epic import OID_SNOMED
+
     for proc in data.get("procedures", []):
-        records.procedures.append(ProcedureRecord(
-            source=source,
-            source_doc_id=proc.get("source_doc", ""),
-            name=proc.get("name", ""),
-            snomed_code=proc.get("code_value", "") if proc.get("code_system", "") == OID_SNOMED else "",
-            procedure_date=normalize_date_to_iso(proc.get("date", "")),
-            provider=proc.get("provider", ""),
-            status=proc.get("status", ""),
-        ))
+        records.procedures.append(
+            ProcedureRecord(
+                source=source,
+                source_doc_id=proc.get("source_doc", ""),
+                name=proc.get("name", ""),
+                snomed_code=proc.get("code_value", "")
+                if proc.get("code_system", "") == OID_SNOMED
+                else "",
+                procedure_date=normalize_date_to_iso(proc.get("date", "")),
+                provider=proc.get("provider", ""),
+                status=proc.get("status", ""),
+            )
+        )
 
     # Source assets (non-parsed files)
     input_dir = data.get("input_dir", "")

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from chartfold.core.utils import derive_source_name, normalize_date_to_iso, parse_iso_date, try_parse_numeric
+from chartfold.core.utils import (
+    derive_source_name,
+    normalize_date_to_iso,
+    parse_iso_date,
+    try_parse_numeric,
+)
 from chartfold.models import (
     AllergyRecord,
     ClinicalNote,
@@ -10,7 +15,6 @@ from chartfold.models import (
     DocumentRecord,
     EncounterRecord,
     FamilyHistoryRecord,
-    ImagingReport,
     ImmunizationRecord,
     LabResult,
     MedicationRecord,
@@ -46,9 +50,7 @@ def _parser_counts(data: dict) -> dict[str, int]:
     fhir = data.get("fhir_data") or {}
     ccda = data.get("ccda_data") or {}
 
-    fhir_lab_obs = sum(
-        1 for o in fhir.get("observations", []) if o.get("category") == "laboratory"
-    )
+    fhir_lab_obs = sum(1 for o in fhir.get("observations", []) if o.get("category") == "laboratory")
     fhir_vital_obs = sum(
         1 for o in fhir.get("observations", []) if o.get("category") == "vital-signs"
     )
@@ -59,11 +61,13 @@ def _parser_counts(data: dict) -> dict[str, int]:
         "encounters": len(fhir.get("encounters", [])),
         "lab_results": fhir_lab_obs + len(ccda.get("all_labs", [])),
         "conditions": len(fhir.get("conditions", [])) + len(ccda.get("all_problems", [])),
-        "medications": len(fhir.get("medication_requests", [])) + len(ccda.get("all_medications", [])),
+        "medications": len(fhir.get("medication_requests", []))
+        + len(ccda.get("all_medications", [])),
         "procedures": len(ccda.get("all_procedures", [])),
         "clinical_notes": len(ccda.get("all_notes", [])),
         "vitals": fhir_vital_obs + len(ccda.get("all_vitals", [])),
-        "immunizations": len(fhir.get("immunizations", [])) + len(ccda.get("all_immunizations", [])),
+        "immunizations": len(fhir.get("immunizations", []))
+        + len(ccda.get("all_immunizations", [])),
         "allergies": len(ccda.get("all_allergies", [])),
         "social_history": len(ccda.get("all_social_history", [])),
         "family_history": len(ccda.get("all_family_history", [])),
@@ -103,23 +107,27 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
 
     # Documents from CCDA inventory
     for doc in ccda.get("documents", []):
-        records.documents.append(DocumentRecord(
-            source=source,
-            doc_id=doc.get("filename", ""),
-            doc_type="CCDA",
-            title=doc.get("title", ""),
-            encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
-            file_path=doc.get("file_path", ""),
-        ))
+        records.documents.append(
+            DocumentRecord(
+                source=source,
+                doc_id=doc.get("filename", ""),
+                doc_type="CCDA",
+                title=doc.get("title", ""),
+                encounter_date=normalize_date_to_iso(doc.get("encounter_date", "")),
+                file_path=doc.get("file_path", ""),
+            )
+        )
 
     # Encounters from FHIR
     for enc in fhir.get("encounters", []):
-        records.encounters.append(EncounterRecord(
-            source=source,
-            encounter_date=enc.get("start_iso", ""),
-            encounter_end=parse_iso_date(enc.get("end", "")),
-            encounter_type=enc.get("type", ""),
-        ))
+        records.encounters.append(
+            EncounterRecord(
+                source=source,
+                encounter_date=enc.get("start_iso", ""),
+                encounter_end=parse_iso_date(enc.get("end", "")),
+                encounter_type=enc.get("type", ""),
+            )
+        )
 
     # Lab results — merge FHIR observations + CCDA labs, deduplicate
     _add_fhir_labs(records, fhir.get("observations", []), source)
@@ -127,13 +135,15 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
 
     # Conditions from FHIR
     for cond in fhir.get("conditions", []):
-        records.conditions.append(ConditionRecord(
-            source=source,
-            condition_name=cond.get("text", ""),
-            icd10_code=cond.get("icd_code", ""),
-            clinical_status=cond.get("clinical_status", ""),
-            onset_date=normalize_date_to_iso(cond.get("onset", "")),
-        ))
+        records.conditions.append(
+            ConditionRecord(
+                source=source,
+                condition_name=cond.get("text", ""),
+                icd10_code=cond.get("icd_code", ""),
+                clinical_status=cond.get("clinical_status", ""),
+                onset_date=normalize_date_to_iso(cond.get("onset", "")),
+            )
+        )
 
     # Problems from CCDA (deduplicated)
     for prob in deduplicate_problems(ccda.get("all_problems", [])):
@@ -141,64 +151,76 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
         name_lower = prob["name"].lower().strip()
         existing = {c.condition_name.lower().strip() for c in records.conditions}
         if name_lower not in existing:
-            records.conditions.append(ConditionRecord(
-                source=source,
-                condition_name=prob["name"],
-                clinical_status=prob.get("status", ""),
-            ))
+            records.conditions.append(
+                ConditionRecord(
+                    source=source,
+                    condition_name=prob["name"],
+                    clinical_status=prob.get("status", ""),
+                )
+            )
 
     # Medications from FHIR
     for med in fhir.get("medication_requests", []):
-        records.medications.append(MedicationRecord(
-            source=source,
-            name=med.get("text", ""),
-            status=med.get("status", ""),
-            sig="; ".join(med.get("dosage", [])),
-            start_date=med.get("authored_iso", ""),
-        ))
+        records.medications.append(
+            MedicationRecord(
+                source=source,
+                name=med.get("text", ""),
+                status=med.get("status", ""),
+                sig="; ".join(med.get("dosage", [])),
+                start_date=med.get("authored_iso", ""),
+            )
+        )
 
     # Medications from CCDA (deduplicated, add only new ones)
     existing_meds = {m.name.lower().strip() for m in records.medications}
     for med in deduplicate_medications(ccda.get("all_medications", [])):
         if med["name"].lower().strip() not in existing_meds:
-            records.medications.append(MedicationRecord(
-                source=source,
-                name=med["name"],
-                sig=med.get("instructions", ""),
-                route=med.get("route", ""),
-                status=med.get("status", ""),
-            ))
+            records.medications.append(
+                MedicationRecord(
+                    source=source,
+                    name=med["name"],
+                    sig=med.get("instructions", ""),
+                    route=med.get("route", ""),
+                    status=med.get("status", ""),
+                )
+            )
 
     # Procedures from CCDA (deduplicated)
     for proc in deduplicate_procedures(ccda.get("all_procedures", [])):
-        records.procedures.append(ProcedureRecord(
-            source=source,
-            name=proc.get("name", ""),
-            procedure_date=normalize_date_to_iso(proc.get("date_iso", "")),
-            provider=proc.get("provider", ""),
-            status=proc.get("status", ""),
-        ))
+        records.procedures.append(
+            ProcedureRecord(
+                source=source,
+                name=proc.get("name", ""),
+                procedure_date=normalize_date_to_iso(proc.get("date_iso", "")),
+                provider=proc.get("provider", ""),
+                status=proc.get("status", ""),
+            )
+        )
 
     # Clinical notes from CCDA (deduplicated)
     for note in deduplicate_notes(ccda.get("all_notes", [])):
-        records.clinical_notes.append(ClinicalNote(
-            source=source,
-            source_doc_id=note.get("source_file", ""),
-            note_type=note.get("type", ""),
-            note_date=normalize_date_to_iso(note.get("encounter_date", "")),
-            content=note.get("text", ""),
-        ))
+        records.clinical_notes.append(
+            ClinicalNote(
+                source=source,
+                source_doc_id=note.get("source_file", ""),
+                note_type=note.get("type", ""),
+                note_date=normalize_date_to_iso(note.get("encounter_date", "")),
+                content=note.get("text", ""),
+            )
+        )
 
     # Vitals — FHIR + CCDA
     _add_fhir_vitals(records, fhir.get("observations", []), source)
     for vital in deduplicate_vitals(ccda.get("all_vitals", [])):
-        records.vitals.append(VitalRecord(
-            source=source,
-            vital_type=vital.get("type", ""),
-            value=vital.get("value"),
-            unit=vital.get("unit", ""),
-            recorded_date=vital.get("date_iso", ""),
-        ))
+        records.vitals.append(
+            VitalRecord(
+                source=source,
+                vital_type=vital.get("type", ""),
+                value=vital.get("value"),
+                unit=vital.get("unit", ""),
+                recorded_date=vital.get("date_iso", ""),
+            )
+        )
 
     # Immunizations — FHIR + CCDA
     _add_fhir_immunizations(records, fhir.get("immunizations", []), source)
@@ -206,49 +228,59 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
     for imm in deduplicate_immunizations(ccda.get("all_immunizations", [])):
         key = (imm.get("name", "").lower(), imm.get("date_iso", ""))
         if key not in existing_imms:
-            records.immunizations.append(ImmunizationRecord(
-                source=source,
-                vaccine_name=imm.get("name", ""),
-                admin_date=imm.get("date_iso", ""),
-                lot_number=imm.get("lot", ""),
-                status="completed",
-            ))
+            records.immunizations.append(
+                ImmunizationRecord(
+                    source=source,
+                    vaccine_name=imm.get("name", ""),
+                    admin_date=imm.get("date_iso", ""),
+                    lot_number=imm.get("lot", ""),
+                    status="completed",
+                )
+            )
 
     # Allergies from CCDA
     for allergy in deduplicate_allergies(ccda.get("all_allergies", [])):
-        records.allergies.append(AllergyRecord(
-            source=source,
-            allergen=allergy.get("allergen", ""),
-            reaction=allergy.get("reaction", ""),
-            severity=allergy.get("severity", ""),
-            status=allergy.get("status", "active"),
-        ))
+        records.allergies.append(
+            AllergyRecord(
+                source=source,
+                allergen=allergy.get("allergen", ""),
+                reaction=allergy.get("reaction", ""),
+                severity=allergy.get("severity", ""),
+                status=allergy.get("status", "active"),
+            )
+        )
 
     # Social History from CCDA
     for sh in deduplicate_social_history(ccda.get("all_social_history", [])):
-        records.social_history.append(SocialHistoryRecord(
-            source=source,
-            category=sh.get("category", ""),
-            value=sh.get("value", ""),
-            recorded_date=sh.get("date_iso", ""),
-        ))
+        records.social_history.append(
+            SocialHistoryRecord(
+                source=source,
+                category=sh.get("category", ""),
+                value=sh.get("value", ""),
+                recorded_date=sh.get("date_iso", ""),
+            )
+        )
 
     # Family History from CCDA
     for fh in deduplicate_family_history(ccda.get("all_family_history", [])):
-        records.family_history.append(FamilyHistoryRecord(
-            source=source,
-            relation=fh.get("relation", ""),
-            condition=fh.get("condition", ""),
-        ))
+        records.family_history.append(
+            FamilyHistoryRecord(
+                source=source,
+                relation=fh.get("relation", ""),
+                condition=fh.get("condition", ""),
+            )
+        )
 
     # Mental Status from CCDA
     for ms in deduplicate_mental_status(ccda.get("all_mental_status", [])):
-        records.mental_status.append(MentalStatusRecord(
-            source=source,
-            question=ms.get("observation", ""),
-            answer=ms.get("response", ""),
-            recorded_date=ms.get("date_iso", ""),
-        ))
+        records.mental_status.append(
+            MentalStatusRecord(
+                source=source,
+                question=ms.get("observation", ""),
+                answer=ms.get("response", ""),
+                recorded_date=ms.get("date_iso", ""),
+            )
+        )
 
     # Source assets (non-parsed files like PDFs)
     input_dir = data.get("input_dir", "")
@@ -309,18 +341,20 @@ def _add_fhir_labs(records: UnifiedRecords, observations: list[dict], source: st
         elif isinstance(val, str):
             val_numeric = try_parse_numeric(val)
 
-        records.lab_results.append(LabResult(
-            source=source,
-            test_name=obs.get("text", ""),
-            test_loinc=obs.get("loinc", ""),
-            value=val_str,
-            value_numeric=val_numeric,
-            unit=obs.get("unit", ""),
-            ref_range=obs.get("ref_range", ""),
-            interpretation=obs.get("interpretation", ""),
-            result_date=obs.get("date_iso", ""),
-            status=obs.get("status", ""),
-        ))
+        records.lab_results.append(
+            LabResult(
+                source=source,
+                test_name=obs.get("text", ""),
+                test_loinc=obs.get("loinc", ""),
+                value=val_str,
+                value_numeric=val_numeric,
+                unit=obs.get("unit", ""),
+                ref_range=obs.get("ref_range", ""),
+                interpretation=obs.get("interpretation", ""),
+                result_date=obs.get("date_iso", ""),
+                status=obs.get("status", ""),
+            )
+        )
 
 
 def _add_ccda_labs(records: UnifiedRecords, all_labs: list[dict], source: str) -> None:
@@ -328,8 +362,7 @@ def _add_ccda_labs(records: UnifiedRecords, all_labs: list[dict], source: str) -
     deduped = deduplicate_labs(all_labs)
     # Build set of existing (test, date, value) to avoid FHIR duplicates
     existing = {
-        (lr.test_name.lower().strip(), lr.result_date, lr.value)
-        for lr in records.lab_results
+        (lr.test_name.lower().strip(), lr.result_date, lr.value) for lr in records.lab_results
     }
 
     for lab in deduped:
@@ -339,17 +372,19 @@ def _add_ccda_labs(records: UnifiedRecords, all_labs: list[dict], source: str) -
         existing.add(key)
 
         val = lab.get("value", "")
-        records.lab_results.append(LabResult(
-            source=source,
-            source_doc_id=lab.get("source_file", ""),
-            test_name=lab.get("test", ""),
-            value=val,
-            value_numeric=try_parse_numeric(val),
-            unit=lab.get("unit", ""),
-            ref_range=lab.get("ref_range", ""),
-            interpretation=lab.get("interpretation", ""),
-            result_date=lab.get("date_iso", ""),
-        ))
+        records.lab_results.append(
+            LabResult(
+                source=source,
+                source_doc_id=lab.get("source_file", ""),
+                test_name=lab.get("test", ""),
+                value=val,
+                value_numeric=try_parse_numeric(val),
+                unit=lab.get("unit", ""),
+                ref_range=lab.get("ref_range", ""),
+                interpretation=lab.get("interpretation", ""),
+                result_date=lab.get("date_iso", ""),
+            )
+        )
 
 
 def _add_fhir_vitals(records: UnifiedRecords, observations: list[dict], source: str) -> None:
@@ -376,24 +411,30 @@ def _add_fhir_vitals(records: UnifiedRecords, observations: list[dict], source: 
         val = obs.get("value")
         if val is None:
             continue
-        records.vitals.append(VitalRecord(
-            source=source,
-            vital_type=vital_type,
-            value=float(val) if isinstance(val, (int, float)) else None,
-            value_text=str(val),
-            unit=obs.get("unit", ""),
-            recorded_date=obs.get("date_iso", ""),
-        ))
+        records.vitals.append(
+            VitalRecord(
+                source=source,
+                vital_type=vital_type,
+                value=float(val) if isinstance(val, (int, float)) else None,
+                value_text=str(val),
+                unit=obs.get("unit", ""),
+                recorded_date=obs.get("date_iso", ""),
+            )
+        )
 
 
-def _add_fhir_immunizations(records: UnifiedRecords, immunizations: list[dict], source: str) -> None:
+def _add_fhir_immunizations(
+    records: UnifiedRecords, immunizations: list[dict], source: str
+) -> None:
     """Add immunizations from FHIR data."""
     for imm in immunizations:
-        records.immunizations.append(ImmunizationRecord(
-            source=source,
-            vaccine_name=imm.get("name", ""),
-            cvx_code=imm.get("cvx_code", ""),
-            admin_date=imm.get("date_iso", ""),
-            lot_number=imm.get("lot", ""),
-            status=imm.get("status", ""),
-        ))
+        records.immunizations.append(
+            ImmunizationRecord(
+                source=source,
+                vaccine_name=imm.get("name", ""),
+                cvx_code=imm.get("cvx_code", ""),
+                admin_date=imm.get("date_iso", ""),
+                lot_number=imm.get("lot", ""),
+                status=imm.get("status", ""),
+            )
+        )

@@ -10,13 +10,11 @@ Handles MEDITECH Expanse 2.2 EHI exports with:
 import json
 import os
 import re
-from collections import defaultdict
 from datetime import datetime
 
 from chartfold.core.cda import (
     NS,
     el_text,
-    format_date,
     get_encounter_date,
     get_sections,
     get_title,
@@ -26,6 +24,7 @@ from chartfold.core.cda import (
 from chartfold.core.fhir import parse_fhir_bundle
 from chartfold.core.utils import deduplicate_by_key, parse_narrative_date
 from chartfold.sources.base import MEDITECH_CONFIG, SourceConfig, discover_files
+import contextlib
 
 
 def process_meditech_export(input_dir: str, config: SourceConfig | None = None) -> dict:
@@ -112,16 +111,18 @@ def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
             except ValueError:
                 date_fmt = enc_date
 
-        agg["documents"].append({
-            "filename": fname,
-            "title": doc["title"],
-            "encounter_date": enc_date,
-            "encounter_date_fmt": date_fmt,
-            "section_names": list(doc["sections"].keys()),
-            "lab_count": len(doc["labs"]),
-            "note_count": len(doc["notes"]),
-            "file_path": os.path.abspath(filepath),
-        })
+        agg["documents"].append(
+            {
+                "filename": fname,
+                "title": doc["title"],
+                "encounter_date": enc_date,
+                "encounter_date_fmt": date_fmt,
+                "section_names": list(doc["sections"].keys()),
+                "lab_count": len(doc["labs"]),
+                "note_count": len(doc["notes"]),
+                "file_path": os.path.abspath(filepath),
+            }
+        )
 
         for lab in doc["labs"]:
             lab["source_file"] = fname
@@ -141,13 +142,15 @@ def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
             agg["all_medications"].append(med)
 
         for note_type, note_text in doc["notes"].items():
-            agg["all_notes"].append({
-                "type": note_type,
-                "text": note_text,
-                "source_file": fname,
-                "encounter_date": enc_date,
-                "encounter_date_fmt": date_fmt,
-            })
+            agg["all_notes"].append(
+                {
+                    "type": note_type,
+                    "text": note_text,
+                    "source_file": fname,
+                    "encounter_date": enc_date,
+                    "encounter_date_fmt": date_fmt,
+                }
+            )
 
         for vital in doc["vitals"]:
             vital["source_file"] = fname
@@ -175,9 +178,11 @@ def _parse_all_ccdas(ccda_dir: str, config: SourceConfig) -> dict:
             ms["encounter_date"] = enc_date
             agg["all_mental_status"].append(ms)
 
-        print(f"  {fname[:12]}...: {date_fmt or 'no date'}, "
-              f"{len(doc['sections'])} sections, "
-              f"{len(doc['labs'])} labs, {len(doc['notes'])} notes")
+        print(
+            f"  {fname[:12]}...: {date_fmt or 'no date'}, "
+            f"{len(doc['sections'])} sections, "
+            f"{len(doc['labs'])} labs, {len(doc['notes'])} notes"
+        )
 
     return agg
 
@@ -216,7 +221,12 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
     if "Procedures" in doc["sections"]:
         doc["procedures"] = _extract_table_rows(
             doc["sections"]["Procedures"],
-            key_headers={"procedure": "name", "date": "date_raw", "status": "status", "provider": "provider"},
+            key_headers={
+                "procedure": "name",
+                "date": "date_raw",
+                "status": "status",
+                "provider": "provider",
+            },
         )
         for proc in doc["procedures"]:
             if "date_raw" in proc:
@@ -228,7 +238,12 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
             doc["problems"].extend(
                 _extract_table_rows(
                     doc["sections"][sec_name],
-                    key_headers={"problem": "name", "condition": "name", "date": "date", "status": "status"},
+                    key_headers={
+                        "problem": "name",
+                        "condition": "name",
+                        "date": "date",
+                        "status": "status",
+                    },
                 )
             )
 
@@ -239,10 +254,17 @@ def _parse_single_ccda(filepath: str, config: SourceConfig) -> dict | None:
                 _extract_table_rows(
                     doc["sections"][sec_name],
                     key_headers={
-                        "medication": "name", "dose": "dose", "strength": "dose",
-                        "route": "route", "freq": "frequency", "schedule": "frequency",
-                        "date": "date", "start": "date", "status": "status",
-                        "instruction": "instructions", "sig": "instructions",
+                        "medication": "name",
+                        "dose": "dose",
+                        "strength": "dose",
+                        "route": "route",
+                        "freq": "frequency",
+                        "schedule": "frequency",
+                        "date": "date",
+                        "start": "date",
+                        "status": "status",
+                        "instruction": "instructions",
+                        "sig": "instructions",
                     },
                 )
             )
@@ -346,18 +368,20 @@ def _extract_meditech_labs(section) -> list[dict]:
                         value = m.group(1)
                         unit = m.group(2)
 
-                    labs.append({
-                        "test": row["test"],
-                        "date_raw": date_str,
-                        "date_iso": date_iso,
-                        "value": value,
-                        "unit": unit,
-                        "result_raw": result_text,
-                        "interpretation": row.get("interp", ""),
-                        "ref_range": row.get("ref_range", ""),
-                        "comment": row.get("comment", ""),
-                        "site": row.get("site", ""),
-                    })
+                    labs.append(
+                        {
+                            "test": row["test"],
+                            "date_raw": date_str,
+                            "date_iso": date_iso,
+                            "value": value,
+                            "unit": unit,
+                            "result_raw": result_text,
+                            "interpretation": row.get("interp", ""),
+                            "ref_range": row.get("ref_range", ""),
+                            "comment": row.get("comment", ""),
+                            "site": row.get("site", ""),
+                        }
+                    )
 
     return labs
 
@@ -475,10 +499,8 @@ def _extract_meditech_vitals(section) -> list[dict]:
                 unit = ""
                 m = re.match(r"([\d.]+)\s*(.*)", result_text)
                 if m:
-                    try:
+                    with contextlib.suppress(ValueError):
                         value = float(m.group(1))
-                    except ValueError:
-                        pass
                     unit = m.group(2).strip()
                     # Clean up bracketed units like [degF] or [in_i]
                     if unit.startswith("[") and unit.endswith("]"):
@@ -487,13 +509,15 @@ def _extract_meditech_vitals(section) -> list[dict]:
                 date_str = row.get("date", "")
                 date_iso = parse_narrative_date(date_str) if date_str else ""
 
-                vitals.append({
-                    "type": vital_type,
-                    "value": value,
-                    "unit": unit,
-                    "date_iso": date_iso,
-                    "ref_range": row.get("ref_range", ""),
-                })
+                vitals.append(
+                    {
+                        "type": vital_type,
+                        "value": value,
+                        "unit": unit,
+                        "date_iso": date_iso,
+                        "ref_range": row.get("ref_range", ""),
+                    }
+                )
 
     return vitals
 
@@ -548,13 +572,15 @@ def _extract_meditech_immunizations(section) -> list[dict]:
                 date_raw = row.get("date", "")
                 date_iso = parse_narrative_date(date_raw) if date_raw else ""
 
-                immunizations.append({
-                    "name": name,
-                    "date_raw": date_raw,
-                    "date_iso": date_iso,
-                    "lot": row.get("lot", ""),
-                    "manufacturer": row.get("manufacturer", ""),
-                })
+                immunizations.append(
+                    {
+                        "name": name,
+                        "date_raw": date_raw,
+                        "date_iso": date_iso,
+                        "lot": row.get("lot", ""),
+                        "manufacturer": row.get("manufacturer", ""),
+                    }
+                )
 
     return immunizations
 
@@ -621,12 +647,14 @@ def _extract_meditech_allergies(section) -> list[dict]:
                     if not allergen and tds:
                         allergen = el_text(tds[0])
                     if allergen.strip():
-                        allergies.append({
-                            "allergen": allergen.strip(),
-                            "reaction": row.get("reaction", ""),
-                            "severity": row.get("severity", ""),
-                            "status": row.get("status", ""),
-                        })
+                        allergies.append(
+                            {
+                                "allergen": allergen.strip(),
+                                "reaction": row.get("reaction", ""),
+                                "severity": row.get("severity", ""),
+                                "status": row.get("status", ""),
+                            }
+                        )
 
     return allergies
 
@@ -673,12 +701,14 @@ def _extract_meditech_social_history(section) -> list[dict]:
                     date_iso = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
 
         if category or value:
-            entries.append({
-                "category": category,
-                "value": value,
-                "loinc": loinc,
-                "date_iso": date_iso,
-            })
+            entries.append(
+                {
+                    "category": category,
+                    "value": value,
+                    "loinc": loinc,
+                    "date_iso": date_iso,
+                }
+            )
 
     return entries
 
@@ -723,10 +753,12 @@ def _extract_meditech_family_history(section) -> list[dict]:
             if value_el is not None:
                 condition = value_el.get("displayName", "") or el_text(value_el)
             if condition:
-                entries.append({
-                    "relation": relation or "Not Specified",
-                    "condition": condition,
-                })
+                entries.append(
+                    {
+                        "relation": relation or "Not Specified",
+                        "condition": condition,
+                    }
+                )
 
     # Fallback: parse from HTML table
     if not entries:
@@ -763,10 +795,12 @@ def _extract_meditech_family_history(section) -> list[dict]:
                             relation = el_text(tds[0])
                             condition = el_text(tds[1])
                         if condition.strip():
-                            entries.append({
-                                "relation": relation.strip() or "Not Specified",
-                                "condition": condition.strip(),
-                            })
+                            entries.append(
+                                {
+                                    "relation": relation.strip() or "Not Specified",
+                                    "condition": condition.strip(),
+                                }
+                            )
 
     return entries
 
@@ -820,11 +854,13 @@ def _extract_meditech_mental_status(section) -> list[dict]:
                     date_str = row.get("date", "")
                     date_iso = parse_narrative_date(date_str) if date_str else ""
 
-                    entries.append({
-                        "observation": observation,
-                        "response": response,
-                        "date_iso": date_iso,
-                    })
+                    entries.append(
+                        {
+                            "observation": observation,
+                            "response": response,
+                            "date_iso": date_iso,
+                        }
+                    )
 
     # Also check structured entries if no table data
     if not entries:
@@ -851,11 +887,13 @@ def _extract_meditech_mental_status(section) -> list[dict]:
                     date_iso = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
 
             if observation or response:
-                entries.append({
-                    "observation": observation,
-                    "response": response,
-                    "date_iso": date_iso,
-                })
+                entries.append(
+                    {
+                        "observation": observation,
+                        "response": response,
+                        "date_iso": date_iso,
+                    }
+                )
 
     return entries
 
@@ -864,24 +902,26 @@ def _parse_toc(filepath: str) -> list[dict]:
     """Parse Table of Contents NDJSON file."""
     documents = []
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
+        for raw_line in f:
+            stripped = raw_line.strip()
+            if not stripped:
                 continue
             try:
-                doc = json.loads(line)
+                doc = json.loads(stripped)
                 content = doc.get("content", [{}])
                 attachment = content[0].get("attachment", {}) if content else {}
-                documents.append({
-                    "description": doc.get("description", ""),
-                    "status": doc.get("docStatus", ""),
-                    "date": doc.get("date", ""),
-                    "url": attachment.get("url", ""),
-                    "title": attachment.get("title", ""),
-                    "size": attachment.get("size", 0),
-                    "content_type": attachment.get("contentType", ""),
-                    "creation": attachment.get("creation", ""),
-                })
+                documents.append(
+                    {
+                        "description": doc.get("description", ""),
+                        "status": doc.get("docStatus", ""),
+                        "date": doc.get("date", ""),
+                        "url": attachment.get("url", ""),
+                        "title": attachment.get("title", ""),
+                        "size": attachment.get("size", 0),
+                        "content_type": attachment.get("contentType", ""),
+                        "creation": attachment.get("creation", ""),
+                    }
+                )
             except json.JSONDecodeError:
                 pass
     return documents
@@ -889,12 +929,13 @@ def _parse_toc(filepath: str) -> list[dict]:
 
 # Deduplication helpers for MEDITECH's cumulative snapshot model
 
+
 def deduplicate_labs(labs: list[dict]) -> list[dict]:
     """Deduplicate labs across multiple CCDA files."""
     return deduplicate_by_key(
         labs,
-        key_func=lambda l: (l["test"].lower().strip(), l["date_iso"], l["value"]),
-        sort_key=lambda l: (l["date_iso"] or "0000", l["test"]),
+        key_func=lambda lab: (lab["test"].lower().strip(), lab["date_iso"], lab["value"]),
+        sort_key=lambda lab: (lab["date_iso"] or "0000", lab["test"]),
     )
 
 
@@ -968,5 +1009,9 @@ def deduplicate_family_history(entries: list[dict]) -> list[dict]:
 def deduplicate_mental_status(entries: list[dict]) -> list[dict]:
     return deduplicate_by_key(
         entries,
-        key_func=lambda e: (e.get("observation", "").lower(), e.get("response", "").lower(), e.get("date_iso", "")),
+        key_func=lambda e: (
+            e.get("observation", "").lower(),
+            e.get("response", "").lower(),
+            e.get("date_iso", ""),
+        ),
     )

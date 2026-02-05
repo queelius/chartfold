@@ -1,7 +1,6 @@
 """Tests for full-fidelity export and import functionality."""
 
 import json
-import sqlite3
 
 import pytest
 
@@ -9,7 +8,6 @@ from chartfold.db import ChartfoldDB
 from chartfold.export_full import (
     CLINICAL_TABLES,
     EXPORT_VERSION,
-    NOTE_TABLES,
     SCHEMA_VERSION,
     export_full_json,
     export_full_markdown,
@@ -28,7 +26,6 @@ from chartfold.models import (
     LabResult,
     MedicationRecord,
     MentalStatusRecord,
-    PathologyReport,
     PatientRecord,
     ProcedureRecord,
     SocialHistoryRecord,
@@ -220,7 +217,7 @@ def populated_db(tmp_path):
     db.load_source(records)
 
     # Add personal notes
-    note_id = db.save_note(
+    db.save_note(
         title="Treatment Analysis",
         content="Analysis of current treatment regimen.",
         tags=["oncology", "treatment"],
@@ -382,7 +379,7 @@ class TestExportFullJson:
             data = json.load(f)
 
         labs = data["tables"]["lab_results"]
-        cea = next(l for l in labs if l["test_name"] == "CEA")
+        cea = next(lab for lab in labs if lab["test_name"] == "CEA")
         assert cea["value_numeric"] == 5.8
         assert cea["interpretation"] == "H"
 
@@ -570,15 +567,16 @@ class TestImportJson:
         original_summary = populated_db.summary()
 
         import_db_path = str(tmp_path / "imported.db")
-        result = import_json(export_path, import_db_path)
+        import_json(export_path, import_db_path)
 
         # Check counts match
         with ChartfoldDB(import_db_path) as imported_db:
             imported_summary = imported_db.summary()
 
         for table in CLINICAL_TABLES:
-            assert original_summary.get(table, 0) == imported_summary.get(table, 0), \
+            assert original_summary.get(table, 0) == imported_summary.get(table, 0), (
                 f"Count mismatch for {table}"
+            )
 
     def test_import_preserves_data_values(self, populated_db, tmp_path):
         """Import should preserve actual data values."""
@@ -711,7 +709,7 @@ class TestRoundTrip:
             assert len(imported_notes) == len(original_notes)
 
             # Compare values (excluding auto-generated IDs)
-            for orig, imp in zip(original_labs, imported_labs):
+            for orig, imp in zip(original_labs, imported_labs, strict=False):
                 assert orig["test_name"] == imp["test_name"]
                 assert orig["value"] == imp["value"]
                 assert orig["value_numeric"] == imp["value_numeric"]

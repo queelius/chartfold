@@ -24,18 +24,54 @@ def config_db(tmp_path):
     records = UnifiedRecords(
         source="test",
         lab_results=[
-            LabResult(source="test", test_name="CEA", value="5.8", value_numeric=5.8,
-                      unit="ng/mL", result_date="2025-01-01"),
-            LabResult(source="test", test_name="CEA", value="3.2", value_numeric=3.2,
-                      unit="ng/mL", result_date="2025-03-01"),
-            LabResult(source="test", test_name="CEA", value="4.1", value_numeric=4.1,
-                      unit="ng/mL", result_date="2025-06-01"),
-            LabResult(source="test", test_name="Hemoglobin", value="12.5", value_numeric=12.5,
-                      unit="g/dL", result_date="2025-01-01"),
-            LabResult(source="test", test_name="Hemoglobin", value="13.0", value_numeric=13.0,
-                      unit="g/dL", result_date="2025-06-01"),
-            LabResult(source="test", test_name="WBC", value="6.2", value_numeric=6.2,
-                      unit="K/mm3", result_date="2025-01-01"),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                result_date="2025-01-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="3.2",
+                value_numeric=3.2,
+                unit="ng/mL",
+                result_date="2025-03-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="4.1",
+                value_numeric=4.1,
+                unit="ng/mL",
+                result_date="2025-06-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="Hemoglobin",
+                value="12.5",
+                value_numeric=12.5,
+                unit="g/dL",
+                result_date="2025-01-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="Hemoglobin",
+                value="13.0",
+                value_numeric=13.0,
+                unit="g/dL",
+                result_date="2025-06-01",
+            ),
+            LabResult(
+                source="test",
+                test_name="WBC",
+                value="6.2",
+                value_numeric=6.2,
+                unit="K/mm3",
+                result_date="2025-01-01",
+            ),
         ],
     )
     db.load_source(records)
@@ -52,26 +88,60 @@ def alias_db(tmp_path):
     epic_records = UnifiedRecords(
         source="epic_anderson",
         lab_results=[
-            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
-                      value="5.8", value_numeric=5.8, unit="ng/mL",
-                      ref_range="0.0-3.0", result_date="2025-01-15"),
-            LabResult(source="epic_anderson", test_name="CEA", test_loinc="2039-6",
-                      value="3.2", value_numeric=3.2, unit="ng/mL",
-                      ref_range="0.0-3.0", result_date="2025-06-15"),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                test_loinc="2039-6",
+                value="5.8",
+                value_numeric=5.8,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-01-15",
+            ),
+            LabResult(
+                source="epic_anderson",
+                test_name="CEA",
+                test_loinc="2039-6",
+                value="3.2",
+                value_numeric=3.2,
+                unit="ng/mL",
+                ref_range="0.0-3.0",
+                result_date="2025-06-15",
+            ),
         ],
     )
     meditech_records = UnifiedRecords(
         source="meditech_siteman",
         lab_results=[
-            LabResult(source="meditech_siteman", test_name="Carcinoembryonic Antigen",
-                      test_loinc="2039-6", value="4.1", value_numeric=4.1,
-                      unit="ng/mL", ref_range="0.0-5.0", result_date="2024-11-01"),
-            LabResult(source="meditech_siteman", test_name="Carcinoembryonic Antigen",
-                      test_loinc="2039-6", value="2.5", value_numeric=2.5,
-                      unit="ng/mL", ref_range="0.0-5.0", result_date="2025-03-01"),
-            LabResult(source="meditech_siteman", test_name="Hemoglobin",
-                      value="13.5", value_numeric=13.5, unit="g/dL",
-                      ref_range="13.0-17.0", result_date="2025-01-15"),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Carcinoembryonic Antigen",
+                test_loinc="2039-6",
+                value="4.1",
+                value_numeric=4.1,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2024-11-01",
+            ),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Carcinoembryonic Antigen",
+                test_loinc="2039-6",
+                value="2.5",
+                value_numeric=2.5,
+                unit="ng/mL",
+                ref_range="0.0-5.0",
+                result_date="2025-03-01",
+            ),
+            LabResult(
+                source="meditech_siteman",
+                test_name="Hemoglobin",
+                value="13.5",
+                value_numeric=13.5,
+                unit="g/dL",
+                ref_range="13.0-17.0",
+                result_date="2025-01-15",
+            ),
         ],
     )
     db.load_source(epic_records)
@@ -287,17 +357,28 @@ class TestGroupTestNames:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="CEA", value="5.8",
-                          value_numeric=5.8, unit="ng/mL", result_date="2025-01-01"),
-                LabResult(source="test", test_name="Carcinoembryonic Antigen",
-                          value="4.1", value_numeric=4.1, unit="ng/mL",
-                          result_date="2025-02-01"),
+                LabResult(
+                    source="test",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="Carcinoembryonic Antigen",
+                    value="4.1",
+                    value_numeric=4.1,
+                    unit="ng/mL",
+                    result_date="2025-02-01",
+                ),
             ],
         )
         db.load_source(records)
 
         groups = _group_test_names(db, ["CEA"])
-        name, match = groups[0]
+        _name, match = groups[0]
         assert "Carcinoembryonic Antigen" in match
         db.close()
 
@@ -308,17 +389,28 @@ class TestGroupTestNames:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="Carcinoembryonic Antigen",
-                          value="4.1", value_numeric=4.1, unit="ng/mL",
-                          result_date="2025-01-01"),
-                LabResult(source="test", test_name="CEA", value="5.8",
-                          value_numeric=5.8, unit="ng/mL", result_date="2025-02-01"),
+                LabResult(
+                    source="test",
+                    test_name="Carcinoembryonic Antigen",
+                    value="4.1",
+                    value_numeric=4.1,
+                    unit="ng/mL",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    result_date="2025-02-01",
+                ),
             ],
         )
         db.load_source(records)
 
         groups = _group_test_names(db, ["Carcinoembryonic Antigen"])
-        name, match = groups[0]
+        _name, match = groups[0]
         assert "CEA" in match
         db.close()
 
@@ -329,15 +421,33 @@ class TestGroupTestNames:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="Creatinine", test_loinc="IMO0002",
-                          value="0.9", value_numeric=0.9, unit="mg/dL",
-                          result_date="2025-01-01"),
-                LabResult(source="test", test_name="Hemoglobin", test_loinc="IMO0002",
-                          value="13.5", value_numeric=13.5, unit="g/dL",
-                          result_date="2025-01-01"),
-                LabResult(source="test", test_name="Glucose Level", test_loinc="IMO0002",
-                          value="95", value_numeric=95.0, unit="mg/dL",
-                          result_date="2025-01-01"),
+                LabResult(
+                    source="test",
+                    test_name="Creatinine",
+                    test_loinc="IMO0002",
+                    value="0.9",
+                    value_numeric=0.9,
+                    unit="mg/dL",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="Hemoglobin",
+                    test_loinc="IMO0002",
+                    value="13.5",
+                    value_numeric=13.5,
+                    unit="g/dL",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="Glucose Level",
+                    test_loinc="IMO0002",
+                    value="95",
+                    value_numeric=95.0,
+                    unit="mg/dL",
+                    result_date="2025-01-01",
+                ),
             ],
         )
         db.load_source(records)
@@ -373,6 +483,7 @@ class TestGenerateConfig:
         generate_config(config_db, config_path=out)
 
         import tomllib
+
         with open(out, "rb") as f:
             data = tomllib.load(f)
         assert "lab_tests" in data
@@ -407,7 +518,8 @@ class TestGenerateConfig:
         out = str(tmp_path / "format.toml")
         generate_config(config_db, config_path=out)
 
-        content = open(out).read()
+        with open(out) as f:
+            content = f.read()
         assert "[[lab_tests]]" in content
         assert 'name = "CEA"' in content
         assert "match = [" in content
@@ -427,6 +539,7 @@ class TestGenerateConfig:
         generate_config(alias_db, config_path=out)
 
         import tomllib
+
         with open(out, "rb") as f:
             data = tomllib.load(f)
         assert "lab_tests" in data
@@ -440,28 +553,47 @@ class TestGenerateConfig:
         # should merge into one slot, not two
         results = []
         for i in range(19):
-            results.append(LabResult(
-                source="epic", test_name="BUN", value=str(10 + i),
-                value_numeric=float(10 + i), unit="mg/dL",
-                result_date=f"2025-01-{i+1:02d}",
-            ))
+            results.append(
+                LabResult(
+                    source="epic",
+                    test_name="BUN",
+                    value=str(10 + i),
+                    value_numeric=float(10 + i),
+                    unit="mg/dL",
+                    result_date=f"2025-01-{i + 1:02d}",
+                )
+            )
         for i in range(17):
-            results.append(LabResult(
-                source="meditech", test_name="Blood Urea Nitrogen",
-                value=str(10 + i), value_numeric=float(10 + i), unit="mg/dL",
-                result_date=f"2025-02-{i+1:02d}",
-            ))
+            results.append(
+                LabResult(
+                    source="meditech",
+                    test_name="Blood Urea Nitrogen",
+                    value=str(10 + i),
+                    value_numeric=float(10 + i),
+                    unit="mg/dL",
+                    result_date=f"2025-02-{i + 1:02d}",
+                )
+            )
         # Also add a unique test that should not conflict
         for i in range(5):
-            results.append(LabResult(
-                source="epic", test_name="Potassium", value="4.0",
-                value_numeric=4.0, unit="mEq/L",
-                result_date=f"2025-01-{i+1:02d}",
-            ))
-        db.load_source(UnifiedRecords(source="epic",
-                                       lab_results=[r for r in results if r.source == "epic"]))
-        db.load_source(UnifiedRecords(source="meditech",
-                                       lab_results=[r for r in results if r.source == "meditech"]))
+            results.append(
+                LabResult(
+                    source="epic",
+                    test_name="Potassium",
+                    value="4.0",
+                    value_numeric=4.0,
+                    unit="mEq/L",
+                    result_date=f"2025-01-{i + 1:02d}",
+                )
+            )
+        db.load_source(
+            UnifiedRecords(source="epic", lab_results=[r for r in results if r.source == "epic"])
+        )
+        db.load_source(
+            UnifiedRecords(
+                source="meditech", lab_results=[r for r in results if r.source == "meditech"]
+            )
+        )
 
         out = str(tmp_path / "dedup.toml")
         generate_config(db, config_path=out, top_n=5)
@@ -480,20 +612,39 @@ class TestGenerateConfig:
         db.init_schema()
         # Create many high-frequency tests that push CEA out of top-N
         results = []
-        for i, name in enumerate(["Test_A", "Test_B", "Test_C"]):
+        for _i, name in enumerate(["Test_A", "Test_B", "Test_C"]):
             for j in range(50):
-                results.append(LabResult(
-                    source="test", test_name=name, value=str(j),
-                    value_numeric=float(j), unit="U/L",
-                    result_date=f"2025-01-{j % 28 + 1:02d}",
-                ))
+                results.append(
+                    LabResult(
+                        source="test",
+                        test_name=name,
+                        value=str(j),
+                        value_numeric=float(j),
+                        unit="U/L",
+                        result_date=f"2025-01-{j % 28 + 1:02d}",
+                    )
+                )
         # CEA with just 2 results
-        results.append(LabResult(source="test", test_name="CEA", value="5.0",
-                                  value_numeric=5.0, unit="ng/mL",
-                                  result_date="2025-01-01"))
-        results.append(LabResult(source="test", test_name="CEA", value="3.0",
-                                  value_numeric=3.0, unit="ng/mL",
-                                  result_date="2025-06-01"))
+        results.append(
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="5.0",
+                value_numeric=5.0,
+                unit="ng/mL",
+                result_date="2025-01-01",
+            )
+        )
+        results.append(
+            LabResult(
+                source="test",
+                test_name="CEA",
+                value="3.0",
+                value_numeric=3.0,
+                unit="ng/mL",
+                result_date="2025-06-01",
+            )
+        )
         db.load_source(UnifiedRecords(source="test", lab_results=results))
 
         out = str(tmp_path / "fallback_include.toml")
@@ -509,6 +660,7 @@ class TestGenerateConfig:
     def test_default_top_n_is_25(self, config_db, tmp_path):
         """Default top_n is 25 (was 15)."""
         import inspect
+
         sig = inspect.signature(generate_config)
         assert sig.parameters["top_n"].default == 25
 
@@ -583,16 +735,28 @@ class TestKnownAbbreviations:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="Glucose", value="95",
-                          value_numeric=95.0, unit="mg/dL", result_date="2025-01-01"),
-                LabResult(source="test", test_name="Glucose Level", value="100",
-                          value_numeric=100.0, unit="mg/dL", result_date="2025-02-01"),
+                LabResult(
+                    source="test",
+                    test_name="Glucose",
+                    value="95",
+                    value_numeric=95.0,
+                    unit="mg/dL",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="Glucose Level",
+                    value="100",
+                    value_numeric=100.0,
+                    unit="mg/dL",
+                    result_date="2025-02-01",
+                ),
             ],
         )
         db.load_source(records)
 
         groups = _group_test_names(db, ["Glucose"])
-        name, match = groups[0]
+        _name, match = groups[0]
         assert "Glucose Level" in match
         db.close()
 
@@ -603,16 +767,28 @@ class TestKnownAbbreviations:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="ALT", value="25",
-                          value_numeric=25.0, unit="U/L", result_date="2025-01-01"),
-                LabResult(source="test", test_name="SGPT", value="28",
-                          value_numeric=28.0, unit="U/L", result_date="2025-02-01"),
+                LabResult(
+                    source="test",
+                    test_name="ALT",
+                    value="25",
+                    value_numeric=25.0,
+                    unit="U/L",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="SGPT",
+                    value="28",
+                    value_numeric=28.0,
+                    unit="U/L",
+                    result_date="2025-02-01",
+                ),
             ],
         )
         db.load_source(records)
 
         groups = _group_test_names(db, ["ALT"])
-        name, match = groups[0]
+        _name, match = groups[0]
         assert "SGPT" in match
         db.close()
 
@@ -623,15 +799,27 @@ class TestKnownAbbreviations:
         records = UnifiedRecords(
             source="test",
             lab_results=[
-                LabResult(source="test", test_name="PTT", value="28",
-                          value_numeric=28.0, unit="sec", result_date="2025-01-01"),
-                LabResult(source="test", test_name="aPTT", value="30",
-                          value_numeric=30.0, unit="sec", result_date="2025-02-01"),
+                LabResult(
+                    source="test",
+                    test_name="PTT",
+                    value="28",
+                    value_numeric=28.0,
+                    unit="sec",
+                    result_date="2025-01-01",
+                ),
+                LabResult(
+                    source="test",
+                    test_name="aPTT",
+                    value="30",
+                    value_numeric=30.0,
+                    unit="sec",
+                    result_date="2025-02-01",
+                ),
             ],
         )
         db.load_source(records)
 
         groups = _group_test_names(db, ["PTT"])
-        name, match = groups[0]
+        _name, match = groups[0]
         assert "aPTT" in match
         db.close()

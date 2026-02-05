@@ -235,11 +235,13 @@ def _parse_diagnostic_report(dr: dict) -> dict:
         ct = pf.get("contentType", "")
         data_b64 = pf.get("data", "")
         text = decode_presented_form(data_b64, ct)
-        presented.append({
-            "content_type": ct,
-            "data_length": len(data_b64),
-            "decoded_text": text,
-        })
+        presented.append(
+            {
+                "content_type": ct,
+                "data_length": len(data_b64),
+                "decoded_text": text,
+            }
+        )
         if text and not decoded_text:
             decoded_text = text
 

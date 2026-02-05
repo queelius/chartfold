@@ -19,7 +19,7 @@ from chartfold.analysis.lab_trends import (
     get_lab_series,
     get_lab_trend,
 )
-from chartfold.analysis.medications import get_active_medications, reconcile_medications
+from chartfold.analysis.medications import reconcile_medications
 from chartfold.analysis.surgical_timeline import build_surgical_timeline
 from chartfold.analysis.visit_diff import visit_diff
 from chartfold.analysis.visit_prep import generate_visit_prep
@@ -78,7 +78,11 @@ def run_sql(query: str) -> list[dict] | str:
     """
     # Safety: only allow SELECT
     cleaned = query.strip().upper()
-    if not cleaned.startswith("SELECT") and not cleaned.startswith("PRAGMA") and not cleaned.startswith("WITH"):
+    if (
+        not cleaned.startswith("SELECT")
+        and not cleaned.startswith("PRAGMA")
+        and not cleaned.startswith("WITH")
+    ):
         return "Error: Only SELECT/WITH/PRAGMA statements are allowed."
 
     # Block dangerous patterns
@@ -128,8 +132,13 @@ def query_labs(
     """
     db = _get_db()
     try:
-        return get_lab_trend(db, test_name=test_name or None, test_loinc=loinc or None,
-                             start_date=start_date, end_date=end_date)
+        return get_lab_trend(
+            db,
+            test_name=test_name or None,
+            test_loinc=loinc or None,
+            start_date=start_date,
+            end_date=end_date,
+        )
     finally:
         db.close()
 
@@ -155,8 +164,13 @@ def get_lab_series_tool(
     """
     db = _get_db()
     try:
-        return get_lab_series(db, test_name=test_name or None, test_loinc=loinc or None,
-                              start_date=start_date, end_date=end_date)
+        return get_lab_series(
+            db,
+            test_name=test_name or None,
+            test_loinc=loinc or None,
+            start_date=start_date,
+            end_date=end_date,
+        )
     finally:
         db.close()
 
@@ -193,7 +207,8 @@ def get_timeline(
             for row in db.query(
                 f"SELECT encounter_date as date, 'encounter' as type, "
                 f"encounter_type as detail, facility, provider, source "
-                f"FROM encounters{where} ORDER BY encounter_date", tuple(params)
+                f"FROM encounters{where} ORDER BY encounter_date",
+                tuple(params),
             ):
                 events.append(row)
 
@@ -210,7 +225,8 @@ def get_timeline(
             for row in db.query(
                 f"SELECT procedure_date as date, 'procedure' as type, "
                 f"name as detail, facility, provider, source "
-                f"FROM procedures{where} ORDER BY procedure_date", tuple(params)
+                f"FROM procedures{where} ORDER BY procedure_date",
+                tuple(params),
             ):
                 events.append(row)
 
@@ -227,7 +243,8 @@ def get_timeline(
             for row in db.query(
                 f"SELECT study_date as date, 'imaging' as type, "
                 f"study_name as detail, modality as facility, '' as provider, source "
-                f"FROM imaging_reports{where} ORDER BY study_date", tuple(params)
+                f"FROM imaging_reports{where} ORDER BY study_date",
+                tuple(params),
             ):
                 events.append(row)
 
@@ -245,7 +262,8 @@ def get_timeline(
                 f"SELECT result_date as date, 'lab' as type, "
                 f"test_name || ': ' || value || ' ' || COALESCE(unit, '') as detail, "
                 f"'' as facility, '' as provider, source "
-                f"FROM lab_results{where} ORDER BY result_date", tuple(params)
+                f"FROM lab_results{where} ORDER BY result_date",
+                tuple(params),
             ):
                 events.append(row)
 
@@ -263,7 +281,8 @@ def get_timeline(
                 f"SELECT report_date as date, 'pathology' as type, "
                 f"COALESCE(specimen, '') || ': ' || COALESCE(diagnosis, '') as detail, "
                 f"'' as facility, '' as provider, source "
-                f"FROM pathology_reports{where} ORDER BY report_date", tuple(params)
+                f"FROM pathology_reports{where} ORDER BY report_date",
+                tuple(params),
             ):
                 events.append(row)
 
@@ -289,9 +308,7 @@ def get_pathology_report(
     db = _get_db()
     try:
         if report_id:
-            return db.query(
-                "SELECT * FROM pathology_reports WHERE id = ?", (report_id,)
-            )
+            return db.query("SELECT * FROM pathology_reports WHERE id = ?", (report_id,))
         conditions = []
         params = []
         if report_date:
@@ -423,7 +440,8 @@ def get_surgical_timeline(
     db = _get_db()
     try:
         return build_surgical_timeline(
-            db, pre_op_imaging_days=pre_op_imaging_days,
+            db,
+            pre_op_imaging_days=pre_op_imaging_days,
             post_op_imaging_days=post_op_imaging_days,
         )
     finally:
