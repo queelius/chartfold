@@ -813,6 +813,84 @@ class TestAssetLookup:
         assert lookup["all"] == []
 
 
+class TestBidirectionalLinking:
+    def test_sources_page_links_to_encounter_and_vice_versa(self, loaded_db, tmp_path):
+        """Sources page links to encounter; encounter page links to source doc."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "visit.pdf"
+        f1.write_text("pdf")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "visit.pdf", 5, "Visit", "2025-01-15"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        # Sources page should back-link to encounter
+        sources_content = (hugo_dir / "content" / "sources.md").read_text()
+        assert "/encounters/" in sources_content
+
+        # Encounter detail page should link to source doc
+        enc_pages = list((hugo_dir / "content" / "encounters").glob("[0-9]*.md"))
+        assert len(enc_pages) >= 1
+        enc_content = enc_pages[0].read_text()
+        assert "/sources/" in enc_content
+
+    def test_without_linked_sources_no_source_doc_sections(self, loaded_db, tmp_path):
+        """Without --linked-sources, detail pages have no Source Documents section."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "visit.pdf"
+        f1.write_text("pdf")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "visit.pdf", 5, "Visit", "2025-01-15"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=False)
+
+        enc_pages = list((hugo_dir / "content" / "encounters").glob("[0-9]*.md"))
+        for p in enc_pages:
+            assert "Source Documents" not in p.read_text()
+
+    def test_direct_ref_match_overrides_date_match(self, loaded_db, tmp_path):
+        """Asset with ref_table/ref_id shows on the right detail page, not just any same-date page."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "specific_lab.pdf"
+        f1.write_text("pdf")
+
+        # Get the encounter ID from the DB
+        enc_rows = loaded_db.query("SELECT id FROM encounters LIMIT 1")
+        enc_id = enc_rows[0]["id"] if enc_rows else 1
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date, ref_table, ref_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "specific_lab.pdf", 5,
+             "Specific Lab Report", "2025-01-15", "encounters", enc_id),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        enc_page = hugo_dir / "content" / "encounters" / f"{enc_id}.md"
+        assert enc_page.exists()
+        content = enc_page.read_text()
+        assert "Specific Lab Report" in content or "specific_lab.pdf" in content
+
+
 def _make_lab(name, value, date):
     """Helper to create a LabResult for testing."""
     from chartfold.models import LabResult
