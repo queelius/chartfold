@@ -29,9 +29,7 @@ from chartfold.sources.base import EPIC_CONFIG, SourceConfig, discover_files
 import contextlib
 
 
-def process_epic_documents(
-    input_dir: str, config: SourceConfig | None = None
-) -> dict[str, Any]:
+def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -> dict[str, Any]:
     """Parse all Epic CDA documents and return structured data."""
     config = config or EPIC_CONFIG
 

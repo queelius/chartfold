@@ -91,3 +91,17 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
+
+[tool.coverage.run]
+source = ["src/chartfold"]
+branch = true
+omit = ["src/chartfold/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+fail_under = 69
+show_missing = true

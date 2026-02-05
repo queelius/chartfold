@@ -33,9 +33,7 @@ ATHENA_CONFIG = SourceConfig(
 )
 
 
-def process_athena_export(
-    input_dir: str, config: SourceConfig | None = None
-) -> dict[str, Any]:
+def process_athena_export(input_dir: str, config: SourceConfig | None = None) -> dict[str, Any]:
     """Parse athenahealth CDA export and return structured data.
 
     Args:

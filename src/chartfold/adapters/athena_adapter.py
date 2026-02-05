@@ -240,28 +240,16 @@ def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedReco
         records.patient = _convert_patient(patient, source)
 
     # Convert all record types using helper functions
-    records.documents = [
-        _convert_document(d, source) for d in data.get("documents", [])
-    ]
-    records.encounters = [
-        _convert_encounter(e, source) for e in data.get("encounters", [])
-    ]
-    records.lab_results = [
-        _convert_lab_result(lab, source) for lab in data.get("lab_results", [])
-    ]
+    records.documents = [_convert_document(d, source) for d in data.get("documents", [])]
+    records.encounters = [_convert_encounter(e, source) for e in data.get("encounters", [])]
+    records.lab_results = [_convert_lab_result(lab, source) for lab in data.get("lab_results", [])]
     records.vitals = [_convert_vital(v, source) for v in data.get("vitals", [])]
-    records.medications = [
-        _convert_medication(m, source) for m in data.get("medications", [])
-    ]
-    records.conditions = [
-        _convert_condition(c, source) for c in data.get("conditions", [])
-    ]
+    records.medications = [_convert_medication(m, source) for m in data.get("medications", [])]
+    records.conditions = [_convert_condition(c, source) for c in data.get("conditions", [])]
     records.immunizations = [
         _convert_immunization(i, source) for i in data.get("immunizations", [])
     ]
-    records.allergies = [
-        _convert_allergy(a, source) for a in data.get("allergies", [])
-    ]
+    records.allergies = [_convert_allergy(a, source) for a in data.get("allergies", [])]
     records.social_history = [
         _convert_social_history(s, source) for s in data.get("social_history", [])
     ]
@@ -274,9 +262,7 @@ def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedReco
     records.clinical_notes = [
         _convert_clinical_note(n, source) for n in data.get("clinical_notes", [])
     ]
-    records.procedures = [
-        _convert_procedure(p, source) for p in data.get("procedures", [])
-    ]
+    records.procedures = [_convert_procedure(p, source) for p in data.get("procedures", [])]
 
     # Source assets (non-parsed files)
     input_dir = data.get("input_dir", "")

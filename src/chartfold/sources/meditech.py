@@ -30,9 +30,7 @@ from chartfold.sources.base import MEDITECH_CONFIG, SourceConfig, discover_files
 import contextlib
 
 
-def process_meditech_export(
-    input_dir: str, config: SourceConfig | None = None
-) -> dict[str, Any]:
+def process_meditech_export(input_dir: str, config: SourceConfig | None = None) -> dict[str, Any]:
     """Parse a full MEDITECH EHI export (CCDA + FHIR + NDJSON TOC).
 
     Args:
