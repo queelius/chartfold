@@ -192,8 +192,11 @@ def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
 
         # Source documents
         if linked_sources:
-            _generate_linked_sources(content, out / "static", db)
+            asset_lookup = _build_asset_lookup(db)
+            asset_url_map = _generate_linked_sources(content, out / "static", db)
         else:
+            asset_lookup = None
+            asset_url_map = {}
             _write_page(content / "sources.md", "Source Documents",
                         "*Source documents not included. "
                         "Run with `--linked-sources` to copy EHR assets into the site.*")
@@ -969,8 +972,12 @@ def _generate_imaging(content: Path, data: Path, db: ChartfoldDB) -> None:
     _write_page(img_dir / "_index.md", "Imaging Reports", table)
 
 
-def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> None:
-    """Copy source assets into static/sources/ and generate a sources index page."""
+def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> dict[int, str]:
+    """Copy source assets into static/sources/ and generate grouped sources index.
+
+    Returns:
+        asset_url_map: {asset_id: relative_url} for use by detail page generators.
+    """
     assets = db.query(
         "SELECT id, source, asset_type, file_path, file_name, "
         "file_size_kb, title, encounter_date, ref_table, ref_id "
@@ -979,13 +986,13 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> No
     if not assets:
         _write_page(content / "sources.md", "Source Documents",
                      "*No source assets available.*")
-        return
+        return {}
 
     sources_dir = static / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy files, using {source}/{id}_{file_name} to avoid collisions
-    asset_map: dict[int, str] = {}  # id -> relative URL
+    # Copy files
+    asset_url_map: dict[int, str] = {}
     for a in assets:
         src_path = Path(a["file_path"])
         if not src_path.exists():
@@ -994,27 +1001,95 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> No
         dest_subdir = sources_dir / a["source"]
         dest_subdir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dest_subdir / dest_name)
-        asset_map[a["id"]] = f"/sources/{a['source']}/{dest_name}"
+        asset_url_map[a["id"]] = f"/sources/{a['source']}/{dest_name}"
 
-    # Generate sources index page
-    rows = []
+    # Query related clinical records for back-links
+    encounters_by_date = {}
+    for e in db.query("SELECT id, encounter_date, encounter_type, facility FROM encounters"):
+        d = e.get("encounter_date", "")
+        if d:
+            encounters_by_date.setdefault(d, []).append(e)
+
+    procedures_by_date = {}
+    for p in db.query("SELECT id, procedure_date, name FROM procedures"):
+        d = p.get("procedure_date", "")
+        if d:
+            procedures_by_date.setdefault(d, []).append(p)
+
+    notes_by_date = {}
+    for n in db.query("SELECT id, note_date, note_type FROM clinical_notes"):
+        d = n.get("note_date", "")
+        if d:
+            notes_by_date.setdefault(d, []).append(n)
+
+    # Group assets by date
+    dated: dict[str, list] = {}
+    undated: list = []
     for a in assets:
-        if a["id"] not in asset_map:
+        if a["id"] not in asset_url_map:
             continue
-        url = asset_map[a["id"]]
-        display = a.get("title") or a["file_name"]
-        rows.append([
-            (display, url),
-            a["asset_type"],
-            a.get("encounter_date", "") or "",
-            a["source"],
-        ])
+        if a.get("encounter_date"):
+            dated.setdefault(a["encounter_date"], []).append(a)
+        else:
+            undated.append(a)
 
-    table = _make_linked_table(
-        ["Document", "Type", "Date", "Source"],
-        rows, link_col=0,
-    )
-    _write_page(content / "sources.md", "Source Documents", table)
+    # Build page content
+    md_parts = []
+
+    # Dated groups (newest first)
+    for date in sorted(dated.keys(), reverse=True):
+        group = dated[date]
+        md_parts.append(f"## {date}")
+
+        # Back-links to clinical records on this date
+        backlinks = []
+        for e in encounters_by_date.get(date, []):
+            etype = e.get("encounter_type", "") or "Encounter"
+            backlinks.append(f"[{etype}](/encounters/{e['id']}/)")
+        for p in procedures_by_date.get(date, []):
+            backlinks.append(f"[{p['name']}](/surgical/{p['id']}/)")
+        for n in notes_by_date.get(date, []):
+            ntype = n.get("note_type", "") or "Note"
+            backlinks.append(f"[{ntype}](/notes/{n['id']}/)")
+
+        if backlinks:
+            md_parts.append("**Related:** " + " &bull; ".join(backlinks))
+            md_parts.append("")
+
+        rows = []
+        for a in group:
+            url = asset_url_map[a["id"]]
+            display = a.get("title") or a["file_name"]
+            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+            rows.append([
+                (display, url),
+                a["asset_type"],
+                size_str,
+                a["source"],
+            ])
+        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
+        md_parts.append(table)
+        md_parts.append("")
+
+    # Undated section
+    if undated:
+        md_parts.append("## Undated")
+        rows = []
+        for a in undated:
+            url = asset_url_map[a["id"]]
+            display = a.get("title") or a["file_name"]
+            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+            rows.append([
+                (display, url),
+                a["asset_type"],
+                size_str,
+                a["source"],
+            ])
+        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
+        md_parts.append(table)
+
+    _write_page(content / "sources.md", "Source Documents", "\n".join(md_parts))
+    return asset_url_map
 
 
 _SECTION_MARKERS = re.compile(

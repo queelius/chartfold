@@ -599,6 +599,80 @@ class TestLinkedSources:
         assert (hugo_dir / "static" / "sources" / "epic").is_dir()
         assert (hugo_dir / "static" / "sources" / "meditech").is_dir()
 
+    def test_linked_sources_grouped_by_date(self, loaded_db, tmp_path):
+        """Sources page groups assets under encounter date headings."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "jan_visit.pdf"
+        f1.write_text("content1")
+        f2 = asset_dir / "feb_visit.pdf"
+        f2.write_text("content2")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "jan_visit.pdf", 5, "Jan Visit", "2025-01-15"),
+        )
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f2), "feb_visit.pdf", 8, "Feb Visit", "2025-02-20"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        content = (hugo_dir / "content" / "sources.md").read_text()
+        # Should have date headings
+        assert "2025-01-15" in content
+        assert "2025-02-20" in content
+        # Dates should appear as headings (## prefix)
+        assert "## 2025-02-20" in content
+        assert "## 2025-01-15" in content
+
+    def test_linked_sources_undated_section(self, loaded_db, tmp_path):
+        """Assets without encounter_date go in 'Undated' section."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "style.xsl"
+        f1.write_text("xsl content")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title) VALUES (?, ?, ?, ?, ?, ?)",
+            ("test_source", "xsl", str(f1), "style.xsl", 3, "Stylesheet"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        content = (hugo_dir / "content" / "sources.md").read_text()
+        assert "Undated" in content
+        assert "style.xsl" in content or "Stylesheet" in content
+
+    def test_linked_sources_backlinks_to_encounters(self, loaded_db, tmp_path):
+        """Assets on dates with encounters show back-links to encounter pages."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "visit.pdf"
+        f1.write_text("content")
+
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "visit.pdf", 5, "Visit Doc", "2025-01-15"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        content = (hugo_dir / "content" / "sources.md").read_text()
+        # loaded_db has an encounter on 2025-01-15, so should have a back-link
+        assert "/encounters/" in content
+
 
 class TestRenderSourceDocs:
     def test_render_with_ref_match(self):
