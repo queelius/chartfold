@@ -10,6 +10,7 @@ import html
 import json
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 from chartfold.analysis.lab_trends import (
     get_abnormal_labs,
@@ -55,6 +56,7 @@ CHARTJS_DATE_ADAPTER = """
 """
 
 # Sortable table JavaScript - vanilla JS for clicking column headers to sort
+# Also includes global search functionality to filter sections
 SORTABLE_JS = """
 function sortTable(table, col, reverse) {
   const tbody = table.tBodies[0];
@@ -71,7 +73,48 @@ function sortTable(table, col, reverse) {
   rows.forEach(row => tbody.appendChild(row));
 }
 
+function initSearch() {
+  const searchInput = document.getElementById('global-search');
+  if (!searchInput) return;
+  const clearBtn = document.getElementById('search-clear');
+  const resultCount = document.getElementById('search-results');
+
+  function doSearch() {
+    const query = searchInput.value.toLowerCase().trim();
+    const sections = document.querySelectorAll('.section');
+    let visibleCount = 0;
+    let totalCount = sections.length;
+
+    sections.forEach(section => {
+      if (!query) {
+        section.style.display = '';
+        visibleCount++;
+      } else {
+        const text = section.textContent.toLowerCase();
+        const match = text.includes(query);
+        section.style.display = match ? '' : 'none';
+        if (match) visibleCount++;
+      }
+    });
+
+    if (clearBtn) clearBtn.style.display = query ? 'inline' : 'none';
+    if (resultCount) {
+      resultCount.textContent = query ? visibleCount + ' of ' + totalCount + ' sections' : '';
+    }
+  }
+
+  searchInput.addEventListener('input', doSearch);
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      doSearch();
+      searchInput.focus();
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initSearch();
   document.querySelectorAll('table.sortable').forEach(table => {
     const headers = table.querySelectorAll('th');
     headers.forEach((th, i) => {
@@ -169,10 +212,42 @@ details[open] summary { margin-bottom: 1rem; }
   border-radius: 8px;
   margin: 0.5rem 0;
 }
+.search-container {
+  position: sticky;
+  top: 0;
+  background: #f5f5f7;
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#global-search {
+  flex: 1;
+  max-width: 400px;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+#global-search:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+#search-clear {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  background: #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#search-clear:hover { background: #cbd5e1; }
+#search-results { color: #718096; font-size: 0.85rem; }
 @media print {
   body { background: #fff; padding: 1rem; }
   .chart-container, details { break-inside: avoid; }
   th { background: #2d3748 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .search-container { display: none; }
 }
 """
 
@@ -321,14 +396,36 @@ def _build_html_document(
     subtitle: str,
     sections: list[str],
     include_charts: bool = True,
+    include_search: bool = True,
 ) -> str:
-    """Build a complete HTML document with embedded CSS and JS."""
+    """Build a complete HTML document with embedded CSS and JS.
+
+    Args:
+        title: Document title for header and browser tab.
+        subtitle: Subtitle text (usually generation date and sources).
+        sections: List of HTML section strings to include.
+        include_charts: Whether to include Chart.js and sortable table JS.
+        include_search: Whether to include global search functionality.
+
+    Returns:
+        Complete HTML document as a string.
+    """
     scripts = ""
     if include_charts:
         scripts = f"""
 <script>{CHARTJS_MIN}</script>
 <script>{CHARTJS_DATE_ADAPTER}</script>
 <script>{SORTABLE_JS}</script>
+"""
+
+    search_html = ""
+    if include_search:
+        search_html = """
+    <div class="search-container">
+        <input type="text" id="global-search" placeholder="Search all sections..." aria-label="Search" />
+        <button id="search-clear" style="display:none">Clear</button>
+        <span id="search-results"></span>
+    </div>
 """
 
     return f"""<!DOCTYPE html>
@@ -342,6 +439,7 @@ def _build_html_document(
 <body>
     <h1>{_escape(title)}</h1>
     <p class="meta">{_escape(subtitle)}</p>
+{search_html}
     {"".join(sections)}
     {scripts}
 </body>
@@ -349,14 +447,14 @@ def _build_html_document(
 """
 
 
-def _escape(text: str) -> str:
-    """HTML-escape text."""
+def _escape(text: str | None) -> str:
+    """HTML-escape text, returning empty string for None."""
     return html.escape(str(text)) if text else ""
 
 
 def _html_table(
     headers: list[str],
-    rows: list[list],
+    rows: list[list[str | int | float | None]],
     sortable: bool = True,
     highlight_col: int | None = None,
 ) -> str:
@@ -393,14 +491,27 @@ def _html_table(
 
 
 def _html_details(summary: str, content: str) -> str:
-    """Generate a collapsible details element."""
+    """Generate a collapsible details/summary element.
+
+    Args:
+        summary: The clickable summary text.
+        content: HTML content to show when expanded.
+
+    Returns:
+        HTML string with details element.
+    """
     return f"""<details>
 <summary>{_escape(summary)}</summary>
 {content}
 </details>"""
 
 
-def _build_chart_js(chart_id: str, datasets: list[dict], unit: str, title: str) -> str:
+def _build_chart_js(
+    chart_id: str,
+    datasets: list[dict[str, Any]],
+    unit: str,
+    title: str,
+) -> str:
     """Build Chart.js initialization code for a lab trend chart.
 
     Args:

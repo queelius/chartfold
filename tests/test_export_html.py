@@ -378,6 +378,55 @@ class TestExportHTML:
         assert 'class="abnormal"' in content
 
 
+class TestSearchFunctionality:
+    """Test global search functionality in HTML export."""
+
+    def test_includes_search_input(self, export_db, tmp_path):
+        """Export should include search input element."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert 'id="global-search"' in content
+        assert 'placeholder="Search all sections..."' in content
+
+    def test_includes_search_clear_button(self, export_db, tmp_path):
+        """Export should include search clear button."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert 'id="search-clear"' in content
+
+    def test_includes_search_results_span(self, export_db, tmp_path):
+        """Export should include search results counter."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert 'id="search-results"' in content
+
+    def test_includes_search_css(self, export_db, tmp_path):
+        """Export should include search-related CSS."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert ".search-container" in content
+        assert "#global-search" in content
+
+    def test_includes_search_js(self, export_db, tmp_path):
+        """Export should include initSearch JavaScript function."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert "initSearch" in content
+        assert "doSearch" in content
+
+    def test_search_hidden_in_print_css(self, export_db, tmp_path):
+        """Search container should be hidden in print media."""
+        output = str(tmp_path / "export.html")
+        export_html(export_db, output_path=output)
+        content = (tmp_path / "export.html").read_text()
+        assert ".search-container { display: none; }" in content
+
+
 class TestExportHTMLFull:
     """Test export_html_full function."""
 
