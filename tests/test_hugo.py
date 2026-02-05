@@ -652,6 +652,32 @@ class TestLinkedSources:
         assert "Undated" in content
         assert "style.xsl" in content or "Stylesheet" in content
 
+    def test_encounter_detail_shows_source_docs(self, loaded_db, tmp_path):
+        """Encounter detail page includes source documents when linked."""
+        asset_dir = tmp_path / "assets"
+        asset_dir.mkdir()
+        f1 = asset_dir / "visit_summary.pdf"
+        f1.write_text("pdf content")
+
+        # Insert asset linked by encounter_date matching the fixture encounter
+        loaded_db.conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(f1), "visit_summary.pdf", 15,
+             "Visit Summary PDF", "2025-01-15"),
+        )
+        loaded_db.conn.commit()
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+        # Find the encounter detail page
+        enc_pages = list((hugo_dir / "content" / "encounters").glob("[0-9]*.md"))
+        assert len(enc_pages) >= 1
+        content = enc_pages[0].read_text()
+        assert "Source Documents" in content
+        assert "visit_summary.pdf" in content or "Visit Summary PDF" in content
+
     def test_linked_sources_backlinks_to_encounters(self, loaded_db, tmp_path):
         """Assets on dates with encounters show back-links to encounter pages."""
         asset_dir = tmp_path / "assets"

@@ -169,28 +169,7 @@ def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
         # Labs
         _generate_labs(content, data, db, config)
 
-        # Encounters
-        _generate_encounters(content, data, db)
-
-        # Medications
-        _generate_medications(content, data, db)
-
-        # Conditions
-        _generate_conditions(content, data, db)
-
-        # Clinical Notes
-        _generate_clinical_notes(content, data, db)
-
-        # Pathology
-        _generate_pathology(content, data, db)
-
-        # Surgical Timeline
-        _generate_surgical(content, data, db)
-
-        # Imaging
-        _generate_imaging(content, data, db)
-
-        # Source documents
+        # Build asset data for linked sources (must happen before detail pages)
         if linked_sources:
             asset_lookup = _build_asset_lookup(db)
             asset_url_map = _generate_linked_sources(content, out / "static", db)
@@ -200,6 +179,32 @@ def generate_site(db_path: str, hugo_dir: str, config_path: str = "",
             _write_page(content / "sources.md", "Source Documents",
                         "*Source documents not included. "
                         "Run with `--linked-sources` to copy EHR assets into the site.*")
+
+        # Encounters
+        _generate_encounters(content, data, db,
+                             asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+
+        # Medications
+        _generate_medications(content, data, db)
+
+        # Conditions
+        _generate_conditions(content, data, db)
+
+        # Clinical Notes
+        _generate_clinical_notes(content, data, db,
+                                 asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+
+        # Pathology
+        _generate_pathology(content, data, db,
+                            asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+
+        # Surgical Timeline
+        _generate_surgical(content, data, db,
+                           asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+
+        # Imaging
+        _generate_imaging(content, data, db,
+                          asset_lookup=asset_lookup, asset_url_map=asset_url_map)
 
         print(f"\nHugo site generated at {hugo_dir}")
         print(f"Run: cd {hugo_dir} && hugo serve")
@@ -491,7 +496,9 @@ new Chart(document.getElementById('{chart_id}-chart'), {{
                 f"{trend_links}## Latest Results\n\n{table}")
 
 
-def _generate_encounters(content: Path, data: Path, db: ChartfoldDB) -> None:
+def _generate_encounters(content: Path, data: Path, db: ChartfoldDB,
+                          asset_lookup: dict | None = None,
+                          asset_url_map: dict[int, str] | None = None) -> None:
     encounters = db.query(
         "SELECT id, encounter_date, encounter_type, facility, provider, "
         "reason, discharge_disposition, source "
@@ -586,6 +593,15 @@ def _generate_encounters(content: Path, data: Path, db: ChartfoldDB) -> None:
             if related_sections:
                 body += "\n\n---\n\n## Related Records\n\n" + "\n\n".join(related_sections)
 
+        if asset_lookup and asset_url_map:
+            source_docs = _render_source_docs_section(
+                asset_lookup, asset_url_map,
+                ref_table="encounters", ref_id=eid,
+                date=date, source=e.get("source", ""),
+            )
+            if source_docs:
+                body += "\n\n---\n\n" + source_docs
+
         _write_page(enc_dir / f"{eid}.md", title, body)
 
     # Index page with linked table
@@ -639,7 +655,9 @@ def _generate_conditions(content: Path, data: Path, db: ChartfoldDB) -> None:
     _write_page(content / "conditions.md", "Conditions", table)
 
 
-def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB) -> None:
+def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB,
+                              asset_lookup: dict | None = None,
+                              asset_url_map: dict[int, str] | None = None) -> None:
     """Generate clinical notes index and detail pages."""
     notes = db.query(
         "SELECT id, note_type, author, note_date, content, content_format, source "
@@ -677,6 +695,16 @@ def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB) -> None
                             f"{note_content}\n\n</div>")
 
         body = meta + body_section
+
+        if asset_lookup and asset_url_map:
+            source_docs = _render_source_docs_section(
+                asset_lookup, asset_url_map,
+                ref_table="clinical_notes", ref_id=nid,
+                date=date, source=n.get("source", ""),
+            )
+            if source_docs:
+                body += "\n\n---\n\n" + source_docs
+
         _write_page(notes_dir / f"{nid}.md", title, body)
 
     # Index page with linked table
@@ -699,7 +727,9 @@ def _generate_clinical_notes(content: Path, data: Path, db: ChartfoldDB) -> None
     _write_page(notes_dir / "_index.md", "Clinical Notes", table)
 
 
-def _generate_pathology(content: Path, data: Path, db: ChartfoldDB) -> None:
+def _generate_pathology(content: Path, data: Path, db: ChartfoldDB,
+                         asset_lookup: dict | None = None,
+                         asset_url_map: dict[int, str] | None = None) -> None:
     reports = db.query(
         "SELECT p.id, p.report_date, p.specimen, p.diagnosis, p.staging, "
         "p.margins, p.lymph_nodes, p.gross_description, "
@@ -758,6 +788,16 @@ def _generate_pathology(content: Path, data: Path, db: ChartfoldDB) -> None:
                             f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>')
 
         body = f"{meta}\n\n" + "\n\n".join(sections) if sections else meta
+
+        if asset_lookup and asset_url_map:
+            source_docs = _render_source_docs_section(
+                asset_lookup, asset_url_map,
+                ref_table="pathology_reports", ref_id=rid,
+                date=date, source=r.get("source", ""),
+            )
+            if source_docs:
+                body += "\n\n---\n\n" + source_docs
+
         _write_page(path_dir / f"{rid}.md", title, body)
 
     # Index page with linked table
@@ -781,7 +821,9 @@ def _generate_pathology(content: Path, data: Path, db: ChartfoldDB) -> None:
     _write_page(path_dir / "_index.md", "Pathology Reports", table)
 
 
-def _generate_surgical(content: Path, data: Path, db: ChartfoldDB) -> None:
+def _generate_surgical(content: Path, data: Path, db: ChartfoldDB,
+                        asset_lookup: dict | None = None,
+                        asset_url_map: dict[int, str] | None = None) -> None:
     timeline = build_surgical_timeline(db)
     _write_json(data / "surgical_timeline.json", timeline)
 
@@ -880,6 +922,16 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB) -> None:
             sections.append(f"### Related Medications\n\n{med_list}")
 
         body = meta + ("\n\n" + "\n\n".join(sections) if sections else "")
+
+        if asset_lookup and asset_url_map:
+            source_docs = _render_source_docs_section(
+                asset_lookup, asset_url_map,
+                ref_table="procedures", ref_id=proc_id,
+                date=proc_date, source=proc.get("source", ""),
+            )
+            if source_docs:
+                body += "\n\n---\n\n" + source_docs
+
         _write_page(surg_dir / f"{proc_id}.md", title, body)
 
     # Index page with linked table
@@ -904,7 +956,9 @@ def _generate_surgical(content: Path, data: Path, db: ChartfoldDB) -> None:
     _write_page(surg_dir / "_index.md", "Surgical Timeline", table)
 
 
-def _generate_imaging(content: Path, data: Path, db: ChartfoldDB) -> None:
+def _generate_imaging(content: Path, data: Path, db: ChartfoldDB,
+                       asset_lookup: dict | None = None,
+                       asset_url_map: dict[int, str] | None = None) -> None:
     reports = db.query(
         "SELECT id, study_name, modality, study_date, ordering_provider, "
         "findings, impression, full_text, source "
@@ -951,6 +1005,16 @@ def _generate_imaging(content: Path, data: Path, db: ChartfoldDB) -> None:
                             f'<div class="report-body">\n\n{full}\n\n</div>\n\n</details>')
 
         body = f"{meta}\n\n" + "\n\n".join(sections) if sections else meta
+
+        if asset_lookup and asset_url_map:
+            source_docs = _render_source_docs_section(
+                asset_lookup, asset_url_map,
+                ref_table="imaging_reports", ref_id=rid,
+                date=date, source=r.get("source", ""),
+            )
+            if source_docs:
+                body += "\n\n---\n\n" + source_docs
+
         _write_page(img_dir / f"{rid}.md", title, body)
 
     # Index page with linked table
