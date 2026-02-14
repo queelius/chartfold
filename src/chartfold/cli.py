@@ -121,6 +121,11 @@ def main():
         "--full", action="store_true", help="Export all data (full database dump)"
     )
     html_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
+    html_parser.add_argument(
+        "--analysis-dir",
+        default="",
+        help="Directory containing analysis markdown files",
+    )
 
     # export hugo (moved from generate-site)
     hugo_parser = export_sub.add_parser("hugo", help="Generate Hugo static site")
@@ -444,6 +449,7 @@ def _handle_export(args):
                     db,
                     output_path=args.output,
                     config_path=getattr(args, "config", ""),
+                    analysis_dir=getattr(args, "analysis_dir", ""),
                 )
             else:
                 path = export_html(
@@ -451,6 +457,7 @@ def _handle_export(args):
                     output_path=args.output,
                     lookback_months=args.lookback,
                     config_path=getattr(args, "config", ""),
+                    analysis_dir=getattr(args, "analysis_dir", ""),
                 )
 
         elif args.export_format == "hugo":

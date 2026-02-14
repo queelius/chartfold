@@ -267,6 +267,7 @@ def export_html(
     output_path: str = "chartfold_export.html",
     lookback_months: int = 6,
     config_path: str = "",
+    analysis_dir: str = "",
 ) -> str:
     """Export key clinical data as self-contained HTML with charts.
 
@@ -312,6 +313,10 @@ def export_html(
     # Source documents (images, PDFs from EHR exports)
     sections.append(_render_source_documents_section(db))
 
+    # Analysis
+    if analysis_dir:
+        sections.append(_render_analysis_section(Path(analysis_dir)))
+
     # Build full HTML document
     html_content = _build_html_document(
         title="Clinical Records Summary",
@@ -328,6 +333,7 @@ def export_html_full(
     db: ChartfoldDB,
     output_path: str = "chartfold_export.html",
     config_path: str = "",
+    analysis_dir: str = "",
 ) -> str:
     """Export all clinical data as self-contained HTML with charts.
 
@@ -384,6 +390,10 @@ def export_html_full(
 
     # Source documents (images, PDFs from EHR exports)
     sections.append(_render_source_documents_section(db))
+
+    # Analysis
+    if analysis_dir:
+        sections.append(_render_analysis_section(Path(analysis_dir)))
 
     # Build full HTML document
     html_content = _build_html_document(
@@ -456,6 +466,73 @@ def _build_html_document(
 def _escape(text: str | None) -> str:
     """HTML-escape text, returning empty string for None."""
     return html.escape(str(text)) if text else ""
+
+
+def _basic_markdown_to_html(text: str) -> str:
+    """Convert basic markdown to HTML (headings, paragraphs, lists)."""
+    lines = text.strip().split("\n")
+    html_lines: list[str] = []
+    in_list = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h4>{_escape(stripped[4:])}</h4>")
+        elif stripped.startswith("## "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h3>{_escape(stripped[3:])}</h3>")
+        elif stripped.startswith("# "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h3>{_escape(stripped[2:])}</h3>")
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            html_lines.append(f"<li>{_escape(stripped[2:])}</li>")
+        elif not stripped:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+        else:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<p>{_escape(stripped)}</p>")
+
+    if in_list:
+        html_lines.append("</ul>")
+
+    return "\n".join(html_lines)
+
+
+def _render_analysis_section(analysis_dir: Path | None) -> str:
+    """Render user-supplied markdown analysis files as HTML sections."""
+    import re
+
+    if not analysis_dir or not analysis_dir.exists():
+        return ""
+
+    md_files = sorted(analysis_dir.glob("*.md"))
+    if not md_files:
+        return ""
+
+    parts = ['<div class="section"><h2>Analysis</h2>']
+    for f in md_files:
+        text = f.read_text()
+        if text.startswith("---"):
+            text = re.sub(r"^---.*?---\s*", "", text, flags=re.DOTALL)
+        html_content = _basic_markdown_to_html(text)
+        parts.append(f'<div class="card">{html_content}</div>')
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def _html_table(

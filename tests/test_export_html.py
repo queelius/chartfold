@@ -796,3 +796,101 @@ class TestLinkedAssetsOnCards:
         """_render_linked_assets_html returns empty string for no assets."""
         from chartfold.export_html import _render_linked_assets_html
         assert _render_linked_assets_html([]) == ""
+
+
+class TestAnalysisSection:
+    """Tests for analysis section rendering in HTML export."""
+
+    def test_analysis_renders_markdown_content(self, tmp_path):
+        """Analysis markdown files should render as HTML sections."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "summary.md").write_text("# Treatment Summary\n\nChemo completed.")
+
+        from chartfold.export_html import _render_analysis_section
+        html = _render_analysis_section(analysis_dir)
+        assert "Treatment Summary" in html
+        assert "Chemo completed" in html
+
+    def test_analysis_no_dir_returns_empty(self):
+        """No analysis dir should return empty string."""
+        from chartfold.export_html import _render_analysis_section
+        assert _render_analysis_section(None) == ""
+
+    def test_analysis_empty_dir_returns_empty(self, tmp_path):
+        """Empty dir should return empty string."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        from chartfold.export_html import _render_analysis_section
+        assert _render_analysis_section(analysis_dir) == ""
+
+    def test_analysis_strips_frontmatter(self, tmp_path):
+        """Files with YAML frontmatter should have it stripped."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "report.md").write_text(
+            '---\ntitle: "Report"\ntags: [test]\n---\n\nReport content here.'
+        )
+        from chartfold.export_html import _render_analysis_section
+        html = _render_analysis_section(analysis_dir)
+        assert "Report content here" in html
+        assert "tags:" not in html
+
+    def test_analysis_multiple_files(self, tmp_path):
+        """Multiple files should each get their own card."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "file1.md").write_text("# First\n\nContent one.")
+        (analysis_dir / "file2.md").write_text("# Second\n\nContent two.")
+        from chartfold.export_html import _render_analysis_section
+        html = _render_analysis_section(analysis_dir)
+        assert "First" in html
+        assert "Second" in html
+        assert "Content one" in html
+        assert "Content two" in html
+
+    def test_analysis_ignores_non_md_files(self, tmp_path):
+        """Non-markdown files should be ignored."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "notes.txt").write_text("Text file")
+        (analysis_dir / "data.csv").write_text("a,b,c")
+        from chartfold.export_html import _render_analysis_section
+        assert _render_analysis_section(analysis_dir) == ""
+
+
+class TestBasicMarkdownToHtml:
+    """Tests for basic markdown to HTML conversion."""
+
+    def test_headings(self):
+        from chartfold.export_html import _basic_markdown_to_html
+        result = _basic_markdown_to_html("# Heading One\n## Heading Two\n### Heading Three")
+        assert "<h3>" in result
+        assert "Heading One" in result
+        assert "Heading Two" in result
+        assert "<h4>" in result
+        assert "Heading Three" in result
+
+    def test_paragraphs(self):
+        from chartfold.export_html import _basic_markdown_to_html
+        result = _basic_markdown_to_html("Some text here.")
+        assert "<p>Some text here.</p>" in result
+
+    def test_lists(self):
+        from chartfold.export_html import _basic_markdown_to_html
+        result = _basic_markdown_to_html("- Item one\n- Item two")
+        assert "<ul>" in result
+        assert "<li>Item one</li>" in result
+        assert "<li>Item two</li>" in result
+        assert "</ul>" in result
+
+    def test_empty_input(self):
+        from chartfold.export_html import _basic_markdown_to_html
+        result = _basic_markdown_to_html("")
+        assert result == ""
+
+    def test_html_escaping(self):
+        from chartfold.export_html import _basic_markdown_to_html
+        result = _basic_markdown_to_html("Test <script>alert(1)</script>")
+        assert "&lt;script&gt;" in result
+        assert "<script>" not in result
