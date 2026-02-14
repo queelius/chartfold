@@ -15,10 +15,12 @@ from chartfold.models import (
     DocumentRecord,
     EncounterRecord,
     FamilyHistoryRecord,
+    ImagingReport,
     ImmunizationRecord,
     LabResult,
     MedicationRecord,
     MentalStatusRecord,
+    PathologyReport,
     PatientRecord,
     ProcedureRecord,
     SocialHistoryRecord,
@@ -50,10 +52,24 @@ def _parser_counts(data: dict) -> dict[str, int]:
     fhir = data.get("fhir_data") or {}
     ccda = data.get("ccda_data") or {}
 
-    fhir_lab_obs = sum(1 for o in fhir.get("observations", []) if o.get("category") == "laboratory")
-    fhir_vital_obs = sum(
-        1 for o in fhir.get("observations", []) if o.get("category") == "vital-signs"
+    observations = fhir.get("observations", [])
+    fhir_lab_obs = sum(1 for o in observations if o.get("category") == "laboratory")
+    fhir_vital_obs = sum(1 for o in observations if o.get("category") == "vital-signs")
+    fhir_social_obs = sum(1 for o in observations if o.get("category") == "social-history")
+    fhir_survey_obs = sum(1 for o in observations if o.get("category") == "survey")
+
+    # Classify diagnostic reports by category for accurate counting
+    diag_reports = fhir.get("diagnostic_reports", [])
+    fhir_pathology = sum(
+        1 for dr in diag_reports if "pathology" in dr.get("category", "").lower()
     )
+    fhir_imaging = sum(
+        1
+        for dr in diag_reports
+        if "radiology" in dr.get("category", "").lower()
+        or "imaging" in dr.get("category", "").lower()
+    )
+    fhir_diag_notes = len(diag_reports) - fhir_pathology - fhir_imaging
 
     return {
         "patients": 1 if fhir.get("patient") else 0,
@@ -63,15 +79,18 @@ def _parser_counts(data: dict) -> dict[str, int]:
         "conditions": len(fhir.get("conditions", [])) + len(ccda.get("all_problems", [])),
         "medications": len(fhir.get("medication_requests", []))
         + len(ccda.get("all_medications", [])),
-        "procedures": len(ccda.get("all_procedures", [])),
-        "clinical_notes": len(ccda.get("all_notes", [])),
+        "procedures": len(fhir.get("procedures", [])) + len(ccda.get("all_procedures", [])),
+        "pathology_reports": fhir_pathology,
+        "imaging_reports": fhir_imaging,
+        "clinical_notes": fhir_diag_notes + len(ccda.get("all_notes", [])),
         "vitals": fhir_vital_obs + len(ccda.get("all_vitals", [])),
         "immunizations": len(fhir.get("immunizations", []))
         + len(ccda.get("all_immunizations", [])),
-        "allergies": len(ccda.get("all_allergies", [])),
-        "social_history": len(ccda.get("all_social_history", [])),
+        "allergies": len(fhir.get("allergy_intolerances", []))
+        + len(ccda.get("all_allergies", [])),
+        "social_history": fhir_social_obs + len(ccda.get("all_social_history", [])),
         "family_history": len(ccda.get("all_family_history", [])),
-        "mental_status": len(ccda.get("all_mental_status", [])),
+        "mental_status": fhir_survey_obs + len(ccda.get("all_mental_status", [])),
     }
 
 
@@ -118,14 +137,22 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
             )
         )
 
-    # Encounters from FHIR
+    # Encounters from FHIR (with practitioner resolution)
+    practitioners = fhir.get("practitioners", {})
     for enc in fhir.get("encounters", []):
+        # Resolve provider from participant references
+        provider = ""
+        for ref in enc.get("participants", []):
+            if ref in practitioners:
+                provider = practitioners[ref]
+                break
         records.encounters.append(
             EncounterRecord(
                 source=source,
                 encounter_date=enc.get("start_iso", ""),
                 encounter_end=parse_iso_date(enc.get("end", "")),
                 encounter_type=enc.get("type", ""),
+                provider=provider,
             )
         )
 
@@ -159,12 +186,13 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
                 )
             )
 
-    # Medications from FHIR
+    # Medications from FHIR (with RxNorm)
     for med in fhir.get("medication_requests", []):
         records.medications.append(
             MedicationRecord(
                 source=source,
                 name=med.get("text", ""),
+                rxnorm_code=med.get("rxnorm", ""),
                 status=med.get("status", ""),
                 sig="; ".join(med.get("dosage", [])),
                 start_date=med.get("authored_iso", ""),
@@ -185,17 +213,34 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
                 )
             )
 
-    # Procedures from CCDA (deduplicated)
-    for proc in deduplicate_procedures(ccda.get("all_procedures", [])):
+    # Procedures from FHIR
+    for proc in fhir.get("procedures", []):
         records.procedures.append(
             ProcedureRecord(
                 source=source,
                 name=proc.get("name", ""),
-                procedure_date=normalize_date_to_iso(proc.get("date_iso", "")),
-                provider=proc.get("provider", ""),
+                snomed_code=proc.get("snomed", ""),
+                procedure_date=proc.get("date_iso", ""),
                 status=proc.get("status", ""),
             )
         )
+
+    # Procedures from CCDA (deduplicated, add only new ones)
+    existing_procs = {
+        (p.name.lower().strip(), p.procedure_date) for p in records.procedures
+    }
+    for proc in deduplicate_procedures(ccda.get("all_procedures", [])):
+        key = (proc.get("name", "").lower().strip(), normalize_date_to_iso(proc.get("date_iso", "")))
+        if key not in existing_procs:
+            records.procedures.append(
+                ProcedureRecord(
+                    source=source,
+                    name=proc.get("name", ""),
+                    procedure_date=normalize_date_to_iso(proc.get("date_iso", "")),
+                    provider=proc.get("provider", ""),
+                    status=proc.get("status", ""),
+                )
+            )
 
     # Clinical notes from CCDA (deduplicated)
     for note in deduplicate_notes(ccda.get("all_notes", [])):
@@ -238,17 +283,28 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
                 )
             )
 
-    # Allergies from CCDA
+    # DiagnosticReports from FHIR — classify by category
+    _add_fhir_diagnostic_reports(records, fhir.get("diagnostic_reports", []), source)
+
+    # Allergies from FHIR (first)
+    _add_fhir_allergies(records, fhir.get("allergy_intolerances", []), source)
+
+    # Allergies from CCDA (add only new ones)
+    existing_allergens = {a.allergen.lower().strip() for a in records.allergies}
     for allergy in deduplicate_allergies(ccda.get("all_allergies", [])):
-        records.allergies.append(
-            AllergyRecord(
-                source=source,
-                allergen=allergy.get("allergen", ""),
-                reaction=allergy.get("reaction", ""),
-                severity=allergy.get("severity", ""),
-                status=allergy.get("status", "active"),
+        if allergy.get("allergen", "").lower().strip() not in existing_allergens:
+            records.allergies.append(
+                AllergyRecord(
+                    source=source,
+                    allergen=allergy.get("allergen", ""),
+                    reaction=allergy.get("reaction", ""),
+                    severity=allergy.get("severity", ""),
+                    status=allergy.get("status", "active"),
+                )
             )
-        )
+
+    # Social-history observations from FHIR
+    _add_fhir_social_history_observations(records, fhir.get("observations", []), source)
 
     # Social History from CCDA
     for sh in deduplicate_social_history(ccda.get("all_social_history", [])):
@@ -270,6 +326,9 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
                 condition=fh.get("condition", ""),
             )
         )
+
+    # Survey observations from FHIR (PHQ-9, etc.)
+    _add_fhir_survey_observations(records, fhir.get("observations", []), source)
 
     # Mental Status from CCDA
     for ms in deduplicate_mental_status(ccda.get("all_mental_status", [])):
@@ -436,5 +495,107 @@ def _add_fhir_immunizations(
                 admin_date=imm.get("date_iso", ""),
                 lot_number=imm.get("lot", ""),
                 status=imm.get("status", ""),
+            )
+        )
+
+
+def _add_fhir_diagnostic_reports(
+    records: UnifiedRecords, diagnostic_reports: list[dict], source: str
+) -> None:
+    """Classify FHIR DiagnosticReports by category into PathologyReport, ImagingReport, or ClinicalNote."""
+    for dr in diagnostic_reports:
+        cat = dr.get("category", "").lower()
+        name = dr.get("text", "")
+        date = dr.get("date_iso", "")
+        full_text = dr.get("full_text", "")
+
+        if "pathology" in cat:
+            records.pathology_reports.append(
+                PathologyReport(
+                    source=source,
+                    report_date=date,
+                    specimen=name,
+                    full_text=full_text,
+                )
+            )
+        elif "radiology" in cat or "imaging" in cat:
+            records.imaging_reports.append(
+                ImagingReport(
+                    source=source,
+                    study_name=name,
+                    study_date=date,
+                    full_text=full_text,
+                )
+            )
+        else:
+            # Default: treat as clinical note
+            if full_text or name:
+                records.clinical_notes.append(
+                    ClinicalNote(
+                        source=source,
+                        note_type=name or "Diagnostic Report",
+                        note_date=date,
+                        content=full_text,
+                    )
+                )
+
+
+def _add_fhir_allergies(
+    records: UnifiedRecords, allergy_intolerances: list[dict], source: str
+) -> None:
+    """Add FHIR AllergyIntolerance resources as AllergyRecords."""
+    for ai in allergy_intolerances:
+        allergen = ai.get("allergen", "")
+        if not allergen:
+            continue
+        records.allergies.append(
+            AllergyRecord(
+                source=source,
+                allergen=allergen,
+                reaction=ai.get("reaction", ""),
+                severity=ai.get("severity", ""),
+                status=ai.get("clinical_status", "active"),
+                onset_date=ai.get("onset_iso", ""),
+            )
+        )
+
+
+def _add_fhir_social_history_observations(
+    records: UnifiedRecords, observations: list[dict], source: str
+) -> None:
+    """Add social-history category FHIR observations as SocialHistoryRecords."""
+    for obs in observations:
+        if obs.get("category") != "social-history":
+            continue
+        val = obs.get("value")
+        records.social_history.append(
+            SocialHistoryRecord(
+                source=source,
+                category=obs.get("text", ""),
+                value=str(val) if val is not None else "",
+                recorded_date=obs.get("date_iso", ""),
+            )
+        )
+
+
+def _add_fhir_survey_observations(
+    records: UnifiedRecords, observations: list[dict], source: str
+) -> None:
+    """Add survey category FHIR observations (PHQ-9, etc.) as MentalStatusRecords."""
+    for obs in observations:
+        if obs.get("category") != "survey":
+            continue
+        val = obs.get("value")
+        score = None
+        if isinstance(val, (int, float)):
+            score = int(val)
+        records.mental_status.append(
+            MentalStatusRecord(
+                source=source,
+                instrument=obs.get("text", ""),
+                question=obs.get("display", ""),
+                answer=str(val) if val is not None else "",
+                score=score,
+                recorded_date=obs.get("date_iso", ""),
             )
         )

@@ -44,6 +44,84 @@ def get_encounter_date(root: etree._Element) -> str:
     return ""
 
 
+def get_encounter_end_date(root: etree._Element) -> str:
+    """Extract the encounter end date from encompassingEncounter.
+
+    Returns YYYYMMDD string or empty string.
+    """
+    high = root.find(f".//{{{NS}}}encompassingEncounter/{{{NS}}}effectiveTime/{{{NS}}}high")
+    if high is not None:
+        val = high.get("value", "")
+        return str(val)[:8] if val else ""
+    return ""
+
+
+def extract_patient_demographics(root: etree._Element) -> dict[str, str]:
+    """Extract patient demographics from CDA recordTarget/patientRole.
+
+    Returns dict with keys: name, date_of_birth, gender, mrn, address, phone.
+    """
+    info: dict[str, str] = {
+        "name": "",
+        "date_of_birth": "",
+        "gender": "",
+        "mrn": "",
+        "address": "",
+        "phone": "",
+    }
+
+    patient_role = root.find(f".//{{{NS}}}recordTarget/{{{NS}}}patientRole")
+    if patient_role is None:
+        return info
+
+    # MRN from id element
+    id_el = patient_role.find(f"{{{NS}}}id")
+    if id_el is not None:
+        info["mrn"] = id_el.get("extension", "")
+
+    # Phone from telecom
+    telecom = patient_role.find(f"{{{NS}}}telecom")
+    if telecom is not None:
+        info["phone"] = telecom.get("value", "").replace("tel:", "")
+
+    # Address
+    addr = patient_role.find(f"{{{NS}}}addr")
+    if addr is not None:
+        parts = []
+        for tag in ("streetAddressLine", "city", "state", "postalCode"):
+            el = addr.find(f"{{{NS}}}{tag}")
+            if el is not None and el.text:
+                parts.append(el.text.strip())
+        info["address"] = ", ".join(parts)
+
+    # Patient sub-element
+    patient = patient_role.find(f"{{{NS}}}patient")
+    if patient is not None:
+        # Name
+        name_el = patient.find(f"{{{NS}}}name")
+        if name_el is not None:
+            given = name_el.find(f"{{{NS}}}given")
+            family = name_el.find(f"{{{NS}}}family")
+            parts = []
+            if given is not None and given.text:
+                parts.append(given.text.strip())
+            if family is not None and family.text:
+                parts.append(family.text.strip())
+            info["name"] = " ".join(parts)
+
+        # Gender
+        gender_el = patient.find(f"{{{NS}}}administrativeGenderCode")
+        if gender_el is not None:
+            info["gender"] = gender_el.get("displayName", gender_el.get("code", ""))
+
+        # DOB
+        birth_el = patient.find(f"{{{NS}}}birthTime")
+        if birth_el is not None:
+            info["date_of_birth"] = birth_el.get("value", "")
+
+    return info
+
+
 def format_date(dt_str: str) -> str:
     """Convert various date formats to MM/DD/YYYY.
 

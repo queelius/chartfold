@@ -108,6 +108,37 @@ class TestEpicAdapter:
         assert records.procedures[0].snomed_code == "73761001"
 
 
+    def test_patient_demographics(self, sample_epic_data):
+        records = epic_to_unified(sample_epic_data)
+        assert records.patient is not None
+        assert records.patient.name == "John Doe"
+        assert records.patient.date_of_birth == "1975-06-15"
+        assert records.patient.gender == "Male"
+        assert records.patient.mrn == "123456"
+
+    def test_family_history(self, sample_epic_data):
+        records = epic_to_unified(sample_epic_data)
+        assert len(records.family_history) == 2
+        relations = {fh.relation for fh in records.family_history}
+        assert "Father" in relations
+        assert "Mother" in relations
+        father = next(fh for fh in records.family_history if fh.relation == "Father")
+        assert "cancer" in father.condition.lower()
+
+    def test_encounter_end_date(self, sample_epic_data):
+        records = epic_to_unified(sample_epic_data)
+        assert len(records.encounters) == 1
+        assert records.encounters[0].encounter_end == "2025-01-15"
+
+    def test_encounter_type(self, sample_epic_data):
+        records = epic_to_unified(sample_epic_data)
+        assert records.encounters[0].encounter_type == "office visit"
+
+    def test_encounter_reason(self, sample_epic_data):
+        records = epic_to_unified(sample_epic_data)
+        assert records.encounters[0].reason == "Follow-up for colon cancer"
+
+
 class TestGuessModality:
     def test_ct(self):
         assert _guess_modality("CT CHEST ABDOMEN PELVIS W CONTRAST") == "CT"
@@ -236,9 +267,75 @@ class TestMeditechAdapter:
     def test_ccda_mental_status(self, sample_meditech_data):
         records = meditech_to_unified(sample_meditech_data)
         assert len(records.mental_status) >= 1
-        ms = records.mental_status[0]
-        assert "interest" in ms.question.lower() or "pleasure" in ms.question.lower()
-        assert ms.answer == "Not at all"
+        ccda_ms = next(
+            (ms for ms in records.mental_status if "interest" in ms.question.lower() or "pleasure" in ms.question.lower()),
+            None,
+        )
+        assert ccda_ms is not None
+        assert ccda_ms.answer == "Not at all"
+
+    def test_fhir_diagnostic_reports_imaging(self, sample_meditech_data):
+        """FHIR DiagnosticReports with Radiology category become imaging reports."""
+        records = meditech_to_unified(sample_meditech_data)
+        assert len(records.imaging_reports) >= 1
+        ct = next(
+            (r for r in records.imaging_reports if "CT" in r.study_name.upper()), None
+        )
+        assert ct is not None
+        assert ct.study_date == "2025-01-10"
+
+    def test_fhir_allergy_intolerances(self, sample_meditech_data):
+        """FHIR AllergyIntolerance resources become allergy records."""
+        records = meditech_to_unified(sample_meditech_data)
+        sulfa = next(
+            (a for a in records.allergies if "sulfa" in a.allergen.lower()), None
+        )
+        assert sulfa is not None
+        assert sulfa.reaction == "Hives"
+        assert sulfa.severity == "moderate"
+
+    def test_fhir_procedures(self, sample_meditech_data):
+        """FHIR Procedure resources become procedure records."""
+        records = meditech_to_unified(sample_meditech_data)
+        hemi = next(
+            (p for p in records.procedures if "hemicolectomy" in p.name.lower()), None
+        )
+        assert hemi is not None
+        assert hemi.snomed_code == "44441009"
+        assert hemi.procedure_date == "2024-07-01"
+
+    def test_fhir_medication_rxnorm(self, sample_meditech_data):
+        """FHIR MedicationRequest RxNorm codes should flow through."""
+        records = meditech_to_unified(sample_meditech_data)
+        cap = next((m for m in records.medications if "Capecitabine" in m.name), None)
+        assert cap is not None
+        assert cap.rxnorm_code == "200328"
+
+    def test_fhir_social_history_obs(self, sample_meditech_data):
+        """FHIR social-history observations become social history records."""
+        records = meditech_to_unified(sample_meditech_data)
+        fhir_sh = next(
+            (s for s in records.social_history if "tobacco" in s.category.lower()),
+            None,
+        )
+        assert fhir_sh is not None
+        assert "smoker" in fhir_sh.value.lower()
+
+    def test_fhir_survey_obs(self, sample_meditech_data):
+        """FHIR survey observations (PHQ-9) become mental status records."""
+        records = meditech_to_unified(sample_meditech_data)
+        phq = next(
+            (ms for ms in records.mental_status if "phq" in ms.instrument.lower()),
+            None,
+        )
+        assert phq is not None
+        assert phq.score == 3
+
+    def test_fhir_practitioner_resolution(self, sample_meditech_data):
+        """FHIR encounter participants should resolve to provider names."""
+        records = meditech_to_unified(sample_meditech_data)
+        assert len(records.encounters) >= 1
+        assert records.encounters[0].provider == "Dr. Oncologist"
 
     def test_fhir_vitals_from_observations(self, sample_meditech_data):
         """FHIR vital-signs category observations should be mapped to vitals."""
@@ -409,8 +506,135 @@ class TestAthenaAdapter:
         assert proc.cpt_code == "45378"
         assert proc.procedure_date == "2021-11-22"
 
+    def test_encounter_end_date(self, sample_athena_data):
+        records = athena_to_unified(sample_athena_data)
+        assert len(records.encounters) == 1
+        assert records.encounters[0].encounter_end == "2025-01-20"
+
     def test_empty_data(self):
         records = athena_to_unified({})
         assert records.source == "athena"  # Fallback without input_dir
         assert records.patient is None
         assert len(records.lab_results) == 0
+
+
+class TestMeditechAdapterCCDAMerge:
+    """Tests for CCDA data merging with FHIR — covers dedup branches."""
+
+    def test_ccda_allergies_merge_with_fhir(self, sample_meditech_data):
+        """CCDA allergies not in FHIR are added; duplicates are skipped."""
+        sample_meditech_data["ccda_data"]["all_allergies"] = [
+            {"allergen": "Penicillin", "reaction": "Rash", "severity": "mild"},
+            {"allergen": "Sulfa drugs", "reaction": "Hives"},  # duplicate of FHIR
+        ]
+        records = meditech_to_unified(sample_meditech_data)
+        allergens = [a.allergen for a in records.allergies]
+        assert "Penicillin" in allergens
+        assert allergens.count("Sulfa drugs") == 1  # not duplicated
+
+    def test_ccda_procedures_merge_with_fhir(self, sample_meditech_data):
+        """CCDA procedures not in FHIR are added; dedup by name+date."""
+        sample_meditech_data["ccda_data"]["all_procedures"] = [
+            {"name": "Appendectomy", "date_iso": "2024-03-15", "provider": "Dr. Smith"},
+            {"name": "Right hemicolectomy", "date_iso": "2024-07-01"},  # dup of FHIR
+        ]
+        records = meditech_to_unified(sample_meditech_data)
+        names = [p.name for p in records.procedures]
+        assert "Appendectomy" in names
+        assert names.count("Right hemicolectomy") == 1
+
+    def test_ccda_medications_merge_with_fhir(self, sample_meditech_data):
+        """CCDA medications not in FHIR are added; dedup by name."""
+        sample_meditech_data["ccda_data"]["all_medications"] = [
+            {"name": "Aspirin 81mg", "status": "active", "sig": "Once daily", "instructions": "Once daily"},
+            {"name": "Capecitabine 500mg", "status": "active", "sig": "", "instructions": ""},  # dup
+        ]
+        records = meditech_to_unified(sample_meditech_data)
+        med_names = [m.name for m in records.medications]
+        assert "Aspirin 81mg" in med_names
+        assert med_names.count("Capecitabine 500mg") == 1
+
+    def test_fhir_diagnostic_report_pathology(self, sample_meditech_data):
+        """Pathology-category DiagnosticReports become pathology_reports."""
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "Colon biopsy",
+            "category": "Pathology",
+            "date_iso": "2024-07-01",
+            "full_text": "Adenocarcinoma, moderately differentiated.",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        path = next(
+            (p for p in records.pathology_reports if "Colon" in (p.specimen or "")), None
+        )
+        assert path is not None
+        assert "Adenocarcinoma" in path.full_text
+
+    def test_fhir_diagnostic_report_clinical_note_fallback(self, sample_meditech_data):
+        """DiagnosticReports without known category fall back to clinical notes."""
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "Consult Note",
+            "category": "other",
+            "date_iso": "2025-01-12",
+            "full_text": "Patient discussed treatment options.",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        cn = next(
+            (n for n in records.clinical_notes if "Consult" in n.note_type), None
+        )
+        assert cn is not None
+        assert "treatment options" in cn.content
+
+    def test_fhir_allergy_empty_allergen_skipped(self, sample_meditech_data):
+        """Allergy records with empty allergen are skipped."""
+        sample_meditech_data["fhir_data"]["allergy_intolerances"].append({
+            "allergen": "",
+            "reaction": "Unknown",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        # Should only have the original Sulfa drugs, not the empty one
+        assert all(a.allergen for a in records.allergies)
+
+
+class TestEpicAdapterEdgeCases:
+    """Tests for Epic adapter edge cases — legacy text paths and helpers."""
+
+    def test_legacy_text_medications(self, sample_epic_data):
+        """String medications (legacy text) are added as active medications."""
+        sample_epic_data["medications"] = [
+            "Lisinopril 10mg daily",
+            "  Medications  ",  # header line, should be skipped
+            "",  # empty, should be skipped
+            {"name": "Aspirin", "status": "active", "sig": ""},
+        ]
+        records = epic_to_unified(sample_epic_data)
+        med_names = [m.name for m in records.medications]
+        assert "Lisinopril 10mg daily" in med_names
+        assert "Medications" not in med_names
+        aspirin = next((m for m in records.medications if m.name == "Aspirin"), None)
+        assert aspirin is not None
+
+    def test_legacy_text_conditions(self, sample_epic_data):
+        """String conditions (legacy text) are added as active conditions."""
+        sample_epic_data["problems"] = [
+            "Essential hypertension",
+            "  Active Problems  ",  # header line, should be skipped
+            "",  # empty, should be skipped
+            {"name": "Diabetes", "status": "active"},
+        ]
+        records = epic_to_unified(sample_epic_data)
+        cond_names = [c.condition_name for c in records.conditions]
+        assert "Essential hypertension" in cond_names
+        assert "Active Problems" not in cond_names
+        diabetes = next((c for c in records.conditions if c.condition_name == "Diabetes"), None)
+        assert diabetes is not None
+
+    def test_extract_snomed_code_non_snomed(self, sample_epic_data):
+        """Procedures with non-SNOMED code system return empty snomed_code."""
+        from chartfold.adapters.epic_adapter import _extract_snomed_code
+        assert _extract_snomed_code({"code_system": "2.16.840.1.113883.6.12", "code_value": "99213"}) == ""
+
+    def test_format_provider_list_non_list(self):
+        """Non-list authors return empty string."""
+        from chartfold.adapters.epic_adapter import _format_provider_list
+        assert _format_provider_list("Dr. Smith") == ""
+        assert _format_provider_list(None) == ""

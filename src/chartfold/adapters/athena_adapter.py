@@ -83,6 +83,7 @@ def _convert_encounter(enc: dict, source: str) -> EncounterRecord:
     return EncounterRecord(
         source=source,
         encounter_date=normalize_date_to_iso(enc.get("date", "")),
+        encounter_end=normalize_date_to_iso(enc.get("end_date", "")),
         encounter_type=enc.get("type", ""),
         facility=enc.get("facility", ""),
         provider=enc.get("provider", ""),

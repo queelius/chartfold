@@ -18,8 +18,10 @@ from chartfold.core.cda import (
     NS,
     el_text,
     extract_encounter_info,
+    extract_patient_demographics,
     format_date,
     get_encounter_date,
+    get_encounter_end_date,
     get_sections,
     get_title,
     parse_doc,
@@ -36,6 +38,7 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
     data: dict[str, Any] = {
         "source": config.name,
         "input_dir": os.path.abspath(input_dir),
+        "patient": None,
         "inventory": [],
         "cea_values": [],
         "lab_results": [],
@@ -48,6 +51,7 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
         "immunizations": [],
         "allergies": [],
         "social_history": [],
+        "family_history": [],
         "procedures": [],
         "encounter_timeline": [],
         "errors": [],
@@ -92,13 +96,32 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                 }
             )
 
+            # Patient demographics (extract once from first doc that has them)
+            if data["patient"] is None:
+                demographics = extract_patient_demographics(root)
+                if demographics.get("name"):
+                    data["patient"] = demographics
+
             if enc_date:
+                enc_end = get_encounter_end_date(root)
+                enc_type = _map_title_to_encounter_type(title)
+
+                # Reason from "Reason for Visit" or "Reason for Referral" section
+                reason = ""
+                for reason_sec in ("Reason for Visit", "Reason for Referral"):
+                    if reason_sec in sections:
+                        reason = section_text(sections[reason_sec]).strip()
+                        break
+
                 data["encounter_timeline"].append(
                     {
                         "date": enc_date,
+                        "end_date": enc_end,
                         "date_fmt": format_date(enc_date),
                         "doc_id": doc_id,
                         "title": title,
+                        "encounter_type": enc_type,
+                        "reason": reason,
                         "key_sections": [
                             s
                             for s in section_names
@@ -114,6 +137,7 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                             )
                         ],
                         "facility": enc_info.get("facility", ""),
+                        "authors": enc_info.get("authors", []),
                     }
                 )
 
@@ -168,6 +192,12 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                 if "Social History" in sections:
                     data["social_history"] = _extract_epic_social_history(
                         sections["Social History"]
+                    )
+
+                # Family History
+                if "Family History" in sections:
+                    data["family_history"] = _extract_epic_family_history(
+                        sections["Family History"]
                     )
 
             # Procedures from ALL docs that have them (encounter-specific)
@@ -284,7 +314,7 @@ def _classify_result(item: dict) -> str:
         return "imaging"
     if any(kw in panel for kw in ("MRI ", "CT ", "PET", "XR ", "CHEST ", "US ")):
         if "CREATININE" in panel or "CT BODY OUTSIDE CONSULT" in panel:
-            return "other"
+            return "lab"
         if rt.startswith("LAB "):
             return "lab"
         return "imaging"
@@ -929,7 +959,90 @@ def _extract_epic_social_history(section) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# 7. Procedures
+# 7. Family History
+# ---------------------------------------------------------------------------
+
+
+def _extract_epic_family_history(section) -> list[dict]:
+    """Extract structured family history entries from an Epic Family History section.
+
+    Parses ``<entry><organizer>`` with relatedSubject for relation
+    and component observations for conditions.
+    """
+    results = []
+    for entry in section.findall(f"{{{NS}}}entry"):
+        organizer = entry.find(f"{{{NS}}}organizer")
+        if organizer is None:
+            continue
+
+        # Relation from relatedSubject/code
+        relation = ""
+        subject = organizer.find(f".//{{{NS}}}subject")
+        if subject is not None:
+            related = subject.find(f".//{{{NS}}}relatedSubject")
+            if related is not None:
+                code_el = related.find(f"{{{NS}}}code")
+                if code_el is not None:
+                    relation = code_el.get("displayName", "")
+                    if not relation:
+                        orig = code_el.find(f"{{{NS}}}originalText")
+                        if orig is not None:
+                            relation = el_text(orig)
+
+        # Conditions from components
+        for component in organizer.findall(f".//{{{NS}}}component"):
+            obs = component.find(f".//{{{NS}}}observation")
+            if obs is None:
+                continue
+            value_el = obs.find(f"{{{NS}}}value")
+            condition = ""
+            if value_el is not None:
+                condition = value_el.get("displayName", "") or el_text(value_el)
+            if condition:
+                results.append(
+                    {
+                        "relation": relation or "Not Specified",
+                        "condition": condition,
+                    }
+                )
+
+    # Fallback: parse from text content if no structured entries
+    if not results:
+        text = section_text(section)
+        if text.strip():
+            # Simple line-based parsing for unstructured family history
+            for line in text.strip().split("\n"):
+                line = line.strip()
+                if line and ":" in line:
+                    relation_part, condition_part = line.split(":", 1)
+                    results.append(
+                        {
+                            "relation": relation_part.strip(),
+                            "condition": condition_part.strip(),
+                        }
+                    )
+
+    return results
+
+
+def _map_title_to_encounter_type(title: str) -> str:
+    """Map CDA document title to encounter type heuristic."""
+    t = title.lower()
+    if "discharge" in t:
+        return "inpatient"
+    if "emergency" in t or "ed " in t:
+        return "emergency"
+    if "operative" in t or "surgery" in t or "procedure" in t:
+        return "surgical"
+    if "visit" in t or "office" in t or "consult" in t:
+        return "office visit"
+    if "telephone" in t or "phone" in t:
+        return "telephone"
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# 8. Procedures
 # ---------------------------------------------------------------------------
 
 

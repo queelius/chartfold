@@ -113,6 +113,14 @@ def sample_epic_data():
     """Minimal Epic extraction output dict."""
     return {
         "source": "Epic",
+        "patient": {
+            "name": "John Doe",
+            "date_of_birth": "19750615",
+            "gender": "Male",
+            "mrn": "123456",
+            "address": "123 Main St, Springfield, IL, 62701",
+            "phone": "555-0100",
+        },
         "inventory": [
             {
                 "doc_id": "DOC0001",
@@ -254,12 +262,25 @@ def sample_epic_data():
                 "source_doc": "DOC0003",
             },
         ],
+        "family_history": [
+            {
+                "relation": "Father",
+                "condition": "Colon cancer",
+            },
+            {
+                "relation": "Mother",
+                "condition": "Hypertension",
+            },
+        ],
         "encounter_timeline": [
             {
                 "date": "20250115",
+                "end_date": "20250115",
                 "date_fmt": "01/15/2025",
                 "doc_id": "DOC0003",
                 "title": "Visit Summary",
+                "encounter_type": "office visit",
+                "reason": "Follow-up for colon cancer",
                 "key_sections": ["Progress Notes"],
                 "facility": "Anderson Hospital",
                 "authors": ["Dr. Smith"],
@@ -296,6 +317,28 @@ def sample_meditech_data():
                     "status": "final",
                     "notes": [],
                 },
+                {
+                    "text": "Tobacco smoking status",
+                    "display": "Tobacco smoking status",
+                    "loinc": "72166-2",
+                    "value": "Never smoker",
+                    "unit": "",
+                    "ref_range": "",
+                    "date_iso": "2025-01-15",
+                    "category": "social-history",
+                    "status": "final",
+                },
+                {
+                    "text": "PHQ-9 total score",
+                    "display": "PHQ-9",
+                    "loinc": "44261-6",
+                    "value": 3,
+                    "unit": "{score}",
+                    "ref_range": "",
+                    "date_iso": "2025-01-15",
+                    "category": "survey",
+                    "status": "final",
+                },
             ],
             "conditions": [
                 {
@@ -309,6 +352,7 @@ def sample_meditech_data():
             "medication_requests": [
                 {
                     "text": "Capecitabine 500mg",
+                    "rxnorm": "200328",
                     "status": "active",
                     "intent": "order",
                     "authored_on": "2025-01-15",
@@ -323,11 +367,44 @@ def sample_meditech_data():
                     "end": "2025-01-15T09:00:00+00:00",
                     "status": "finished",
                     "start_iso": "2025-01-15",
+                    "participants": ["Practitioner/prac-123"],
                 },
             ],
-            "practitioners": {},
+            "practitioners": {
+                "Practitioner/prac-123": "Dr. Oncologist",
+            },
             "resource_counts": {"Patient": 1, "Observation": 1, "Condition": 1},
-            "diagnostic_reports": [],
+            "diagnostic_reports": [
+                {
+                    "text": "CT Abdomen Pelvis",
+                    "category": "Radiology",
+                    "date": "2025-01-10",
+                    "date_iso": "2025-01-10",
+                    "status": "final",
+                    "result_refs": [],
+                    "presented_form": [],
+                    "full_text": "No evidence of recurrence.",
+                },
+            ],
+            "allergy_intolerances": [
+                {
+                    "allergen": "Sulfa drugs",
+                    "reaction": "Hives",
+                    "severity": "moderate",
+                    "clinical_status": "active",
+                    "onset": "",
+                    "onset_iso": "",
+                },
+            ],
+            "procedures": [
+                {
+                    "name": "Right hemicolectomy",
+                    "snomed": "44441009",
+                    "date": "2024-07-01",
+                    "date_iso": "2024-07-01",
+                    "status": "completed",
+                },
+            ],
         },
         "ccda_data": {
             "documents": [
@@ -444,6 +521,7 @@ def sample_athena_data():
         "encounters": [
             {
                 "date": "01/20/2025",
+                "end_date": "01/20/2025",
                 "type": "Office Visit",
                 "facility": "SIHF Healthcare",
                 "provider": "Dr. PCP",

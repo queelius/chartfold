@@ -70,10 +70,12 @@ class TestEpicRoundTrip:
     def test_parser_counts_structure(self, sample_epic_data):
         counts = epic_parser_counts(sample_epic_data)
         assert isinstance(counts, dict)
+        assert counts["patients"] == 1
         assert counts["documents"] == 2
         assert counts["lab_results"] == 3  # 2 CBC components + 1 CEA
         assert counts["medications"] == 2
         assert counts["conditions"] == 2
+        assert counts["family_history"] == 2
 
     def test_adapter_preserves_all_parser_records(self, sample_epic_data):
         """Adapter output count should match parser input count.
@@ -86,6 +88,7 @@ class TestEpicRoundTrip:
         adapter_counts = records.counts()
 
         for key in (
+            "patients",
             "documents",
             "encounters",
             "lab_results",
@@ -98,6 +101,7 @@ class TestEpicRoundTrip:
             "immunizations",
             "allergies",
             "social_history",
+            "family_history",
             "procedures",
         ):
             assert adapter_counts[key] == parser_counts[key], (
@@ -122,6 +126,7 @@ class TestEpicRoundTrip:
         db_counts = tmp_db.load_source(records)
 
         for key in (
+            "patients",
             "documents",
             "encounters",
             "lab_results",
@@ -131,6 +136,7 @@ class TestEpicRoundTrip:
             "immunizations",
             "allergies",
             "social_history",
+            "family_history",
             "procedures",
         ):
             assert db_counts[key] == parser_counts[key], (
@@ -159,6 +165,11 @@ class TestMeditechRoundTrip:
         assert counts["documents"] == 1
         assert counts["lab_results"] == 2  # 1 FHIR + 1 CCDA
         assert counts["conditions"] == 2  # 1 FHIR + 1 CCDA
+        assert counts["imaging_reports"] == 1  # 1 FHIR diagnostic report (Radiology)
+        assert counts["allergies"] == 1  # 1 FHIR allergy intolerance
+        assert counts["procedures"] == 1  # 1 FHIR procedure
+        assert counts["social_history"] == 2  # 1 FHIR social-history + 1 CCDA
+        assert counts["mental_status"] == 2  # 1 FHIR survey + 1 CCDA
 
     def test_adapter_output_lte_combined_parser_input(self, sample_meditech_data):
         """Adapter may dedup, so count <= parser count for all keys."""
@@ -176,6 +187,8 @@ class TestMeditechRoundTrip:
             "documents",
             "encounters",
             "procedures",
+            "pathology_reports",
+            "imaging_reports",
             "clinical_notes",
             "allergies",
             "social_history",
@@ -197,6 +210,8 @@ class TestMeditechRoundTrip:
             "documents",
             "encounters",
             "procedures",
+            "pathology_reports",
+            "imaging_reports",
             "clinical_notes",
             "allergies",
             "social_history",

@@ -956,14 +956,18 @@ def deduplicate_procedures(procedures: list[dict]) -> list[dict]:
 def deduplicate_problems(problems: list[dict]) -> list[dict]:
     return deduplicate_by_key(
         problems,
-        key_func=lambda p: p["name"].lower().strip(),
+        key_func=lambda p: (p["name"].lower().strip(), p.get("status", "").lower().strip()),
     )
 
 
 def deduplicate_medications(medications: list[dict]) -> list[dict]:
     return deduplicate_by_key(
         medications,
-        key_func=lambda m: m["name"].lower().strip(),
+        key_func=lambda m: (
+            m["name"].lower().strip(),
+            m.get("status", "").lower().strip(),
+            m.get("instructions", m.get("sig", "")).lower().strip(),
+        ),
     )
 
 

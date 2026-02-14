@@ -74,6 +74,8 @@ def parse_fhir_bundle(filepath: str) -> dict[str, Any]:
         "medication_requests": [],
         "encounters": [],
         "immunizations": [],
+        "allergy_intolerances": [],
+        "procedures": [],
         "practitioners": {},
         "resource_counts": {k: len(v) for k, v in resources.items()},
     }
@@ -119,6 +121,14 @@ def parse_fhir_bundle(filepath: str) -> dict[str, Any]:
     # Immunizations
     for imm in resources.get("Immunization", []):
         data["immunizations"].append(_parse_immunization(imm))
+
+    # AllergyIntolerances
+    for ai in resources.get("AllergyIntolerance", []):
+        data["allergy_intolerances"].append(_parse_allergy_intolerance(ai))
+
+    # Procedures
+    for proc in resources.get("Procedure", []):
+        data["procedures"].append(_parse_procedure(proc))
 
     return data
 
@@ -262,8 +272,14 @@ def _parse_diagnostic_report(dr: dict) -> dict:
 
 def _parse_medication_request(med: dict) -> dict:
     med_code = med.get("medicationCodeableConcept", {})
+    codings = med_code.get("coding", [])
+    rxnorm = next(
+        (c.get("code", "") for c in codings if "rxnorm" in c.get("system", "").lower()),
+        "",
+    )
     return {
         "text": med_code.get("text", ""),
+        "rxnorm": rxnorm,
         "status": med.get("status", ""),
         "intent": med.get("intent", ""),
         "authored_on": med.get("authoredOn", ""),
@@ -278,6 +294,14 @@ def _parse_encounter(enc: dict) -> dict:
     # Extract encounter identifier (e.g., V00003676858 for MEDITECH)
     identifiers = enc.get("identifier", [])
     enc_id = identifiers[0].get("value", "") if identifiers else ""
+    # Extract participant references for provider resolution
+    participants = []
+    for p in enc.get("participant", []):
+        individual = p.get("individual", {})
+        ref = individual.get("reference", "")
+        if ref:
+            participants.append(ref)
+
     return {
         "type": enc_type,
         "start": period.get("start", ""),
@@ -285,6 +309,7 @@ def _parse_encounter(enc: dict) -> dict:
         "status": enc.get("status", ""),
         "start_iso": parse_iso_date(period.get("start", "")),
         "encounter_id": enc_id,
+        "participants": participants,
     }
 
 
@@ -302,4 +327,74 @@ def _parse_immunization(imm: dict) -> dict:
         "date_iso": parse_iso_date(imm.get("occurrenceDateTime", "")),
         "status": imm.get("status", ""),
         "lot": imm.get("lotNumber", ""),
+    }
+
+
+def _parse_allergy_intolerance(ai: dict) -> dict:
+    """Parse a FHIR AllergyIntolerance resource."""
+    code = ai.get("code", {})
+    allergen = code.get("text", "")
+    if not allergen:
+        codings = code.get("coding", [])
+        if codings:
+            allergen = codings[0].get("display", "")
+
+    # Reaction (first manifestation of first reaction)
+    reaction = ""
+    severity = ""
+    reactions = ai.get("reaction", [])
+    if reactions:
+        manifestations = reactions[0].get("manifestation", [])
+        if manifestations:
+            man_codings = manifestations[0].get("coding", [])
+            if man_codings:
+                reaction = man_codings[0].get("display", "")
+            if not reaction:
+                reaction = manifestations[0].get("text", "")
+        severity = reactions[0].get("severity", "")
+
+    # Clinical status
+    clinical_status = ""
+    cs = ai.get("clinicalStatus", {})
+    cs_codings = cs.get("coding", [])
+    if cs_codings:
+        clinical_status = cs_codings[0].get("code", "")
+
+    onset = ai.get("onsetDateTime", "")
+
+    return {
+        "allergen": allergen,
+        "reaction": reaction,
+        "severity": severity,
+        "clinical_status": clinical_status,
+        "onset": onset,
+        "onset_iso": parse_iso_date(onset),
+    }
+
+
+def _parse_procedure(proc: dict) -> dict:
+    """Parse a FHIR Procedure resource."""
+    code = proc.get("code", {})
+    codings = code.get("coding", [])
+    name = code.get("text", "")
+    if not name and codings:
+        name = codings[0].get("display", "")
+
+    snomed = next(
+        (c.get("code", "") for c in codings if "snomed" in c.get("system", "").lower()),
+        "",
+    )
+
+    # Date from performedDateTime or performedPeriod
+    performed = proc.get("performedDateTime", "")
+    if not performed:
+        period = proc.get("performedPeriod", {})
+        performed = period.get("start", "")
+
+    return {
+        "name": name,
+        "snomed": snomed,
+        "date": performed,
+        "date_iso": parse_iso_date(performed),
+        "status": proc.get("status", ""),
     }

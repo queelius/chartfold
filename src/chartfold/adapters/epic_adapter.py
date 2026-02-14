@@ -9,11 +9,13 @@ from chartfold.models import (
     ConditionRecord,
     DocumentRecord,
     EncounterRecord,
+    FamilyHistoryRecord,
     ImagingReport,
     ImmunizationRecord,
     LabResult,
     MedicationRecord,
     PathologyReport,
+    PatientRecord,
     ProcedureRecord,
     SocialHistoryRecord,
     UnifiedRecords,
@@ -48,6 +50,7 @@ def _parser_counts(data: dict) -> dict[str, int]:
     lab_components = sum(len(p.get("components", [])) for p in data.get("lab_results", []))
     cea_count = len(data.get("cea_values", []))
     return {
+        "patients": 1 if data.get("patient") else 0,
         "documents": len(data.get("inventory", [])),
         "encounters": len(data.get("encounter_timeline", [])),
         "lab_results": lab_components + cea_count,
@@ -60,6 +63,7 @@ def _parser_counts(data: dict) -> dict[str, int]:
         "immunizations": len(data.get("immunizations", [])),
         "allergies": len(data.get("allergies", [])),
         "social_history": len(data.get("social_history", [])),
+        "family_history": len(data.get("family_history", [])),
         "procedures": len(data.get("procedures", [])),
         "errors": len(data.get("errors", [])),
     }
@@ -80,6 +84,19 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
     else:
         source = "epic"
     records = UnifiedRecords(source=source)
+
+    # Patient demographics
+    patient_data = data.get("patient")
+    if patient_data:
+        records.patient = PatientRecord(
+            source=source,
+            name=patient_data.get("name", ""),
+            date_of_birth=normalize_date_to_iso(patient_data.get("date_of_birth", "")),
+            gender=patient_data.get("gender", ""),
+            mrn=patient_data.get("mrn", ""),
+            address=patient_data.get("address", ""),
+            phone=patient_data.get("phone", ""),
+        )
 
     # Documents
     for inv in data.get("inventory", []):
@@ -102,9 +119,11 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
                 source=source,
                 source_doc_id=enc.get("doc_id", ""),
                 encounter_date=normalize_date_to_iso(enc.get("date", "")),
-                encounter_type="",
+                encounter_end=normalize_date_to_iso(enc.get("end_date", "")),
+                encounter_type=enc.get("encounter_type", ""),
                 facility=enc.get("facility", ""),
                 provider=_format_provider_list(enc.get("authors")),
+                reason=enc.get("reason", ""),
             )
         )
 
@@ -285,6 +304,16 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
                 procedure_date=normalize_date_to_iso(proc.get("date", "")),
                 provider=proc.get("provider", ""),
                 status=proc.get("status", ""),
+            )
+        )
+
+    # Family History
+    for fh in data.get("family_history", []):
+        records.family_history.append(
+            FamilyHistoryRecord(
+                source=source,
+                relation=fh.get("relation", ""),
+                condition=fh.get("condition", ""),
             )
         )
 
