@@ -5,8 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .Title }} | {{ .Site.Title }}</title>
     <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
+    <link rel="stylesheet" href="{{ "css/glightbox.min.css" | relURL }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <style>
+    .asset-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .asset-gallery img {
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    </style>
 </head>
 <body>
     <nav class="sidebar">
@@ -40,5 +54,7 @@
       });
     })();
     </script>
+    <script src="{{ "js/glightbox.min.js" | relURL }}"></script>
+    <script>const lightbox = GLightbox({ selector: '.glightbox' });</script>
 </body>
 </html>
