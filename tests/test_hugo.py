@@ -1129,3 +1129,124 @@ class TestSourceDocsImages:
             date="2025-01-15", source="test_source",
         )
         assert "Laboratory" in result
+
+
+class TestSourcesCategoryGrouping:
+    def test_sources_page_groups_by_category(self, loaded_db, tmp_path):
+        """Source documents index groups assets by category within date groups."""
+        db = loaded_db
+        content = tmp_path / "content"
+        static = tmp_path / "static"
+        content.mkdir()
+        static.mkdir()
+
+        # Insert assets with different MEDITECH categories
+        for title, fname in [
+            ("015_Laboratory", "lab.pdf"),
+            ("010_Surgical_Services", "surgery.pdf"),
+            ("015_Laboratory", "lab2.pdf"),
+        ]:
+            fpath = tmp_path / fname
+            fpath.touch()  # create dummy file so copy works
+            db.conn.execute(
+                "INSERT INTO source_assets "
+                "(source, asset_type, file_path, file_name, file_size_kb, "
+                "title, encounter_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("test_source", "pdf", str(fpath), fname, 50, title, "2025-01-15"),
+            )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _generate_linked_sources
+        _generate_linked_sources(content, static, db)
+
+        page = (content / "sources.md").read_text()
+        assert "Laboratory" in page
+        assert "Surgical Services" in page
+
+    def test_sources_page_category_order_is_sorted(self, loaded_db, tmp_path):
+        """Categories within a date group appear in sorted order."""
+        db = loaded_db
+        content = tmp_path / "content"
+        static = tmp_path / "static"
+        content.mkdir()
+        static.mkdir()
+
+        for title, fname in [
+            ("010_Surgical_Services", "surgery.pdf"),
+            ("015_Laboratory", "lab.pdf"),
+        ]:
+            fpath = tmp_path / fname
+            fpath.touch()
+            db.conn.execute(
+                "INSERT INTO source_assets "
+                "(source, asset_type, file_path, file_name, file_size_kb, "
+                "title, encounter_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("test_source", "pdf", str(fpath), fname, 50, title, "2025-01-15"),
+            )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _generate_linked_sources
+        _generate_linked_sources(content, static, db)
+
+        page = (content / "sources.md").read_text()
+        lab_pos = page.index("Laboratory")
+        surg_pos = page.index("Surgical Services")
+        assert lab_pos < surg_pos, "Laboratory should sort before Surgical Services"
+
+    def test_sources_page_general_category_for_unknown(self, loaded_db, tmp_path):
+        """Assets without recognized category title fall under 'General'."""
+        db = loaded_db
+        content = tmp_path / "content"
+        static = tmp_path / "static"
+        content.mkdir()
+        static.mkdir()
+
+        fpath = tmp_path / "mystery.pdf"
+        fpath.touch()
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", str(fpath), "mystery.pdf", 50,
+             "Unknown_Folder", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _generate_linked_sources
+        _generate_linked_sources(content, static, db)
+
+        page = (content / "sources.md").read_text()
+        assert "General" in page
+
+    def test_sources_page_lab_assets_grouped_together(self, loaded_db, tmp_path):
+        """Two lab assets under same category appear in the same table."""
+        db = loaded_db
+        content = tmp_path / "content"
+        static = tmp_path / "static"
+        content.mkdir()
+        static.mkdir()
+
+        for fname in ["lab1.pdf", "lab2.pdf"]:
+            fpath = tmp_path / fname
+            fpath.touch()
+            db.conn.execute(
+                "INSERT INTO source_assets "
+                "(source, asset_type, file_path, file_name, file_size_kb, "
+                "title, encounter_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("test_source", "pdf", str(fpath), fname, 50,
+                 "015_Laboratory", "2025-01-15"),
+            )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _generate_linked_sources
+        _generate_linked_sources(content, static, db)
+
+        page = (content / "sources.md").read_text()
+        # Both lab files should appear after the Laboratory heading
+        assert page.count("### Laboratory") == 1
+        assert "lab1.pdf" in page
+        assert "lab2.pdf" in page

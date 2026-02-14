@@ -1351,22 +1351,34 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             md_parts.append("**Related:** " + " &bull; ".join(backlinks))
             md_parts.append("")
 
-        rows = []
+        # Sub-group by category within each date
+        from chartfold.core.utils import categorize_asset_title
+
+        by_cat: dict[str, list] = {}
         for a in group:
-            url = asset_url_map[a["id"]]
-            display = a.get("title") or a["file_name"]
-            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append(
-                [
-                    (display, url),
-                    a["asset_type"],
-                    size_str,
-                    a["source"],
-                ]
-            )
-        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
-        md_parts.append(table)
-        md_parts.append("")
+            cat = categorize_asset_title(a.get("title", ""))
+            by_cat.setdefault(cat, []).append(a)
+
+        for cat in sorted(by_cat.keys()):
+            cat_assets = by_cat[cat]
+            md_parts.append(f"### {cat}")
+            md_parts.append("")
+            rows = []
+            for a in cat_assets:
+                url = asset_url_map[a["id"]]
+                display = a.get("title") or a["file_name"]
+                size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+                rows.append(
+                    [
+                        (display, url),
+                        a["asset_type"],
+                        size_str,
+                        a["source"],
+                    ]
+                )
+            table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
+            md_parts.append(table)
+            md_parts.append("")
 
     # Encounter-ID groups (for assets with encounter_id but no date)
     for enc_id in sorted(by_encounter_id.keys()):
