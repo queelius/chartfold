@@ -132,6 +132,11 @@ def main():
         action="store_true",
         help="Copy source EHR assets into Hugo static folder",
     )
+    hugo_parser.add_argument(
+        "--analysis-dir",
+        default="",
+        help="Directory containing analysis markdown files",
+    )
 
     # --- import ---
     import_parser = sub.add_parser("import", help="Import data from JSON export")
@@ -456,6 +461,7 @@ def _handle_export(args):
                 args.output,
                 config_path=getattr(args, "config", ""),
                 linked_sources=getattr(args, "linked_sources", False),
+                analysis_dir=getattr(args, "analysis_dir", ""),
             )
             return  # generate_site prints its own message
 

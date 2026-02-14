@@ -6,6 +6,7 @@ import json
 from chartfold.db import ChartfoldDB
 from chartfold.hugo.generate import (
     _format_report_text,
+    _generate_analysis_pages,
     _make_linked_table,
     _make_table,
     _write_json,
@@ -1250,3 +1251,128 @@ class TestSourcesCategoryGrouping:
         assert page.count("### Laboratory") == 1
         assert "lab1.pdf" in page
         assert "lab2.pdf" in page
+
+
+class TestAnalysisSection:
+    def test_analysis_files_copied_to_hugo(self, tmp_path):
+        """Markdown files from analysis dir should appear as Hugo pages."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "cea-trend-analysis.md").write_text(
+            "# CEA Trend Analysis\n\nCEA levels show post-surgical normalization..."
+        )
+
+        _generate_analysis_pages(content, analysis_dir)
+
+        page = (content / "analysis" / "cea-trend-analysis.md").read_text()
+        assert "CEA" in page
+
+    def test_analysis_index_page_lists_files(self, tmp_path):
+        """Analysis index should list all analysis files."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "treatment-summary.md").write_text("# Treatment Summary\n\nDetails...")
+        (analysis_dir / "lab-trends.md").write_text("# Lab Trends\n\nTrends...")
+
+        _generate_analysis_pages(content, analysis_dir)
+
+        index = (content / "analysis" / "_index.md").read_text()
+        assert "Treatment Summary" in index
+        assert "Lab Trends" in index
+
+    def test_analysis_no_dir_creates_placeholder(self, tmp_path):
+        """No analysis dir should create placeholder page."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        _generate_analysis_pages(content, None)
+
+        index = (content / "analysis" / "_index.md").read_text()
+        assert "analysis-dir" in index
+
+    def test_analysis_empty_dir_creates_placeholder(self, tmp_path):
+        """Empty analysis dir should create placeholder."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+
+        _generate_analysis_pages(content, analysis_dir)
+
+        index = (content / "analysis" / "_index.md").read_text()
+        assert "No markdown files" in index
+
+    def test_analysis_preserves_existing_frontmatter(self, tmp_path):
+        """Files with frontmatter should keep it."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "custom.md").write_text(
+            '---\ntitle: "Custom Title"\ntags: [oncology]\n---\n\nCustom content'
+        )
+
+        _generate_analysis_pages(content, analysis_dir)
+
+        page = (content / "analysis" / "custom.md").read_text()
+        assert "Custom Title" in page
+        assert "Custom content" in page
+
+    def test_analysis_nonexistent_dir_creates_placeholder(self, tmp_path):
+        """Non-existent analysis dir should create placeholder page."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        nonexistent = tmp_path / "does_not_exist"
+
+        _generate_analysis_pages(content, nonexistent)
+
+        index = (content / "analysis" / "_index.md").read_text()
+        assert "analysis-dir" in index
+
+    def test_analysis_ignores_non_md_files(self, tmp_path):
+        """Non-markdown files in analysis dir should be ignored."""
+        content = tmp_path / "content"
+        content.mkdir()
+
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "notes.txt").write_text("plain text")
+        (analysis_dir / "data.csv").write_text("a,b,c")
+        (analysis_dir / "report.md").write_text("# Report\n\nContent")
+
+        _generate_analysis_pages(content, analysis_dir)
+
+        # Only the .md file should be copied
+        analysis_content = content / "analysis"
+        assert (analysis_content / "report.md").exists()
+        assert not (analysis_content / "notes.txt").exists()
+        assert not (analysis_content / "data.csv").exists()
+
+    def test_generate_site_with_analysis_dir(self, loaded_db, tmp_path):
+        """Full site generation includes analysis pages when analysis_dir given."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "my-analysis.md").write_text("# My Analysis\n\nInsight here.")
+
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir), analysis_dir=str(analysis_dir))
+
+        page = (hugo_dir / "content" / "analysis" / "my-analysis.md").read_text()
+        assert "My Analysis" in page
+
+    def test_generate_site_without_analysis_dir(self, loaded_db, tmp_path):
+        """Full site generation creates placeholder when no analysis_dir."""
+        hugo_dir = tmp_path / "site"
+        generate_site(loaded_db.db_path, str(hugo_dir))
+
+        index = (hugo_dir / "content" / "analysis" / "_index.md").read_text()
+        assert "analysis-dir" in index

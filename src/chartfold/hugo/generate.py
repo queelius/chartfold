@@ -158,7 +158,11 @@ def _render_source_docs_section(
 
 
 def generate_site(
-    db_path: str, hugo_dir: str, config_path: str = "", linked_sources: bool = False
+    db_path: str,
+    hugo_dir: str,
+    config_path: str = "",
+    linked_sources: bool = False,
+    analysis_dir: str = "",
 ) -> None:
     """Generate the full Hugo site from a chartfold database.
 
@@ -167,6 +171,7 @@ def generate_site(
         hugo_dir: Output directory for the Hugo site.
         config_path: Path to chartfold.toml config file. Empty uses default.
         linked_sources: If True, copy source EHR assets into Hugo static folder.
+        analysis_dir: Path to directory containing analysis markdown files.
     """
     out = Path(hugo_dir)
     content = out / "content"
@@ -240,6 +245,9 @@ def generate_site(
 
         # Imaging
         _generate_imaging(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+
+        # Analysis
+        _generate_analysis_pages(content, Path(analysis_dir) if analysis_dir else None)
 
         print(f"\nHugo site generated at {hugo_dir}")
         print(f"Run: cd {hugo_dir} && hugo serve")
@@ -1263,6 +1271,56 @@ def _generate_imaging(
         link_col=0,
     )
     _write_page(img_dir / "_index.md", "Imaging Reports", table)
+
+
+def _generate_analysis_pages(content: Path, analysis_dir: Path | None) -> None:
+    """Copy user-supplied analysis markdown files into the Hugo site.
+
+    Files should be markdown. They get frontmatter added if missing.
+    """
+    analysis_content = content / "analysis"
+    analysis_content.mkdir(parents=True, exist_ok=True)
+
+    if not analysis_dir or not analysis_dir.exists():
+        _write_page(
+            analysis_content / "_index.md",
+            "Analysis",
+            "*No analysis files provided. "
+            "Add markdown files to an analysis directory and pass "
+            "`--analysis-dir` to include them.*",
+        )
+        return
+
+    md_files = sorted(analysis_dir.glob("*.md"))
+    if not md_files:
+        _write_page(
+            analysis_content / "_index.md",
+            "Analysis",
+            "*No markdown files found in analysis directory.*",
+        )
+        return
+
+    # Index page listing all analysis files
+    index_lines = []
+    for f in md_files:
+        slug = f.stem
+        title = slug.replace("-", " ").replace("_", " ").title()
+        index_lines.append(f"- [{title}](/analysis/{slug}/)")
+    _write_page(
+        analysis_content / "_index.md",
+        "Analysis",
+        "\n".join(index_lines),
+    )
+
+    # Copy each file with frontmatter
+    for f in md_files:
+        text = f.read_text()
+        slug = f.stem
+        title = slug.replace("-", " ").replace("_", " ").title()
+        if text.startswith("---"):
+            (analysis_content / f.name).write_text(text)
+        else:
+            _write_page(analysis_content / f.name, title, text)
 
 
 def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> dict[int, str]:
