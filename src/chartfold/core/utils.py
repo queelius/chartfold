@@ -161,3 +161,40 @@ def deduplicate_by_key(
     if sort_key:
         result.sort(key=sort_key, reverse=reverse)
     return result
+
+
+_IMAGE_TYPES = frozenset({"png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff"})
+
+
+def is_image_asset(asset_type: str) -> bool:
+    """Return True if asset_type is a displayable image format."""
+    return asset_type.lower() in _IMAGE_TYPES
+
+
+_CATEGORY_MAP = {
+    "admission": "Admissions",
+    "consent": "Consents",
+    "discharge": "Discharge",
+    "surgical": "Surgical Services",
+    "laborator": "Laboratory",
+    "patient care": "Patient Care Notes",
+    "medication": "Medications",
+    "order": "Orders",
+    "radiol": "Radiology",
+    "imaging": "Imaging",
+}
+
+
+def categorize_asset_title(title: str) -> str:
+    """Derive a display-friendly category from asset title or folder name.
+
+    MEDITECH folders like '015_Laboratory' or '010_Surgical_Services'
+    are mapped to clean labels. Unknown titles get 'General'.
+    """
+    if not title:
+        return "General"
+    t = title.lower().replace("_", " ")
+    for keyword, label in _CATEGORY_MAP.items():
+        if keyword in t:
+            return label
+    return "General"

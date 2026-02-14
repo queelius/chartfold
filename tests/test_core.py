@@ -17,8 +17,10 @@ from chartfold.core.cda import (
 )
 from chartfold.core.fhir import parse_fhir_bundle
 from chartfold.core.utils import (
+    categorize_asset_title,
     deduplicate_by_key,
     derive_source_name,
+    is_image_asset,
     normalize_date_to_iso,
     parse_iso_date,
     parse_narrative_date,
@@ -703,3 +705,55 @@ class TestDeriveSourceName:
 
     def test_root_path_fallback(self):
         assert derive_source_name("/", "meditech") == "meditech_unknown"
+
+
+# ---------------------------------------------------------------------------
+# Asset helper tests
+# ---------------------------------------------------------------------------
+
+
+class TestAssetHelpers:
+    def test_is_image_png(self):
+        assert is_image_asset("png") is True
+
+    def test_is_image_jpg(self):
+        assert is_image_asset("jpg") is True
+
+    def test_is_image_tiff(self):
+        assert is_image_asset("tiff") is True
+
+    def test_is_not_image_pdf(self):
+        assert is_image_asset("pdf") is False
+
+    def test_is_not_image_html(self):
+        assert is_image_asset("html") is False
+
+    def test_categorize_laboratory(self):
+        assert categorize_asset_title("015_Laboratory") == "Laboratory"
+
+    def test_categorize_surgical(self):
+        assert categorize_asset_title("010_Surgical_Services") == "Surgical Services"
+
+    def test_categorize_admissions(self):
+        assert categorize_asset_title("000_Admissions") == "Admissions"
+
+    def test_categorize_discharge(self):
+        assert categorize_asset_title("006_Discharge_Transfer_Document") == "Discharge"
+
+    def test_categorize_patient_care(self):
+        assert categorize_asset_title("018_Patient_Care_Notes") == "Patient Care Notes"
+
+    def test_categorize_medications(self):
+        assert categorize_asset_title("019_Medications") == "Medications"
+
+    def test_categorize_orders(self):
+        assert categorize_asset_title("020_Orders") == "Orders"
+
+    def test_categorize_consents(self):
+        assert categorize_asset_title("003_Consents") == "Consents"
+
+    def test_categorize_unknown_title(self):
+        assert categorize_asset_title("Random title") == "General"
+
+    def test_categorize_empty(self):
+        assert categorize_asset_title("") == "General"
