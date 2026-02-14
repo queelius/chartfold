@@ -604,3 +604,195 @@ class TestEncodeImageBase64:
         p.write_bytes(b"fake pdf content")
         from chartfold.export_html import _encode_image_base64
         assert _encode_image_base64(str(p)) == ""
+
+
+class TestLinkedAssetsOnCards:
+    """Tests for linked source assets displayed on imaging/pathology cards."""
+
+    # Minimal 1x1 PNG for tests
+    _PNG_B64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+        "nGNgYPgPAAEDAQAIicLsAAAAASUVORK5CYII="
+    )
+
+    def _insert_imaging_report(self, db, study_name="CT Abdomen", study_date="2025-12-01"):
+        """Insert an imaging report and return its row id."""
+        db.conn.execute(
+            "INSERT INTO imaging_reports (source, study_name, modality, study_date, impression) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test_source", study_name, "CT", study_date, "No recurrence."),
+        )
+        db.conn.commit()
+        row = db.query("SELECT id FROM imaging_reports ORDER BY id DESC LIMIT 1")
+        return row[0]["id"]
+
+    def _insert_pathology_report(self, db, report_date="2024-07-03"):
+        """Insert a pathology report and return its row id."""
+        db.conn.execute(
+            "INSERT INTO pathology_reports (source, report_date, specimen, diagnosis) "
+            "VALUES (?, ?, ?, ?)",
+            ("test_source", report_date, "Right colon", "Adenocarcinoma"),
+        )
+        db.conn.commit()
+        row = db.query("SELECT id FROM pathology_reports ORDER BY id DESC LIMIT 1")
+        return row[0]["id"]
+
+    def _insert_asset(self, db, ref_table, ref_id, asset_type, file_path, file_name,
+                      encounter_date="", source="test_source"):
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date, ref_table, ref_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (source, asset_type, file_path, file_name, 10,
+             file_name, encounter_date, ref_table, ref_id),
+        )
+        db.conn.commit()
+
+    def test_imaging_card_shows_linked_image(self, tmp_db, tmp_path):
+        """Imaging card with a linked PNG shows a base64 img tag."""
+        import base64
+        img_path = tmp_path / "scan.png"
+        img_path.write_bytes(base64.b64decode(self._PNG_B64))
+
+        img_id = self._insert_imaging_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "png",
+            str(img_path), "scan.png", encounter_date="2025-12-01",
+        )
+
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "data:image/png;base64," in html
+        assert "<img" in html
+        assert "CT Abdomen" in html
+
+    def test_imaging_card_shows_linked_pdf(self, tmp_db, tmp_path):
+        """Imaging card with a linked PDF shows a download link."""
+        img_id = self._insert_imaging_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "pdf",
+            "/tmp/report.pdf", "report.pdf", encounter_date="2025-12-01",
+        )
+
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "report.pdf" in html
+        assert "<a " in html
+        assert "CT Abdomen" in html
+
+    def test_pathology_card_shows_linked_image(self, tmp_db, tmp_path):
+        """Pathology card with a linked PNG shows a base64 img tag."""
+        import base64
+        img_path = tmp_path / "slide.png"
+        img_path.write_bytes(base64.b64decode(self._PNG_B64))
+
+        path_id = self._insert_pathology_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "pathology_reports", path_id, "png",
+            str(img_path), "slide.png", encounter_date="2024-07-03",
+        )
+
+        from chartfold.export_html import _render_pathology_section
+        html = _render_pathology_section(tmp_db)
+        assert "data:image/png;base64," in html
+        assert "<img" in html
+        assert "Adenocarcinoma" in html
+
+    def test_imaging_card_no_assets_unchanged(self, tmp_db):
+        """Imaging card without linked assets renders normally."""
+        self._insert_imaging_report(tmp_db)
+
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "CT Abdomen" in html
+        assert "No recurrence" in html
+        # No asset-related content
+        assert "Linked" not in html or "Attachments" not in html
+
+    def test_imaging_fallback_to_date_source_match(self, tmp_db, tmp_path):
+        """When no ref_id match, fall back to date+source matching."""
+        import base64
+        img_path = tmp_path / "fallback.png"
+        img_path.write_bytes(base64.b64decode(self._PNG_B64))
+
+        self._insert_imaging_report(tmp_db, study_date="2025-12-01")
+        # Insert asset with no ref_id but matching date and source
+        tmp_db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date, ref_table) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "png", str(img_path), "fallback.png", 5,
+             "fallback.png", "2025-12-01", "imaging_reports"),
+        )
+        tmp_db.conn.commit()
+
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "data:image/png;base64," in html
+
+    def test_get_linked_assets_ref_id_match(self, tmp_db):
+        """_get_linked_assets returns assets matching ref_table + ref_id."""
+        img_id = self._insert_imaging_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "pdf",
+            "/tmp/scan.pdf", "scan.pdf",
+        )
+
+        from chartfold.export_html import _get_linked_assets
+        assets = _get_linked_assets(tmp_db, "imaging_reports", img_id)
+        assert len(assets) == 1
+        assert assets[0]["file_name"] == "scan.pdf"
+
+    def test_get_linked_assets_fallback(self, tmp_db):
+        """_get_linked_assets falls back to date+source when no ref_id match."""
+        self._insert_imaging_report(tmp_db, study_date="2025-12-01")
+        # Asset with ref_table but no ref_id
+        tmp_db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date, ref_table) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", "/tmp/fallback.pdf", "fallback.pdf", 20,
+             "fallback.pdf", "2025-12-01", "imaging_reports"),
+        )
+        tmp_db.conn.commit()
+
+        from chartfold.export_html import _get_linked_assets
+        assets = _get_linked_assets(
+            tmp_db, "imaging_reports", 999, date="2025-12-01", source="test_source"
+        )
+        assert len(assets) == 1
+        assert assets[0]["file_name"] == "fallback.pdf"
+
+    def test_get_linked_assets_empty(self, tmp_db):
+        """_get_linked_assets returns empty list when no matches."""
+        from chartfold.export_html import _get_linked_assets
+        assets = _get_linked_assets(tmp_db, "imaging_reports", 999)
+        assert assets == []
+
+    def test_render_linked_assets_html_image(self, tmp_path):
+        """_render_linked_assets_html renders img tag for image assets."""
+        import base64
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(base64.b64decode(self._PNG_B64))
+
+        from chartfold.export_html import _render_linked_assets_html
+        assets = [{"asset_type": "png", "file_path": str(img_path), "file_name": "test.png"}]
+        html = _render_linked_assets_html(assets)
+        assert "data:image/png;base64," in html
+        assert "<img" in html
+
+    def test_render_linked_assets_html_pdf(self):
+        """_render_linked_assets_html renders link for PDF assets."""
+        from chartfold.export_html import _render_linked_assets_html
+        assets = [{"asset_type": "pdf", "file_path": "/tmp/report.pdf", "file_name": "report.pdf"}]
+        html = _render_linked_assets_html(assets)
+        assert "<a " in html
+        assert "report.pdf" in html
+
+    def test_render_linked_assets_html_empty(self):
+        """_render_linked_assets_html returns empty string for no assets."""
+        from chartfold.export_html import _render_linked_assets_html
+        assert _render_linked_assets_html([]) == ""

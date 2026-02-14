@@ -915,7 +915,7 @@ def _render_imaging_section(db: ChartfoldDB, lookback_date: str) -> str:
     """Render imaging reports section."""
     if lookback_date:
         imaging = db.query(
-            "SELECT study_name, modality, study_date, impression, source "
+            "SELECT id, study_name, modality, study_date, impression, source "
             "FROM imaging_reports WHERE study_date >= ? "
             "ORDER BY study_date DESC",
             (lookback_date,),
@@ -923,7 +923,7 @@ def _render_imaging_section(db: ChartfoldDB, lookback_date: str) -> str:
         title = f"Imaging Reports (since {lookback_date})"
     else:
         imaging = db.query(
-            "SELECT study_name, modality, study_date, impression, source "
+            "SELECT id, study_name, modality, study_date, impression, source "
             "FROM imaging_reports ORDER BY study_date DESC"
         )
         title = "Imaging Reports"
@@ -940,6 +940,13 @@ def _render_imaging_section(db: ChartfoldDB, lookback_date: str) -> str:
 """)
         if img.get("impression"):
             parts.append(f'<div class="report-body">{_escape(img["impression"])}</div>')
+        assets = _get_linked_assets(
+            db, "imaging_reports", img["id"],
+            date=img.get("study_date", ""), source=img["source"],
+        )
+        asset_html = _render_linked_assets_html(assets)
+        if asset_html:
+            parts.append(asset_html)
         parts.append("</div>")
 
     return f'<div class="section">{"".join(parts)}</div>'
@@ -948,7 +955,7 @@ def _render_imaging_section(db: ChartfoldDB, lookback_date: str) -> str:
 def _render_pathology_section(db: ChartfoldDB) -> str:
     """Render pathology reports section."""
     pathology = db.query(
-        "SELECT p.report_date, p.specimen, p.diagnosis, p.staging, p.margins, "
+        "SELECT p.id, p.report_date, p.specimen, p.diagnosis, p.staging, p.margins, "
         "p.lymph_nodes, p.source, pr.name as procedure_name "
         "FROM pathology_reports p "
         "LEFT JOIN procedures pr ON p.procedure_id = pr.id "
@@ -974,6 +981,13 @@ def _render_pathology_section(db: ChartfoldDB) -> str:
             parts.append(f"<p><strong>Margins:</strong> {_escape(p['margins'])}</p>")
         if p.get("lymph_nodes"):
             parts.append(f"<p><strong>Lymph Nodes:</strong> {_escape(p['lymph_nodes'])}</p>")
+        assets = _get_linked_assets(
+            db, "pathology_reports", p["id"],
+            date=p.get("report_date", ""), source=p["source"],
+        )
+        asset_html = _render_linked_assets_html(assets)
+        if asset_html:
+            parts.append(asset_html)
         parts.append(f'<p class="meta">Source: {_escape(p["source"])}</p></div>')
 
     return f'<div class="section">{"".join(parts)}</div>'
@@ -1009,6 +1023,55 @@ def _encode_image_base64(file_path: str) -> str:
 
     data = b64mod.b64encode(p.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{data}"
+
+
+def _get_linked_assets(
+    db: ChartfoldDB, ref_table: str, ref_id: int, date: str = "", source: str = ""
+) -> list[dict[str, Any]]:
+    """Query source_assets for assets linked to a clinical record.
+
+    First tries exact ref_table+ref_id match. If nothing found and date+source
+    are provided, falls back to matching on encounter_date+source+ref_table
+    (with NULL ref_id).
+    """
+    assets = db.query(
+        "SELECT asset_type, file_path, file_name FROM source_assets "
+        "WHERE ref_table = ? AND ref_id = ?",
+        (ref_table, ref_id),
+    )
+    if assets:
+        return assets
+    if date and source:
+        assets = db.query(
+            "SELECT asset_type, file_path, file_name FROM source_assets "
+            "WHERE ref_table = ? AND encounter_date = ? AND source = ? AND ref_id IS NULL",
+            (ref_table, date, source),
+        )
+    return assets
+
+
+def _render_linked_assets_html(assets: list[dict[str, Any]]) -> str:
+    """Render linked assets as inline HTML (images or file links)."""
+    from chartfold.core.utils import is_image_asset
+
+    if not assets:
+        return ""
+    parts = ['<div class="linked-assets">']
+    for a in assets:
+        if is_image_asset(a["asset_type"]):
+            data_uri = _encode_image_base64(a["file_path"])
+            if data_uri:
+                parts.append(
+                    f'<img src="{data_uri}" alt="{_escape(a["file_name"])}" '
+                    f'style="max-width:600px;max-height:400px;margin:8px 0;">'
+                )
+        else:
+            parts.append(
+                f'<a href="{_escape(a["file_path"])}">'
+                f'{_escape(a["file_name"])}</a>'
+            )
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def _render_source_documents_section(db: ChartfoldDB) -> str:
