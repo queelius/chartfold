@@ -1025,8 +1025,8 @@ class TestSourceDocsImages:
             asset_lookup, asset_url_map,
             date="2025-01-15", source="test_source",
         )
-        assert "lightbox" in result
-        assert "ct-scan.png" in result
+        assert '{{< lightbox src="/sources/test_source/1_ct-scan.png"' in result
+        assert 'alt="CT Scan"' in result
 
     def test_pdf_asset_renders_link_not_lightbox(self, loaded_db):
         """PDF assets render as markdown links, NOT lightbox."""

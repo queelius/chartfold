@@ -134,7 +134,7 @@ def _render_source_docs_section(
         if len(images) >= 3:
             lines.append('<div class="asset-gallery">')
         for a, url in images:
-            alt = a.get("title") or a["file_name"]
+            alt = (a.get("title") or a["file_name"]).replace('"', "&quot;")
             lines.append(f'{{{{< lightbox src="{url}" alt="{alt}" >}}}}')
         if len(images) >= 3:
             lines.append("</div>")
@@ -142,17 +142,13 @@ def _render_source_docs_section(
 
     # Render PDFs / other as categorized links
     for a, url in other:
-        display = a.get("title") or a["file_name"]
+        display = (a.get("title") or a["file_name"]).replace("]", "\\]")
         category = categorize_asset_title(a.get("title", ""))
         size = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
         cat_label = f"{category}, " if category != "General" else ""
         detail = f" ({cat_label}{a['asset_type']}" + (f", {size}" if size else "") + ")"
-        lines.append(f"- [{display}]({url}){detail}")
-
-    # If only headers were added, return empty
-    content_lines = [l for l in lines if l.strip() and l != "### Source Documents"]
-    if not content_lines:
-        return ""
+        safe_url = url.replace(")", "%29")
+        lines.append(f"- [{display}]({safe_url}){detail}")
 
     return "\n".join(lines)
 
@@ -1300,27 +1296,33 @@ def _generate_analysis_pages(content: Path, analysis_dir: Path | None) -> None:
         )
         return
 
-    # Index page listing all analysis files
+    # Build index and copy files in a single pass
     index_lines = []
     for f in md_files:
         slug = f.stem
         title = slug.replace("-", " ").replace("_", " ").title()
         index_lines.append(f"- [{title}](/analysis/{slug}/)")
+        text = f.read_text()
+        if text.startswith("---"):
+            (analysis_content / f.name).write_text(text)
+        else:
+            _write_page(analysis_content / f.name, title, text)
     _write_page(
         analysis_content / "_index.md",
         "Analysis",
         "\n".join(index_lines),
     )
 
-    # Copy each file with frontmatter
-    for f in md_files:
-        text = f.read_text()
-        slug = f.stem
-        title = slug.replace("-", " ").replace("_", " ").title()
-        if text.startswith("---"):
-            (analysis_content / f.name).write_text(text)
-        else:
-            _write_page(analysis_content / f.name, title, text)
+
+def _asset_table(assets: list[dict], asset_url_map: dict[int, str]) -> str:
+    """Build a linked markdown table from a list of source assets."""
+    rows = []
+    for a in assets:
+        url = asset_url_map[a["id"]]
+        display = a.get("title") or a["file_name"]
+        size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+        rows.append([(display, url), a["asset_type"], size_str, a["source"]])
+    return _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
 
 
 def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> dict[int, str]:
@@ -1329,6 +1331,8 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
     Returns:
         asset_url_map: {asset_id: relative_url} for use by detail page generators.
     """
+    from chartfold.core.utils import categorize_asset_title
+
     assets = db.query(
         "SELECT id, source, asset_type, file_path, file_name, "
         "file_size_kb, title, encounter_date, encounter_id, ref_table, ref_id "
@@ -1410,32 +1414,15 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             md_parts.append("")
 
         # Sub-group by category within each date
-        from chartfold.core.utils import categorize_asset_title
-
         by_cat: dict[str, list] = {}
         for a in group:
             cat = categorize_asset_title(a.get("title", ""))
             by_cat.setdefault(cat, []).append(a)
 
         for cat in sorted(by_cat.keys()):
-            cat_assets = by_cat[cat]
             md_parts.append(f"### {cat}")
             md_parts.append("")
-            rows = []
-            for a in cat_assets:
-                url = asset_url_map[a["id"]]
-                display = a.get("title") or a["file_name"]
-                size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-                rows.append(
-                    [
-                        (display, url),
-                        a["asset_type"],
-                        size_str,
-                        a["source"],
-                    ]
-                )
-            table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
-            md_parts.append(table)
+            md_parts.append(_asset_table(by_cat[cat], asset_url_map))
             md_parts.append("")
 
     # Encounter-ID groups (for assets with encounter_id but no date)
@@ -1459,41 +1446,13 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             md_parts.append("**Related:** " + " &bull; ".join(backlinks))
             md_parts.append("")
 
-        rows = []
-        for a in group:
-            url = asset_url_map[a["id"]]
-            display = a.get("title") or a["file_name"]
-            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append(
-                [
-                    (display, url),
-                    a["asset_type"],
-                    size_str,
-                    a["source"],
-                ]
-            )
-        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
-        md_parts.append(table)
+        md_parts.append(_asset_table(group, asset_url_map))
         md_parts.append("")
 
     # Other (no date, no encounter_id)
     if other:
         md_parts.append("## Other")
-        rows = []
-        for a in other:
-            url = asset_url_map[a["id"]]
-            display = a.get("title") or a["file_name"]
-            size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append(
-                [
-                    (display, url),
-                    a["asset_type"],
-                    size_str,
-                    a["source"],
-                ]
-            )
-        table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
-        md_parts.append(table)
+        md_parts.append(_asset_table(other, asset_url_map))
 
     _write_page(content / "sources.md", "Source Documents", "\n".join(md_parts))
     return asset_url_map

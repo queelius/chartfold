@@ -474,23 +474,23 @@ def _basic_markdown_to_html(text: str) -> str:
     html_lines: list[str] = []
     in_list = False
 
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            html_lines.append("</ul>")
+            in_list = False
+
     for line in lines:
         stripped = line.strip()
 
         if stripped.startswith("### "):
-            if in_list:
-                html_lines.append("</ul>")
-                in_list = False
+            close_list()
             html_lines.append(f"<h4>{_escape(stripped[4:])}</h4>")
         elif stripped.startswith("## "):
-            if in_list:
-                html_lines.append("</ul>")
-                in_list = False
+            close_list()
             html_lines.append(f"<h3>{_escape(stripped[3:])}</h3>")
         elif stripped.startswith("# "):
-            if in_list:
-                html_lines.append("</ul>")
-                in_list = False
+            close_list()
             html_lines.append(f"<h3>{_escape(stripped[2:])}</h3>")
         elif stripped.startswith("- ") or stripped.startswith("* "):
             if not in_list:
@@ -498,25 +498,17 @@ def _basic_markdown_to_html(text: str) -> str:
                 in_list = True
             html_lines.append(f"<li>{_escape(stripped[2:])}</li>")
         elif not stripped:
-            if in_list:
-                html_lines.append("</ul>")
-                in_list = False
+            close_list()
         else:
-            if in_list:
-                html_lines.append("</ul>")
-                in_list = False
+            close_list()
             html_lines.append(f"<p>{_escape(stripped)}</p>")
 
-    if in_list:
-        html_lines.append("</ul>")
-
+    close_list()
     return "\n".join(html_lines)
 
 
 def _render_analysis_section(analysis_dir: Path | None) -> str:
     """Render user-supplied markdown analysis files as HTML sections."""
-    import re
-
     if not analysis_dir or not analysis_dir.exists():
         return ""
 
@@ -527,8 +519,11 @@ def _render_analysis_section(analysis_dir: Path | None) -> str:
     parts = ['<div class="section"><h2>Analysis</h2>']
     for f in md_files:
         text = f.read_text()
-        if text.startswith("---"):
-            text = re.sub(r"^---.*?---\s*", "", text, flags=re.DOTALL)
+        if text.startswith("---\n"):
+            # Strip YAML frontmatter: requires opening/closing --- on own lines
+            end = text.find("\n---", 3)
+            if end != -1:
+                text = text[end + 4:].lstrip()
         html_content = _basic_markdown_to_html(text)
         parts.append(f'<div class="card">{html_content}</div>')
     parts.append("</div>")
@@ -1078,6 +1073,8 @@ def _encode_image_base64(file_path: str) -> str:
     """
     import base64 as b64mod
 
+    from chartfold.core.utils import IMAGE_MIME_TYPES
+
     p = Path(file_path)
     if not p.exists() or not p.is_file():
         return ""
@@ -1085,16 +1082,7 @@ def _encode_image_base64(file_path: str) -> str:
         return ""
 
     suffix = p.suffix.lower().lstrip(".")
-    mime_map = {
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "bmp": "image/bmp",
-        "tif": "image/tiff",
-        "tiff": "image/tiff",
-    }
-    mime = mime_map.get(suffix, "")
+    mime = IMAGE_MIME_TYPES.get(suffix, "")
     if not mime:
         return ""
 
@@ -1127,12 +1115,22 @@ def _get_linked_assets(
     return assets
 
 
+def _safe_file_href(path: str) -> str:
+    """Sanitize a file path for use as an href, blocking dangerous schemes."""
+    if ":" in path.split("/")[0].split("\\")[0]:
+        # Has a scheme-like prefix (javascript:, data:, etc.) — reject unless file://
+        if not path.startswith("file://") and not (len(path) > 1 and path[1] == ":"):
+            return "#"
+    return _escape(path)
+
+
 def _render_linked_assets_html(assets: list[dict[str, Any]]) -> str:
     """Render linked assets as inline HTML (images or file links)."""
     from chartfold.core.utils import is_image_asset
 
     if not assets:
         return ""
+    rendered = False
     parts = ['<div class="linked-assets">']
     for a in assets:
         if is_image_asset(a["asset_type"]):
@@ -1142,13 +1140,15 @@ def _render_linked_assets_html(assets: list[dict[str, Any]]) -> str:
                     f'<img src="{data_uri}" alt="{_escape(a["file_name"])}" '
                     f'style="max-width:600px;max-height:400px;margin:8px 0;">'
                 )
+                rendered = True
         else:
             parts.append(
-                f'<a href="{_escape(a["file_path"])}">'
+                f'<a href="{_safe_file_href(a["file_path"])}">'
                 f'{_escape(a["file_name"])}</a>'
             )
+            rendered = True
     parts.append("</div>")
-    return "".join(parts)
+    return "".join(parts) if rendered else ""
 
 
 def _render_source_documents_section(db: ChartfoldDB) -> str:
@@ -1206,7 +1206,7 @@ def _render_source_documents_section(db: ChartfoldDB) -> str:
                 # If file doesn't exist, fall through to text display
             else:
                 # Relative path link for PDFs and other files
-                display = f'<a href="{_escape(a["file_path"])}">{display}</a>'
+                display = f'<a href="{_safe_file_href(a["file_path"])}">{display}</a>'
 
             parts.append(
                 f"<tr><td>{display}</td><td>{atype}</td>"

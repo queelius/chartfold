@@ -163,12 +163,20 @@ def deduplicate_by_key(
     return result
 
 
-_IMAGE_TYPES = frozenset({"png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff"})
+IMAGE_MIME_TYPES: dict[str, str] = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "tif": "image/tiff",
+    "tiff": "image/tiff",
+}
 
 
 def is_image_asset(asset_type: str) -> bool:
     """Return True if asset_type is a displayable image format."""
-    return asset_type.lower() in _IMAGE_TYPES
+    return asset_type.lower() in IMAGE_MIME_TYPES
 
 
 _CATEGORY_MAP = {

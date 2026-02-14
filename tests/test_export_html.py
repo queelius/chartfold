@@ -708,7 +708,8 @@ class TestLinkedAssetsOnCards:
         assert "CT Abdomen" in html
         assert "No recurrence" in html
         # No asset-related content
-        assert "Linked" not in html or "Attachments" not in html
+        assert "linked-assets" not in html
+        assert "<img" not in html
 
     def test_imaging_fallback_to_date_source_match(self, tmp_db, tmp_path):
         """When no ref_id match, fall back to date+source matching."""
@@ -894,3 +895,126 @@ class TestBasicMarkdownToHtml:
         result = _basic_markdown_to_html("Test <script>alert(1)</script>")
         assert "&lt;script&gt;" in result
         assert "<script>" not in result
+
+
+class TestIsImageAssetCaseInsensitive:
+    """Verify is_image_asset handles mixed case."""
+
+    def test_uppercase_png(self):
+        from chartfold.core.utils import is_image_asset
+        assert is_image_asset("PNG") is True
+
+    def test_mixed_case_jpg(self):
+        from chartfold.core.utils import is_image_asset
+        assert is_image_asset("Jpg") is True
+
+
+class TestLinkedAssetsEdgeCases(TestLinkedAssetsOnCards):
+    """Edge cases for linked assets rendering."""
+
+    def test_image_missing_file_returns_empty(self, tmp_db):
+        """Image asset with missing file should produce no linked-assets div."""
+        img_id = self._insert_imaging_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "png",
+            "/nonexistent/scan.png", "scan.png",
+            encounter_date="2025-01-15",
+        )
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "CT Abdomen" in html  # card still renders
+        assert "linked-assets" not in html  # no empty div
+
+    def test_mixed_image_and_pdf_on_card(self, tmp_db, tmp_path):
+        """Card with both image and PDF linked shows both."""
+        import base64
+        img_path = tmp_path / "scan.png"
+        img_path.write_bytes(base64.b64decode(self._PNG_B64))
+
+        img_id = self._insert_imaging_report(tmp_db)
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "png",
+            str(img_path), "scan.png",
+            encounter_date="2025-01-15",
+        )
+        self._insert_asset(
+            tmp_db, "imaging_reports", img_id, "pdf",
+            "/tmp/report.pdf", "report.pdf",
+            encounter_date="2025-01-15",
+        )
+        from chartfold.export_html import _render_imaging_section
+        html = _render_imaging_section(tmp_db, lookback_date="")
+        assert "linked-assets" in html
+        assert "<img" in html  # base64 image
+        assert "report.pdf" in html  # PDF link
+
+    def test_safe_file_href_blocks_javascript(self):
+        """javascript: scheme should be blocked."""
+        from chartfold.export_html import _safe_file_href
+        assert _safe_file_href("javascript:alert(1)") == "#"
+        assert _safe_file_href("/path/to/file.pdf") != "#"
+
+
+class TestAnalysisIntegration:
+    """Integration tests for analysis wiring into export functions."""
+
+    def test_export_html_with_analysis_dir(self, export_db, tmp_path):
+        """export_html should include analysis section when analysis_dir given."""
+        analysis = tmp_path / "analysis"
+        analysis.mkdir()
+        (analysis / "summary.md").write_text("# Summary\n\nKey findings here.")
+
+        out = tmp_path / "output.html"
+        export_html(export_db, str(out), analysis_dir=str(analysis))
+        content = out.read_text()
+        assert "Analysis" in content
+        assert "Key findings here" in content
+
+    def test_export_html_full_with_analysis_dir(self, export_db, tmp_path):
+        """export_html_full should include analysis section when analysis_dir given."""
+        analysis = tmp_path / "analysis"
+        analysis.mkdir()
+        (analysis / "report.md").write_text("# Report\n\nDetailed analysis.")
+
+        out = tmp_path / "full_output.html"
+        export_html_full(export_db, str(out), analysis_dir=str(analysis))
+        content = out.read_text()
+        assert "Analysis" in content
+        assert "Detailed analysis" in content
+
+    def test_export_html_without_analysis_dir(self, export_db, tmp_path):
+        """export_html should work fine without analysis_dir."""
+        out = tmp_path / "output.html"
+        export_html(export_db, str(out))
+        content = out.read_text()
+        assert "<!DOCTYPE html>" in content
+        # Analysis section should not appear
+        assert '<h2>Analysis</h2>' not in content
+
+
+class TestFrontmatterStripping:
+    """Verify robust frontmatter stripping in analysis section."""
+
+    def test_horizontal_rule_not_stripped(self, tmp_path):
+        """A file starting with --- but no closing --- should not lose content."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "note.md").write_text(
+            "---\nSome discussion\nMore content here."
+        )
+        from chartfold.export_html import _render_analysis_section
+        html = _render_analysis_section(analysis_dir)
+        # Without proper closing ---, content should be preserved
+        assert "Some discussion" in html
+
+    def test_proper_frontmatter_stripped(self, tmp_path):
+        """Proper YAML frontmatter should be stripped cleanly."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "doc.md").write_text(
+            '---\ntitle: "Test"\ntags: [a, b]\n---\n\nActual content.'
+        )
+        from chartfold.export_html import _render_analysis_section
+        html = _render_analysis_section(analysis_dir)
+        assert "Actual content" in html
+        assert "tags:" not in html
