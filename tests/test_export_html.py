@@ -498,3 +498,109 @@ class TestExportHTMLFull:
         # Should have both CEA results (Dec 2025 and Nov 2025)
         assert "5.8" in content
         assert "4.2" in content
+
+
+class TestSourceDocumentsSection:
+    """Tests for source documents rendering in HTML export."""
+
+    def test_renders_category_grouped_assets(self, tmp_db):
+        """Source assets grouped by category appear in output."""
+        db = tmp_db
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test", "pdf", "/tmp/lab.pdf", "lab.pdf", 50,
+             "015_Laboratory", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.export_html import _render_source_documents_section
+        html = _render_source_documents_section(db)
+        assert "Laboratory" in html
+        assert "lab.pdf" in html
+        assert "Source Documents" in html
+
+    def test_empty_when_no_assets(self, tmp_db):
+        """Returns empty string when no source assets exist."""
+        from chartfold.export_html import _render_source_documents_section
+        html = _render_source_documents_section(tmp_db)
+        assert html == ""
+
+    def test_image_asset_gets_base64_tag(self, tmp_db, tmp_path):
+        """Image assets should be rendered with base64 data URI."""
+        db = tmp_db
+        # Create a tiny valid PNG file
+        import base64
+        img_path = tmp_path / "test.png"
+        # Minimal 1x1 PNG
+        png_data = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+            "nGNgYPgPAAEDAQAIicLsAAAAASUVORK5CYII="
+        )
+        img_path.write_bytes(png_data)
+
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test", "png", str(img_path), "test.png", 1,
+             "CT Scan", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.export_html import _render_source_documents_section
+        html = _render_source_documents_section(db)
+        assert "data:image/png;base64," in html
+        assert "<img" in html
+
+    def test_pdf_gets_link_not_img(self, tmp_db):
+        """PDF assets get a link, not an img tag."""
+        db = tmp_db
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test", "pdf", "/tmp/report.pdf", "report.pdf", 85,
+             "Lab Report", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.export_html import _render_source_documents_section
+        html = _render_source_documents_section(db)
+        assert "<a " in html
+        assert "report.pdf" in html
+        assert "<img" not in html  # PDFs should NOT get img tags
+
+
+class TestEncodeImageBase64:
+    """Tests for base64 image encoding helper."""
+
+    def test_valid_png(self, tmp_path):
+        """Valid PNG file returns data URI."""
+        import base64
+        img_path = tmp_path / "test.png"
+        png_data = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+            "nGNgYPgPAAEDAQAIicLsAAAAASUVORK5CYII="
+        )
+        img_path.write_bytes(png_data)
+
+        from chartfold.export_html import _encode_image_base64
+        result = _encode_image_base64(str(img_path))
+        assert result.startswith("data:image/png;base64,")
+
+    def test_missing_file_returns_empty(self):
+        """Missing file returns empty string."""
+        from chartfold.export_html import _encode_image_base64
+        assert _encode_image_base64("/nonexistent/file.png") == ""
+
+    def test_unsupported_type_returns_empty(self, tmp_path):
+        """Non-image file returns empty string."""
+        p = tmp_path / "test.pdf"
+        p.write_bytes(b"fake pdf content")
+        from chartfold.export_html import _encode_image_base64
+        assert _encode_image_base64(str(p)) == ""

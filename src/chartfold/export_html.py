@@ -309,6 +309,9 @@ def export_html(
     # Allergies
     sections.append(_render_allergies_section(db))
 
+    # Source documents (images, PDFs from EHR exports)
+    sections.append(_render_source_documents_section(db))
+
     # Build full HTML document
     html_content = _build_html_document(
         title="Clinical Records Summary",
@@ -378,6 +381,9 @@ def export_html_full(
 
     # All immunizations
     sections.append(_render_immunizations_section(db))
+
+    # Source documents (images, PDFs from EHR exports)
+    sections.append(_render_source_documents_section(db))
 
     # Build full HTML document
     html_content = _build_html_document(
@@ -971,6 +977,105 @@ def _render_pathology_section(db: ChartfoldDB) -> str:
         parts.append(f'<p class="meta">Source: {_escape(p["source"])}</p></div>')
 
     return f'<div class="section">{"".join(parts)}</div>'
+
+
+def _encode_image_base64(file_path: str) -> str:
+    """Read an image file and return a base64 data URI, or empty string.
+
+    Returns empty string if file is missing, too large (>10 MB), or not
+    a recognized image type (png, jpg, jpeg, gif, bmp, tif, tiff).
+    """
+    import base64 as b64mod
+
+    p = Path(file_path)
+    if not p.exists() or not p.is_file():
+        return ""
+    if p.stat().st_size > 10_000_000:  # skip >10MB
+        return ""
+
+    suffix = p.suffix.lower().lstrip(".")
+    mime_map = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+    }
+    mime = mime_map.get(suffix, "")
+    if not mime:
+        return ""
+
+    data = b64mod.b64encode(p.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{data}"
+
+
+def _render_source_documents_section(db: ChartfoldDB) -> str:
+    """Render all source assets grouped by category.
+
+    Returns an HTML section with assets organized into category-headed tables.
+    Image assets (png, jpg, etc.) are rendered with inline base64 thumbnails.
+    Other file types (pdf, html, etc.) are rendered as file-path links.
+    Returns empty string when no source assets exist.
+    """
+    from chartfold.core.utils import categorize_asset_title, is_image_asset
+
+    assets = db.query(
+        "SELECT id, source, asset_type, file_path, file_name, "
+        "file_size_kb, title, encounter_date "
+        "FROM source_assets ORDER BY encounter_date DESC, file_name"
+    )
+    if not assets:
+        return ""
+
+    # Group by category
+    by_category: dict[str, list[Any]] = {}
+    for a in assets:
+        cat = categorize_asset_title(a.get("title", ""))
+        by_category.setdefault(cat, []).append(a)
+
+    parts = ['<div class="section"><h2>Source Documents</h2>']
+    parts.append(
+        '<p class="meta">Documents from EHR exports. '
+        "PDF links reference files relative to this HTML file.</p>"
+    )
+
+    for cat in sorted(by_category.keys()):
+        group = by_category[cat]
+        parts.append(f"<h3>{_escape(cat)} ({len(group)})</h3>")
+        parts.append(
+            '<table class="sortable"><thead><tr>'
+            "<th>Document</th><th>Type</th><th>Size</th>"
+            "<th>Date</th><th>Source</th></tr></thead><tbody>"
+        )
+        for a in group:
+            display = _escape(a.get("title") or a["file_name"])
+            size = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
+            dt = _escape(a.get("encounter_date", ""))
+            src = _escape(a["source"])
+            atype = _escape(a["asset_type"])
+
+            if is_image_asset(a["asset_type"]):
+                img_data = _encode_image_base64(a["file_path"])
+                if img_data:
+                    display = (
+                        f'<img src="{img_data}" alt="{display}" '
+                        f'style="max-width:100px;max-height:80px;">'
+                    )
+                # If file doesn't exist, fall through to text display
+            else:
+                # Relative path link for PDFs and other files
+                display = f'<a href="{_escape(a["file_path"])}">{display}</a>'
+
+            parts.append(
+                f"<tr><td>{display}</td><td>{atype}</td>"
+                f"<td>{size}</td><td>{dt}</td><td>{src}</td></tr>"
+            )
+        parts.append("</tbody></table>")
+
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def _render_allergies_section(db: ChartfoldDB, active_only: bool = True) -> str:
