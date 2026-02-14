@@ -997,3 +997,135 @@ def _make_lab(name, value, date):
         unit="ng/mL",
         result_date=date,
     )
+
+
+class TestSourceDocsImages:
+    """Tests for image rendering in source docs section."""
+
+    def test_image_asset_renders_lightbox(self, loaded_db):
+        """Image assets render as lightbox shortcodes, not download links."""
+        db = loaded_db
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "png", "/tmp/ct-scan.png", "ct-scan.png",
+             120, "CT Scan", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+        asset_lookup = _build_asset_lookup(db)
+        asset_id = db.query("SELECT id FROM source_assets WHERE file_name='ct-scan.png'")[0]["id"]
+        asset_url_map = {asset_id: "/sources/test_source/1_ct-scan.png"}
+
+        result = _render_source_docs_section(
+            asset_lookup, asset_url_map,
+            date="2025-01-15", source="test_source",
+        )
+        assert "lightbox" in result
+        assert "ct-scan.png" in result
+
+    def test_pdf_asset_renders_link_not_lightbox(self, loaded_db):
+        """PDF assets render as markdown links, NOT lightbox."""
+        db = loaded_db
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", "/tmp/report.pdf", "report.pdf",
+             85, "Lab Report", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+        asset_lookup = _build_asset_lookup(db)
+        asset_id = db.query("SELECT id FROM source_assets WHERE file_name='report.pdf'")[0]["id"]
+        asset_url_map = {asset_id: "/sources/test_source/2_report.pdf"}
+
+        result = _render_source_docs_section(
+            asset_lookup, asset_url_map,
+            date="2025-01-15", source="test_source",
+        )
+        assert "[Lab Report]" in result
+        assert "lightbox" not in result
+
+    def test_gallery_grid_for_3_plus_images(self, loaded_db):
+        """3+ image assets render in a gallery grid div."""
+        db = loaded_db
+        asset_url_map = {}
+        for i, name in enumerate(["scan1.png", "scan2.png", "scan3.png"]):
+            db.conn.execute(
+                "INSERT INTO source_assets "
+                "(source, asset_type, file_path, file_name, file_size_kb, "
+                "encounter_date) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test_source", "png", f"/tmp/{name}", name, 100, "2025-01-15"),
+            )
+            db.conn.commit()
+            aid = db.query(
+                "SELECT id FROM source_assets WHERE file_name=?", (name,)
+            )[0]["id"]
+            asset_url_map[aid] = f"/sources/test_source/{aid}_{name}"
+
+        from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+        asset_lookup = _build_asset_lookup(db)
+        result = _render_source_docs_section(
+            asset_lookup, asset_url_map,
+            date="2025-01-15", source="test_source",
+        )
+        assert "asset-gallery" in result
+
+    def test_no_gallery_for_2_images(self, loaded_db):
+        """Fewer than 3 images should NOT trigger gallery grid."""
+        db = loaded_db
+        asset_url_map = {}
+        for name in ["a.png", "b.jpg"]:
+            db.conn.execute(
+                "INSERT INTO source_assets "
+                "(source, asset_type, file_path, file_name, file_size_kb, "
+                "encounter_date) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test_source", "png" if name.endswith(".png") else "jpg",
+                 f"/tmp/{name}", name, 100, "2025-01-15"),
+            )
+            db.conn.commit()
+            aid = db.query(
+                "SELECT id FROM source_assets WHERE file_name=?", (name,)
+            )[0]["id"]
+            asset_url_map[aid] = f"/sources/test_source/{aid}_{name}"
+
+        from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+        asset_lookup = _build_asset_lookup(db)
+        result = _render_source_docs_section(
+            asset_lookup, asset_url_map,
+            date="2025-01-15", source="test_source",
+        )
+        assert "lightbox" in result
+        assert "asset-gallery" not in result
+
+    def test_categorized_pdf_shows_category(self, loaded_db):
+        """PDF with MEDITECH folder title shows category label."""
+        db = loaded_db
+        db.conn.execute(
+            "INSERT INTO source_assets "
+            "(source, asset_type, file_path, file_name, file_size_kb, "
+            "title, encounter_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test_source", "pdf", "/tmp/lab.pdf", "lab.pdf",
+             50, "015_Laboratory", "2025-01-15"),
+        )
+        db.conn.commit()
+
+        from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+        asset_lookup = _build_asset_lookup(db)
+        asset_id = db.query("SELECT id FROM source_assets WHERE file_name='lab.pdf'")[0]["id"]
+        asset_url_map = {asset_id: "/sources/test_source/3_lab.pdf"}
+
+        result = _render_source_docs_section(
+            asset_lookup, asset_url_map,
+            date="2025-01-15", source="test_source",
+        )
+        assert "Laboratory" in result

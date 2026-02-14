@@ -87,9 +87,11 @@ def _render_source_docs_section(
 ) -> str:
     """Render a '### Source Documents' section for a clinical detail page.
 
-    Matches assets by direct ref first, then falls back to date+source.
-    Returns empty string if no matching assets found.
+    Images render as lightbox thumbnails (gallery grid if 3+).
+    PDFs render as categorized download links.
     """
+    from chartfold.core.utils import categorize_asset_title, is_image_asset
+
     matched: list[dict] = []
     seen_ids: set[int] = set()
 
@@ -110,18 +112,46 @@ def _render_source_docs_section(
     if not matched:
         return ""
 
-    lines = ["### Source Documents", ""]
+    # Separate images from other assets
+    images = []
+    other = []
     for a in matched:
         url = asset_url_map.get(a["id"])
         if not url:
             continue
+        if is_image_asset(a["asset_type"]):
+            images.append((a, url))
+        else:
+            other.append((a, url))
+
+    if not images and not other:
+        return ""
+
+    lines = ["### Source Documents", ""]
+
+    # Render images
+    if images:
+        if len(images) >= 3:
+            lines.append('<div class="asset-gallery">')
+        for a, url in images:
+            alt = a.get("title") or a["file_name"]
+            lines.append(f'{{{{< lightbox src="{url}" alt="{alt}" >}}}}')
+        if len(images) >= 3:
+            lines.append("</div>")
+        lines.append("")
+
+    # Render PDFs / other as categorized links
+    for a, url in other:
         display = a.get("title") or a["file_name"]
+        category = categorize_asset_title(a.get("title", ""))
         size = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-        detail = f" ({a['asset_type']}" + (f", {size}" if size else "") + ")"
+        cat_label = f"{category}, " if category != "General" else ""
+        detail = f" ({cat_label}{a['asset_type']}" + (f", {size}" if size else "") + ")"
         lines.append(f"- [{display}]({url}){detail}")
 
-    # If no URLs resolved, return empty
-    if len(lines) <= 2:
+    # If only headers were added, return empty
+    content_lines = [l for l in lines if l.strip() and l != "### Source Documents"]
+    if not content_lines:
         return ""
 
     return "\n".join(lines)
