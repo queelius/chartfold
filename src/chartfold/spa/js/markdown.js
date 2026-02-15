@@ -3,7 +3,7 @@ var Markdown = {
     if (!text) return '';
     var lines = text.split('\n');
     var html = [];
-    var inCode = false, codeLang = '', codeLines = [];
+    var inCode = false, codeLines = [];
     var inList = false, listType = '';
     var i, line;
 
@@ -56,12 +56,10 @@ var Markdown = {
           html.push('<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>');
           inCode = false;
           codeLines = [];
-          codeLang = '';
         } else {
           flushPara();
           closeList();
           inCode = true;
-          codeLang = line.replace(/^```\s*/, '');
           codeLines = [];
         }
         continue;

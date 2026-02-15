@@ -1044,8 +1044,8 @@ class TestLabResultsSection:
         assert "currentPage = 1" in exported_html
 
     def test_lab_results_charts_dataset_palette(self, exported_html):
-        """Lab results charts use a color palette for multiple sources."""
-        assert "_labChartPalette" in exported_html
+        """Lab results charts use ChartRenderer's shared color palette."""
+        assert "ChartRenderer._palette" in exported_html
 
 
 # --- Additional export tests ---

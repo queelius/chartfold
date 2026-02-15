@@ -1,3 +1,16 @@
+function _renderLinkedAssets(card, db, refTable, refId) {
+  try {
+    var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', [refTable, refId]);
+    if (assets.length > 0) {
+      var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
+      for (var i = 0; i < assets.length; i++) {
+        assetRow.appendChild(UI.badge(assets[i].file_name, 'gray'));
+      }
+      card.appendChild(assetRow);
+    }
+  } catch (e) { /* source_assets may not exist */ }
+}
+
 const Sections = {
   overview(el, db) {
     el.appendChild(UI.sectionHeader('Overview', 'Dashboard summary'));
@@ -308,8 +321,6 @@ const Sections = {
     setActiveTab('charts');
 
     // ====== CHARTS SUB-VIEW ======
-    var _labChartPalette = ['#0071e3', '#ff9500', '#34c759', '#ff3b30', '#af52de', '#5856d6'];
-
     function parseRefRange(rangeStr) {
       if (!rangeStr) return null;
       // Try "low - high" or "low-high"
@@ -355,7 +366,7 @@ const Sections = {
         datasets.push({
           label: sources[si],
           data: sourceMap[sources[si]],
-          color: _labChartPalette[si % _labChartPalette.length]
+          color: ChartRenderer._palette[si % ChartRenderer._palette.length]
         });
       }
 
@@ -373,6 +384,18 @@ const Sections = {
       return card;
     }
 
+    function renderTopTestCharts() {
+      var topTests = db.query(
+        'SELECT test_name, COUNT(*) AS cnt FROM lab_results ' +
+        'WHERE value_numeric IS NOT NULL ' +
+        'GROUP BY test_name ORDER BY cnt DESC LIMIT 5'
+      );
+      for (var tt = 0; tt < topTests.length; tt++) {
+        var chartEl = renderChart(topTests[tt].test_name, [topTests[tt].test_name]);
+        if (chartEl) chartsView.appendChild(chartEl);
+      }
+    }
+
     try {
       var configEl = document.getElementById('chartfold-config');
       var config = configEl ? JSON.parse(configEl.textContent) : {};
@@ -386,28 +409,10 @@ const Sections = {
           if (chartEl) chartsView.appendChild(chartEl);
         }
       } else {
-        // No config: show charts for top 5 tests by count
-        var topTests = db.query(
-          'SELECT test_name, COUNT(*) AS cnt FROM lab_results ' +
-          'WHERE value_numeric IS NOT NULL ' +
-          'GROUP BY test_name ORDER BY cnt DESC LIMIT 5'
-        );
-        for (var tt = 0; tt < topTests.length; tt++) {
-          var chartEl2 = renderChart(topTests[tt].test_name, [topTests[tt].test_name]);
-          if (chartEl2) chartsView.appendChild(chartEl2);
-        }
+        renderTopTestCharts();
       }
     } catch (e) {
-      // Config parsing failed, show top tests
-      var topTests2 = db.query(
-        'SELECT test_name, COUNT(*) AS cnt FROM lab_results ' +
-        'WHERE value_numeric IS NOT NULL ' +
-        'GROUP BY test_name ORDER BY cnt DESC LIMIT 5'
-      );
-      for (var tt2 = 0; tt2 < topTests2.length; tt2++) {
-        var chartEl3 = renderChart(topTests2[tt2].test_name, [topTests2[tt2].test_name]);
-        if (chartEl3) chartsView.appendChild(chartEl3);
-      }
+      renderTopTestCharts();
     }
 
     if (chartsView.children.length === 0) {
@@ -612,17 +617,7 @@ const Sections = {
 
       var card = UI.clinicalCard(r.study_name || 'Imaging Report', metaEl, bodyText, cardOpts);
 
-      // Linked assets
-      try {
-        var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', ['imaging_reports', r.id]);
-        if (assets.length > 0) {
-          var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
-          for (var ai = 0; ai < assets.length; ai++) {
-            assetRow.appendChild(UI.badge(assets[ai].file_name, 'gray'));
-          }
-          card.appendChild(assetRow);
-        }
-      } catch (e) { /* source_assets may not exist */ }
+      _renderLinkedAssets(card, db, 'imaging_reports', r.id);
 
       el.appendChild(card);
 
@@ -669,17 +664,7 @@ const Sections = {
 
       var card = UI.clinicalCard(title, metaText, bodyText, cardOpts);
 
-      // Linked assets
-      try {
-        var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', ['pathology_reports', r.id]);
-        if (assets.length > 0) {
-          var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
-          for (var ai = 0; ai < assets.length; ai++) {
-            assetRow.appendChild(UI.badge(assets[ai].file_name, 'gray'));
-          }
-          card.appendChild(assetRow);
-        }
-      } catch (e) { /* source_assets may not exist */ }
+      _renderLinkedAssets(card, db, 'pathology_reports', r.id);
 
       el.appendChild(card);
 
