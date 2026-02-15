@@ -147,7 +147,7 @@ Parameterized query helpers for data access:
 | Format | Module | Features |
 |--------|--------|----------|
 | Markdown | `export.py` | Visit-focused, optional PDF |
-| HTML | `export_html.py` | Embedded Chart.js, sortable tables, search |
+| HTML SPA | `spa/export.py` | Embedded SQLite via sql.js, client-side queries, charts |
 | JSON | `export_full.py` | Round-trip capable backup |
 | Hugo | `hugo/generate.py` | Full static site with charts |
 

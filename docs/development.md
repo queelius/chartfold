@@ -97,7 +97,7 @@ src/chartfold/
 ├── config.py       # TOML configuration
 ├── cli.py          # Command-line interface
 ├── export.py       # Markdown export
-├── export_html.py  # HTML export
+├── spa/            # HTML SPA export (embedded SQLite via sql.js)
 └── export_full.py  # JSON export
 ```
 

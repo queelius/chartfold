@@ -47,9 +47,10 @@ python -m chartfold diff 2025-01-01
 python -m chartfold export markdown --output summary.md --lookback 6
 python -m chartfold export markdown --output summary.pdf --pdf   # PDF via pandoc
 
-# Export as self-contained HTML with charts
-python -m chartfold export html --output summary.html --lookback 6
-python -m chartfold export html --full --output full.html   # All data
+# Export as self-contained HTML SPA with embedded SQLite
+python -m chartfold export html --output summary.html
+python -m chartfold export html --output summary.html --embed-images  # With images
+python -m chartfold export html --output summary.html --config chartfold.toml
 
 # Full-fidelity export (all tables, all records)
 python -m chartfold export markdown --full --output data.md
@@ -169,10 +170,10 @@ TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, Hu
 ### Export Modules
 
 - `export.py` — Structured markdown export of key clinical data (conditions, meds, labs, encounters, imaging, pathology, allergies). Optional PDF via pandoc.
-- `export_html.py` — Self-contained HTML export with embedded Chart.js for lab trend charts, sortable tables, and collapsible sections. No external dependencies.
+- `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images` and `--config`.
 - `export_full.py` — Full-fidelity JSON/markdown export of all tables for round-trip backup/restore.
 
-All export formats support both visit-focused (with `--lookback`) and full data modes.
+Markdown and full exports support visit-focused (with `--lookback`) and full data modes. HTML SPA always includes all data with client-side filtering.
 
 ### Example Data Sources
 

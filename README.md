@@ -239,7 +239,7 @@ src/chartfold/
 ├── config.py       # Configuration management
 ├── cli.py          # Command-line interface
 ├── export.py       # Markdown export
-├── export_html.py  # HTML export with Chart.js
+├── spa/            # HTML SPA export with embedded SQLite (sql.js)
 └── export_full.py  # Full JSON/markdown export
 ```
 
