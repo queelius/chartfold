@@ -502,11 +502,78 @@ class TestSectionsJs:
         """Section renderers use UI.empty for placeholder messages."""
         assert "UI.empty(" in exported_html
 
-    def test_overview_section_no_table_query(self, exported_html):
-        """Overview section does not query a table for count (no table)."""
-        # Overview should not have a COUNT query for a table
-        # It should just show a header and coming soon message
+    def test_overview_section_header(self, exported_html):
+        """Overview section renders with a proper section header."""
         assert "UI.sectionHeader('Overview'" in exported_html
+
+    def test_overview_has_card_grid(self, exported_html):
+        """Overview section renders summary cards in a card-grid."""
+        assert "card-grid" in exported_html
+
+    def test_overview_card_grid_tables(self, exported_html):
+        """Overview queries counts for 11 clinical tables."""
+        overview_tables = [
+            "conditions",
+            "medications",
+            "lab_results",
+            "encounters",
+            "imaging_reports",
+            "pathology_reports",
+            "clinical_notes",
+            "procedures",
+            "vitals",
+            "immunizations",
+            "allergies",
+        ]
+        for table in overview_tables:
+            assert table in exported_html, (
+                f"Overview should reference table '{table}'"
+            )
+
+    def test_overview_cards_navigate_on_click(self, exported_html):
+        """Overview cards navigate to their section on click."""
+        assert "Router.navigate(sec)" in exported_html
+
+    def test_overview_reads_config_for_sparklines(self, exported_html):
+        """Overview reads the chartfold-config for key lab test sparklines."""
+        assert "getElementById('chartfold-config')" in exported_html
+        assert "key_tests" in exported_html
+
+    def test_overview_has_sparkline(self, exported_html):
+        """Overview uses UI.sparkline for key lab trends."""
+        assert "UI.sparkline(" in exported_html
+
+    def test_overview_key_lab_trends_heading(self, exported_html):
+        """Overview has a 'Key Lab Trends' heading."""
+        assert "Key Lab Trends" in exported_html
+
+    def test_overview_alerts_section(self, exported_html):
+        """Overview has a 'Recent Alerts' section for abnormal labs."""
+        assert "Recent Alerts" in exported_html
+
+    def test_overview_abnormal_interpretations_query(self, exported_html):
+        """Overview queries for abnormal lab interpretations."""
+        for interp in ["H", "L", "HH", "LL", "HIGH", "LOW", "ABNORMAL", "A"]:
+            assert f"'{interp}'" in exported_html, (
+                f"Overview should query for interpretation '{interp}'"
+            )
+
+    def test_overview_no_alerts_green_badge(self, exported_html):
+        """Overview shows green badge when no abnormal results."""
+        assert "No abnormal results in the last 30 days" in exported_html
+
+    def test_overview_alert_value_has_red_badge(self, exported_html):
+        """Overview alert table shows red badge for interpretation."""
+        assert "UI.badge(row.interpretation, 'red')" in exported_html
+
+    def test_overview_sparkline_reverses_order(self, exported_html):
+        """Overview reverses lab values for sparkline (DESC -> chronological)."""
+        # The code iterates from length-1 to 0 to reverse
+        assert "labRows.length - 1" in exported_html
+
+    def test_overview_uses_aliases_for_lab_queries(self, exported_html):
+        """Overview uses test aliases from config for lab queries."""
+        assert "aliases" in exported_html
 
     def test_clinical_sections_query_counts(self, exported_html):
         """Clinical sections query their respective tables for counts."""
