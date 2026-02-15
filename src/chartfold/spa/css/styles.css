@@ -88,6 +88,42 @@ body {
   line-height: 1;
 }
 
+/* --- Topbar search --- */
+.topbar-search {
+  font-size: 14px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  width: 200px;
+  transition: width 0.2s, border-color 0.15s;
+}
+.topbar-search:focus {
+  width: 300px;
+  border-color: var(--accent);
+}
+.topbar-search::placeholder {
+  color: var(--text-secondary);
+}
+
+/* --- Topbar print button --- */
+.topbar-print {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.topbar-print:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
 /* --- Sidebar --- */
 .sidebar {
   position: fixed;
@@ -586,6 +622,10 @@ table tr:last-child td {
 
   .content {
     margin-left: 0;
+  }
+
+  .topbar-search {
+    display: none;
   }
 
   .topbar-right .topbar-date {

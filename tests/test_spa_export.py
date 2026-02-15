@@ -702,6 +702,44 @@ class TestAppJsRouterWiring:
         # (Router.start() will populate it)
         assert "id: 'content'" in exported_html
 
+    def test_app_has_global_search_input(self, exported_html):
+        """app.js creates a global search input in the topbar."""
+        assert "topbar-search" in exported_html
+        assert "placeholder: 'Search...'" in exported_html
+
+    def test_app_search_debounce(self, exported_html):
+        """app.js debounces search input with setTimeout."""
+        assert "searchTimeout" in exported_html
+        assert "clearTimeout(searchTimeout)" in exported_html
+        assert "setTimeout(function()" in exported_html
+
+    def test_app_search_filters_table_rows(self, exported_html):
+        """app.js search filters table tbody tr elements."""
+        assert "querySelectorAll('table tbody tr')" in exported_html
+
+    def test_app_search_filters_cards(self, exported_html):
+        """app.js search filters card and clinical-card elements."""
+        assert "querySelectorAll('.card, .clinical-card')" in exported_html
+
+    def test_app_has_print_button(self, exported_html):
+        """app.js creates a print button in the topbar."""
+        assert "topbar-print" in exported_html
+        assert "window.print()" in exported_html
+
+    def test_css_has_topbar_search_styles(self, exported_html):
+        """CSS includes styling for the topbar search input."""
+        assert ".topbar-search" in exported_html
+        assert "border-radius: 20px" in exported_html
+
+    def test_css_has_topbar_print_styles(self, exported_html):
+        """CSS includes styling for the topbar print button."""
+        assert ".topbar-print" in exported_html
+
+    def test_css_hides_search_on_mobile(self, exported_html):
+        """CSS hides the search input on mobile via media query."""
+        # The mobile media query should contain .topbar-search { display: none; }
+        assert ".topbar-search" in exported_html
+
 
 # --- ChartRenderer JS tests ---
 

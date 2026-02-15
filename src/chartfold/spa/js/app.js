@@ -74,6 +74,44 @@
       UI.el('span', { className: 'topbar-title', textContent: 'Chartfold' })
     ]);
 
+    // --- Global search input ---
+    var searchInput = UI.el('input', {
+      type: 'text',
+      className: 'topbar-search',
+      placeholder: 'Search...'
+    });
+
+    var searchTimeout = null;
+    searchInput.addEventListener('input', function() {
+      clearTimeout(searchTimeout);
+      var query = searchInput.value.toLowerCase().trim();
+      searchTimeout = setTimeout(function() {
+        var content = document.getElementById('content');
+        if (!content) return;
+
+        // Filter table rows
+        var rows = content.querySelectorAll('table tbody tr');
+        rows.forEach(function(row) {
+          if (!query || row.textContent.toLowerCase().includes(query)) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+
+        // Filter cards
+        var cards = content.querySelectorAll('.card, .clinical-card');
+        cards.forEach(function(card) {
+          if (!query || card.textContent.toLowerCase().includes(query)) {
+            card.style.display = '';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      }, 300);
+    });
+
+    // --- Build topbar-right with print button ---
     const topbarRightChildren = [];
     if (patientName) {
       topbarRightChildren.push(
@@ -85,9 +123,18 @@
         UI.el('span', { className: 'topbar-date', textContent: genDate })
       );
     }
+    topbarRightChildren.push(
+      UI.el('button', {
+        className: 'topbar-print',
+        textContent: '\u{1F5A8}',
+        title: 'Print',
+        'aria-label': 'Print',
+        onClick: function() { window.print(); }
+      })
+    );
     const topbarRight = UI.el('div', { className: 'topbar-right' }, topbarRightChildren);
 
-    const topbar = UI.el('div', { className: 'topbar' }, [topbarLeft, topbarRight]);
+    const topbar = UI.el('div', { className: 'topbar' }, [topbarLeft, searchInput, topbarRight]);
     app.appendChild(topbar);
 
     // --- Build sidebar overlay (for mobile) ---
