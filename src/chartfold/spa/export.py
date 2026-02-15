@@ -103,38 +103,34 @@ def _load_images_json(db_path: str) -> str:
 
     try:
         conn = sqlite3.connect(db_path)
-    except Exception:
+    except sqlite3.Error:
         return "{}"
 
     try:
         conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
+        rows = conn.execute(
             "SELECT id, asset_type, file_path, content_type FROM source_assets"
-        )
-        rows = cursor.fetchall()
-
-        for row in rows:
-            asset_type = row["asset_type"] or ""
-            if asset_type.lower() not in IMAGE_MIME_TYPES:
-                continue
-
-            file_path = Path(row["file_path"])
-            if not file_path.is_file():
-                continue
-
-            if file_path.stat().st_size > _MAX_IMAGE_SIZE:
-                continue
-
-            mime = row["content_type"] or IMAGE_MIME_TYPES.get(
-                asset_type.lower(), "application/octet-stream"
-            )
-            data_b64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
-            result[str(row["id"])] = f"data:{mime};base64,{data_b64}"
-    except Exception:
-        pass
-    finally:
+        ).fetchall()
+    except sqlite3.Error:
         conn.close()
+        return json.dumps(result)
 
+    for row in rows:
+        asset_type = (row["asset_type"] or "").lower()
+        if asset_type not in IMAGE_MIME_TYPES:
+            continue
+
+        file_path = Path(row["file_path"])
+        if not file_path.is_file() or file_path.stat().st_size > _MAX_IMAGE_SIZE:
+            continue
+
+        mime = row["content_type"] or IMAGE_MIME_TYPES.get(
+            asset_type, "application/octet-stream"
+        )
+        data_b64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
+        result[str(row["id"])] = f"data:{mime};base64,{data_b64}"
+
+    conn.close()
     return json.dumps(result)
 
 

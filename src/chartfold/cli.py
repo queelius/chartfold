@@ -96,12 +96,6 @@ def main():
         "--full", action="store_true", help="Export all data (full database dump)"
     )
     md_parser.add_argument("--pdf", action="store_true", help="Generate PDF via pandoc")
-    md_parser.add_argument(
-        "--include-load-log", action="store_true", help="Include audit log in full JSON export"
-    )
-    md_parser.add_argument(
-        "--exclude-notes", action="store_true", help="Exclude personal notes from full export"
-    )
 
     # export json (for full exports)
     json_parser = export_sub.add_parser("json", help="Export as JSON (full database dump)")
@@ -248,17 +242,13 @@ def _handle_load(args):
             _load_auto(db, args.input_dir, getattr(args, "source_name", ""))
         elif args.source == "all":
             if args.epic_dir:
-                _load_epic(db, args.epic_dir, getattr(args, "epic_source_name", ""))
+                _load_source(db, "epic", args.epic_dir, getattr(args, "epic_source_name", ""))
             if args.meditech_dir:
-                _load_meditech(db, args.meditech_dir, getattr(args, "meditech_source_name", ""))
+                _load_source(db, "meditech", args.meditech_dir, getattr(args, "meditech_source_name", ""))
             if args.athena_dir:
-                _load_athena(db, args.athena_dir, getattr(args, "athena_source_name", ""))
-        elif args.source == "epic":
-            _load_epic(db, args.input_dir, getattr(args, "source_name", ""))
-        elif args.source == "meditech":
-            _load_meditech(db, args.input_dir, getattr(args, "source_name", ""))
-        elif args.source == "athena":
-            _load_athena(db, args.input_dir, getattr(args, "source_name", ""))
+                _load_source(db, "athena", args.athena_dir, getattr(args, "athena_source_name", ""))
+        elif args.source in _KNOWN_SOURCES:
+            _load_source(db, args.source, args.input_dir, getattr(args, "source_name", ""))
 
         # Print summary after loading
         _print_db_summary(db)
@@ -321,12 +311,8 @@ def _load_auto(db, input_dir: str, source_name: str = ""):
         return
 
     print(f"Detected source: {source}")
-    if source == "epic":
-        _load_epic(db, resolve_epic_dir(input_dir), source_name)
-    elif source == "meditech":
-        _load_meditech(db, input_dir, source_name)
-    elif source == "athena":
-        _load_athena(db, input_dir, source_name)
+    resolved_dir = resolve_epic_dir(input_dir) if source == "epic" else input_dir
+    _load_source(db, source, resolved_dir, source_name)
 
 
 def _check_input_dir(input_dir: str, source_type: str) -> bool:
@@ -341,54 +327,47 @@ def _check_input_dir(input_dir: str, source_type: str) -> bool:
     return True
 
 
-def _load_epic(db, input_dir: str, source_name: str = ""):
-    from chartfold.adapters.epic_adapter import _parser_counts, epic_to_unified
-    from chartfold.sources.epic import process_epic_documents
+def _get_source_loader(source_key: str):
+    """Return (label, parse_fn, adapt_fn, counts_fn) for the given source key.
+
+    Imports are deferred to avoid loading all source modules at startup.
+    """
+    if source_key == "epic":
+        from chartfold.adapters.epic_adapter import _parser_counts, epic_to_unified
+        from chartfold.sources.epic import process_epic_documents
+
+        return "Epic", process_epic_documents, epic_to_unified, _parser_counts
+
+    if source_key == "meditech":
+        from chartfold.adapters.meditech_adapter import _parser_counts, meditech_to_unified
+        from chartfold.sources.meditech import process_meditech_export
+
+        return "MEDITECH", process_meditech_export, meditech_to_unified, _parser_counts
+
+    if source_key == "athena":
+        from chartfold.adapters.athena_adapter import _parser_counts, athena_to_unified
+        from chartfold.sources.athena import process_athena_export
+
+        return "athenahealth/SIHF", process_athena_export, athena_to_unified, _parser_counts
+
+    raise ValueError(f"Unknown source: {source_key}")
+
+
+_KNOWN_SOURCES = {"epic", "meditech", "athena"}
+
+
+def _load_source(db, source_key: str, input_dir: str, source_name: str = ""):
+    """Load a single EHR source through the parse -> adapt -> load pipeline."""
+    label, parse_fn, adapt_fn, counts_fn = _get_source_loader(source_key)
 
     input_dir = os.path.expanduser(input_dir)
-    if not _check_input_dir(input_dir, "Epic"):
+    if not _check_input_dir(input_dir, label):
         return
 
-    print(f"\n--- Loading Epic from {input_dir} ---")
-    data = process_epic_documents(input_dir)
-    parser_counts = _parser_counts(data)
-    records = epic_to_unified(data, source_name=source_name or None)
-    adapter_counts = records.counts()
-    db_counts = db.load_source(records)
-    print(f"Source: {records.source}")
-    _print_stage_comparison(parser_counts, adapter_counts, db_counts)
-
-
-def _load_meditech(db, input_dir: str, source_name: str = ""):
-    from chartfold.adapters.meditech_adapter import _parser_counts, meditech_to_unified
-    from chartfold.sources.meditech import process_meditech_export
-
-    input_dir = os.path.expanduser(input_dir)
-    if not _check_input_dir(input_dir, "MEDITECH"):
-        return
-
-    print(f"\n--- Loading MEDITECH from {input_dir} ---")
-    data = process_meditech_export(input_dir)
-    parser_counts = _parser_counts(data)
-    records = meditech_to_unified(data, source_name=source_name or None)
-    adapter_counts = records.counts()
-    db_counts = db.load_source(records)
-    print(f"Source: {records.source}")
-    _print_stage_comparison(parser_counts, adapter_counts, db_counts)
-
-
-def _load_athena(db, input_dir: str, source_name: str = ""):
-    from chartfold.adapters.athena_adapter import _parser_counts, athena_to_unified
-    from chartfold.sources.athena import process_athena_export
-
-    input_dir = os.path.expanduser(input_dir)
-    if not _check_input_dir(input_dir, "athenahealth"):
-        return
-
-    print(f"\n--- Loading athenahealth/SIHF from {input_dir} ---")
-    data = process_athena_export(input_dir)
-    parser_counts = _parser_counts(data)
-    records = athena_to_unified(data, source_name=source_name or None)
+    print(f"\n--- Loading {label} from {input_dir} ---")
+    data = parse_fn(input_dir)
+    parser_counts = counts_fn(data)
+    records = adapt_fn(data, source_name=source_name or None)
     adapter_counts = records.counts()
     db_counts = db.load_source(records)
     print(f"Source: {records.source}")
@@ -412,11 +391,11 @@ def _handle_export(args):
         db.init_schema()
 
         if args.export_format == "markdown":
-            if getattr(args, "full", False):
+            if args.full:
                 from chartfold.export_full import export_full_markdown
 
                 path = export_full_markdown(db, output_path=args.output)
-            elif getattr(args, "pdf", False):
+            elif args.pdf:
                 from chartfold.export import export_pdf
 
                 output = (
@@ -433,13 +412,11 @@ def _handle_export(args):
         elif args.export_format == "json":
             from chartfold.export_full import export_full_json
 
-            include_notes = not getattr(args, "exclude_notes", False)
-            include_load_log = getattr(args, "include_load_log", False)
             path = export_full_json(
                 db,
                 output_path=args.output,
-                include_notes=include_notes,
-                include_load_log=include_load_log,
+                include_notes=not args.exclude_notes,
+                include_load_log=args.include_load_log,
             )
 
         elif args.export_format == "html":
@@ -448,9 +425,9 @@ def _handle_export(args):
             path = export_spa(
                 db_path=args.db,
                 output_path=args.output,
-                config_path=getattr(args, "config", ""),
-                analysis_dir=getattr(args, "analysis_dir", ""),
-                embed_images=getattr(args, "embed_images", False),
+                config_path=args.config,
+                analysis_dir=args.analysis_dir,
+                embed_images=args.embed_images,
             )
 
         elif args.export_format == "hugo":
@@ -459,9 +436,9 @@ def _handle_export(args):
             generate_site(
                 args.db,
                 args.output,
-                config_path=getattr(args, "config", ""),
-                linked_sources=getattr(args, "linked_sources", False),
-                analysis_dir=getattr(args, "analysis_dir", ""),
+                config_path=args.config,
+                linked_sources=args.linked_sources,
+                analysis_dir=args.analysis_dir,
             )
             return  # generate_site prints its own message
 
@@ -656,13 +633,12 @@ def _handle_notes(args):
             _handle_notes_list(db, getattr(args, "limit", 20))
 
 
-def _handle_notes_list(db, limit: int = 20):
-    rows = db.search_notes_personal()
+def _print_notes_table(rows: list, empty_msg: str = "No notes found.") -> None:
+    """Print a formatted table of notes."""
     if not rows:
-        print("No notes found.")
+        print(empty_msg)
         return
 
-    rows = rows[:limit]
     print(f"\n{'ID':>5}  {'Title':<40}  {'Tags':<25}  {'Updated':<20}")
     print(f"{'─' * 5}  {'─' * 40}  {'─' * 25}  {'─' * 20}")
     for r in rows:
@@ -672,6 +648,11 @@ def _handle_notes_list(db, limit: int = 20):
         print(f"{r['id']:>5}  {title:<40}  {tags:<25}  {updated:<20}")
 
     print(f"\n({len(rows)} notes)")
+
+
+def _handle_notes_list(db, limit: int = 20):
+    rows = db.search_notes_personal()
+    _print_notes_table(rows[:limit])
 
 
 def _handle_notes_search(db, args):
@@ -680,19 +661,7 @@ def _handle_notes_search(db, args):
         tag=args.tag or None,
         ref_table=args.ref_table or None,
     )
-    if not rows:
-        print("No notes match the search criteria.")
-        return
-
-    print(f"\n{'ID':>5}  {'Title':<40}  {'Tags':<25}  {'Updated':<20}")
-    print(f"{'─' * 5}  {'─' * 40}  {'─' * 25}  {'─' * 20}")
-    for r in rows:
-        tags = ", ".join(r.get("tags", []))
-        updated = (r.get("updated_at") or "")[:19]
-        title = (r.get("title") or "")[:40]
-        print(f"{r['id']:>5}  {title:<40}  {tags:<25}  {updated:<20}")
-
-    print(f"\n({len(rows)} notes)")
+    _print_notes_table(rows, empty_msg="No notes match the search criteria.")
 
 
 def _handle_notes_show(db, note_id: int):
@@ -883,8 +852,7 @@ def _handle_identify(args):
     if source is None:
         print(f"Unknown — no recognized EHR format in {args.input_dir}")
         sys.exit(1)
-    else:
-        print(source)
+    print(source)
 
 
 def _handle_serve_mcp(args):

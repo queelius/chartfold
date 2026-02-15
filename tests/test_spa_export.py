@@ -578,24 +578,27 @@ class TestSectionsJs:
         assert "aliases" in exported_html
 
     def test_clinical_sections_query_counts(self, exported_html):
-        """Clinical sections query their respective tables for counts."""
-        table_queries = [
-            "SELECT COUNT(*) AS n FROM conditions",
-            "SELECT COUNT(*) AS n FROM medications",
-            "SELECT COUNT(*) AS n FROM lab_results",
-            "SELECT COUNT(*) AS n FROM encounters",
-            "SELECT COUNT(*) AS n FROM imaging_reports",
-            "SELECT COUNT(*) AS n FROM pathology_reports",
-            "SELECT COUNT(*) AS n FROM allergies",
-            "SELECT COUNT(*) AS n FROM clinical_notes",
-            "SELECT COUNT(*) AS n FROM procedures",
-            "SELECT COUNT(*) AS n FROM vitals",
-            "SELECT COUNT(*) AS n FROM immunizations",
-            "SELECT COUNT(*) AS n FROM source_assets",
+        """Clinical sections query their respective tables for counts via _sectionPreamble."""
+        # The shared _sectionPreamble helper builds count queries dynamically
+        assert "SELECT COUNT(*) AS n FROM " in exported_html
+        # Each section passes its table name to _sectionPreamble
+        table_calls = [
+            "_sectionPreamble(el, db, 'conditions'",
+            "_sectionPreamble(el, db, 'medications'",
+            "_sectionPreamble(el, db, 'lab_results'",
+            "_sectionPreamble(el, db, 'encounters'",
+            "_sectionPreamble(el, db, 'imaging_reports'",
+            "_sectionPreamble(el, db, 'pathology_reports'",
+            "_sectionPreamble(el, db, 'allergies'",
+            "_sectionPreamble(el, db, 'clinical_notes'",
+            "_sectionPreamble(el, db, 'procedures'",
+            "_sectionPreamble(el, db, 'vitals'",
+            "_sectionPreamble(el, db, 'immunizations'",
+            "_sectionPreamble(el, db, 'source_assets'",
         ]
-        for query in table_queries:
-            assert query in exported_html, (
-                f"Expected count query not found: {query}"
+        for call in table_calls:
+            assert call in exported_html, (
+                f"Expected _sectionPreamble call not found: {call}"
             )
 
     def test_sql_console_section_no_count(self, exported_html):

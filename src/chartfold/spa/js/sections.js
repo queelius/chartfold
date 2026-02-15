@@ -11,6 +11,48 @@ function _renderLinkedAssets(card, db, refTable, refId) {
   } catch (e) { /* source_assets may not exist */ }
 }
 
+// Returns the record count for the section, or -1 if the section is empty
+// (in which case the header and empty message are already appended).
+// Optional subtitle overrides the default "n label" pattern.
+function _sectionPreamble(el, db, table, label, emptyMsg, subtitle) {
+  var row = db.queryOne('SELECT COUNT(*) AS n FROM ' + table);
+  var n = row ? row.n : 0;
+  el.appendChild(UI.sectionHeader(label, n + ' ' + (subtitle || label.toLowerCase())));
+  if (n === 0) { el.appendChild(UI.empty(emptyMsg)); return -1; }
+  return n;
+}
+
+// Renders a <details> block with a <pre> for long text (reports, operative notes).
+function _renderExpandableText(el, label, text, opts) {
+  opts = opts || {};
+  var detailsStyle = opts.detailsStyle || 'margin: 0 0 12px 0;';
+  var summaryStyle = opts.summaryStyle || 'cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 4px 0;';
+  var details = UI.el('details', { style: detailsStyle });
+  details.appendChild(UI.el('summary', { textContent: label, style: summaryStyle }));
+  details.appendChild(UI.el('pre', {
+    textContent: text,
+    style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);'
+  }));
+  el.appendChild(details);
+}
+
+function parseRefRange(rangeStr) {
+  if (!rangeStr) return null;
+  var dashMatch = rangeStr.match(/([\d.]+)\s*[-\u2013]\s*([\d.]+)/);
+  if (dashMatch) {
+    return { low: parseFloat(dashMatch[1]), high: parseFloat(dashMatch[2]) };
+  }
+  var ltMatch = rangeStr.match(/[<≤]\s*([\d.]+)/);
+  if (ltMatch) {
+    return { low: null, high: parseFloat(ltMatch[1]) };
+  }
+  var gtMatch = rangeStr.match(/[>≥]\s*([\d.]+)/);
+  if (gtMatch) {
+    return { low: parseFloat(gtMatch[1]), high: null };
+  }
+  return null;
+}
+
 const Sections = {
   overview(el, db) {
     el.appendChild(UI.sectionHeader('Overview', 'Dashboard summary'));
@@ -161,10 +203,8 @@ const Sections = {
   },
 
   conditions(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM conditions');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Conditions', n + ' conditions'));
-    if (n === 0) { el.appendChild(UI.empty('No conditions recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'conditions', 'Conditions', 'No conditions recorded.');
+    if (n === -1) return;
 
     var cols = [
       { label: 'Condition', key: 'condition_name' },
@@ -202,10 +242,8 @@ const Sections = {
   },
 
   medications(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM medications');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Medications', n + ' medications'));
-    if (n === 0) { el.appendChild(UI.empty('No medications recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'medications', 'Medications', 'No medications recorded.');
+    if (n === -1) return;
 
     var allMeds = db.query('SELECT * FROM medications ORDER BY status, name');
 
@@ -268,10 +306,8 @@ const Sections = {
   },
 
   lab_results(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM lab_results');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Lab Results', n + ' lab results'));
-    if (n === 0) { el.appendChild(UI.empty('No lab results recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'lab_results', 'Lab Results', 'No lab results recorded.');
+    if (n === -1) return;
 
     // --- Tab buttons ---
     var activeTab = 'charts';
@@ -321,26 +357,6 @@ const Sections = {
     setActiveTab('charts');
 
     // ====== CHARTS SUB-VIEW ======
-    function parseRefRange(rangeStr) {
-      if (!rangeStr) return null;
-      // Try "low - high" or "low-high"
-      var dashMatch = rangeStr.match(/([\d.]+)\s*[-\u2013]\s*([\d.]+)/);
-      if (dashMatch) {
-        return { low: parseFloat(dashMatch[1]), high: parseFloat(dashMatch[2]) };
-      }
-      // Try "< high" or "<= high"
-      var ltMatch = rangeStr.match(/[<≤]\s*([\d.]+)/);
-      if (ltMatch) {
-        return { low: null, high: parseFloat(ltMatch[1]) };
-      }
-      // Try "> low" or ">= low"
-      var gtMatch = rangeStr.match(/[>≥]\s*([\d.]+)/);
-      if (gtMatch) {
-        return { low: parseFloat(gtMatch[1]), high: null };
-      }
-      return null;
-    }
-
     function renderChart(testName, aliases) {
       var placeholders = aliases.map(function() { return '?'; }).join(',');
       var sql = 'SELECT value_numeric, result_date, source, ref_range FROM lab_results ' +
@@ -541,10 +557,8 @@ const Sections = {
   },
 
   encounters(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM encounters');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Encounters', n + ' encounters'));
-    if (n === 0) { el.appendChild(UI.empty('No encounters recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'encounters', 'Encounters', 'No encounters recorded.');
+    if (n === -1) return;
 
     var pageSize = 20;
     var currentPage = 1;
@@ -590,10 +604,8 @@ const Sections = {
   },
 
   imaging(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM imaging_reports');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Imaging', n + ' imaging reports'));
-    if (n === 0) { el.appendChild(UI.empty('No imaging reports recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'imaging_reports', 'Imaging', 'No imaging reports recorded.', 'imaging reports');
+    if (n === -1) return;
 
     var reports = db.query('SELECT * FROM imaging_reports ORDER BY study_date DESC');
     for (var i = 0; i < reports.length; i++) {
@@ -625,20 +637,15 @@ const Sections = {
       if (r.full_text) {
         var combined = (r.findings || '') + (r.impression || '');
         if (r.full_text !== combined && r.full_text.length > combined.length) {
-          var details = UI.el('details', { style: 'margin: 0 0 12px 0;' });
-          details.appendChild(UI.el('summary', { textContent: 'Full Report Text', style: 'cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 4px 0;' }));
-          details.appendChild(UI.el('pre', { textContent: r.full_text, style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);' }));
-          el.appendChild(details);
+          _renderExpandableText(el, 'Full Report Text', r.full_text);
         }
       }
     }
   },
 
   pathology(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM pathology_reports');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Pathology', n + ' pathology reports'));
-    if (n === 0) { el.appendChild(UI.empty('No pathology reports recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'pathology_reports', 'Pathology', 'No pathology reports recorded.', 'pathology reports');
+    if (n === -1) return;
 
     var reports = db.query('SELECT * FROM pathology_reports ORDER BY report_date DESC');
     for (var i = 0; i < reports.length; i++) {
@@ -670,19 +677,14 @@ const Sections = {
 
       // Expandable full text
       if (r.full_text) {
-        var details = UI.el('details', { style: 'margin: 0 0 12px 0;' });
-        details.appendChild(UI.el('summary', { textContent: 'Full Report Text', style: 'cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 4px 0;' }));
-        details.appendChild(UI.el('pre', { textContent: r.full_text, style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);' }));
-        el.appendChild(details);
+        _renderExpandableText(el, 'Full Report Text', r.full_text);
       }
     }
   },
 
   allergies(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM allergies');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Allergies', n + ' allergies'));
-    if (n === 0) { el.appendChild(UI.empty('No allergies recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'allergies', 'Allergies', 'No allergies recorded.');
+    if (n === -1) return;
 
     var rows = db.query('SELECT * FROM allergies ORDER BY allergen');
     el.appendChild(UI.table([
@@ -707,10 +709,8 @@ const Sections = {
   },
 
   clinical_notes(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM clinical_notes');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Clinical Notes', n + ' clinical notes'));
-    if (n === 0) { el.appendChild(UI.empty('No clinical notes recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'clinical_notes', 'Clinical Notes', 'No clinical notes recorded.');
+    if (n === -1) return;
 
     var allNotes = db.query('SELECT * FROM clinical_notes ORDER BY note_date DESC');
     var searchText = '';
@@ -784,10 +784,8 @@ const Sections = {
   },
 
   procedures(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM procedures');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Procedures', n + ' procedures'));
-    if (n === 0) { el.appendChild(UI.empty('No procedures recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'procedures', 'Procedures', 'No procedures recorded.');
+    if (n === -1) return;
 
     var rows = db.query('SELECT * FROM procedures ORDER BY procedure_date DESC');
     var tableContainer = UI.el('div');
@@ -816,25 +814,18 @@ const Sections = {
           el.appendChild(UI.el('h3', { textContent: 'Operative Notes', style: 'margin: 24px 0 8px;' }));
           hasNotes = true;
         }
-        var details = UI.el('details', { style: 'margin-bottom: 8px;' });
-        details.appendChild(UI.el('summary', {
-          textContent: (rows[i].name || 'Procedure') + ' (' + (rows[i].procedure_date || 'Unknown date') + ')',
-          style: 'cursor: pointer; font-weight: 500; padding: 6px 0;'
-        }));
-        details.appendChild(UI.el('pre', {
-          textContent: rows[i].operative_note,
-          style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);'
-        }));
-        el.appendChild(details);
+        var label = (rows[i].name || 'Procedure') + ' (' + (rows[i].procedure_date || 'Unknown date') + ')';
+        _renderExpandableText(el, label, rows[i].operative_note, {
+          detailsStyle: 'margin-bottom: 8px;',
+          summaryStyle: 'cursor: pointer; font-weight: 500; padding: 6px 0;'
+        });
       }
     }
   },
 
   vitals(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM vitals');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Vitals', n + ' vitals'));
-    if (n === 0) { el.appendChild(UI.empty('No vitals recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'vitals', 'Vitals', 'No vitals recorded.');
+    if (n === -1) return;
 
     var rows = db.query('SELECT * FROM vitals ORDER BY recorded_date DESC, vital_type');
     el.appendChild(UI.table([
@@ -850,10 +841,8 @@ const Sections = {
   },
 
   immunizations(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM immunizations');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Immunizations', n + ' immunizations'));
-    if (n === 0) { el.appendChild(UI.empty('No immunizations recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'immunizations', 'Immunizations', 'No immunizations recorded.');
+    if (n === -1) return;
 
     var rows = db.query('SELECT * FROM immunizations ORDER BY admin_date DESC');
     el.appendChild(UI.table([
@@ -872,10 +861,8 @@ const Sections = {
   },
 
   sources(el, db) {
-    var row = db.queryOne('SELECT COUNT(*) AS n FROM source_assets');
-    var n = row ? row.n : 0;
-    el.appendChild(UI.sectionHeader('Sources', n + ' source assets'));
-    if (n === 0) { el.appendChild(UI.empty('No source assets recorded.')); return; }
+    var n = _sectionPreamble(el, db, 'source_assets', 'Sources', 'No source assets recorded.', 'source assets');
+    if (n === -1) return;
 
     // Load embedded images
     var images = {};
