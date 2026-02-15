@@ -136,11 +136,25 @@
 
     app.appendChild(sidebar);
 
-    // --- Build content area ---
-    const content = UI.el('div', { className: 'content', id: 'content' }, [
-      UI.el('div', { className: 'empty-state', textContent: 'Select a section from the sidebar to begin.' })
-    ]);
+    // --- Build content area (empty — Router will populate it) ---
+    const content = UI.el('div', { className: 'content', id: 'content' });
     app.appendChild(content);
+
+    // --- Initialize Router and register all sections ---
+    Router.init(content, sidebar);
+
+    for (const sec of sidebarSections) {
+      Router.register(
+        sec.id,
+        sec.label,
+        sec.group,
+        counts[sec.id] !== undefined ? counts[sec.id] : null,
+        Sections[sec.id]
+      );
+    }
+
+    // --- Start routing (navigates to hash or default 'overview') ---
+    Router.start();
 
   } catch (err) {
     const app = document.getElementById('app');

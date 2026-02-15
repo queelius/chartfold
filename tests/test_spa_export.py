@@ -400,3 +400,174 @@ class TestLoadImagesJson:
         bad_db.write_text("not a database")
         result = _load_images_json(str(bad_db))
         assert json.loads(result) == {}
+
+
+# --- Router JS tests ---
+
+
+class TestRouterJs:
+    """Tests that verify router.js is properly structured and embedded."""
+
+    def test_router_object_in_html(self, exported_html):
+        """HTML contains the Router object definition."""
+        assert "const Router" in exported_html
+
+    def test_router_has_init_method(self, exported_html):
+        """Router has init(contentEl, sidebarEl) method."""
+        assert "init(contentEl, sidebarEl)" in exported_html
+
+    def test_router_has_register_method(self, exported_html):
+        """Router has register method for adding sections."""
+        assert "register(id, label, group, count, renderFn)" in exported_html
+
+    def test_router_has_navigate_method(self, exported_html):
+        """Router has navigate(sectionId) method."""
+        assert "navigate(sectionId)" in exported_html
+
+    def test_router_has_start_method(self, exported_html):
+        """Router has start() method."""
+        assert "start()" in exported_html
+
+    def test_router_uses_event_delegation(self, exported_html):
+        """Router uses event delegation with closest('.sidebar-item')."""
+        assert ".closest('.sidebar-item')" in exported_html
+
+    def test_router_handles_popstate(self, exported_html):
+        """Router listens for popstate events for browser back/forward."""
+        assert "'popstate'" in exported_html
+
+    def test_router_sets_location_hash(self, exported_html):
+        """Router updates location.hash for bookmarking."""
+        assert "history.pushState" in exported_html
+
+    def test_router_closes_mobile_sidebar(self, exported_html):
+        """Router removes .open class from sidebar on navigate."""
+        # The navigate method should close the mobile sidebar
+        assert "classList.remove('open')" in exported_html
+
+    def test_router_clears_content(self, exported_html):
+        """Router clears content area before rendering a section."""
+        assert "contentEl.textContent = ''" in exported_html
+
+    def test_router_updates_active_class(self, exported_html):
+        """Router manages the .active class on sidebar items."""
+        assert "classList.remove('active')" in exported_html
+        assert "classList.add('active')" in exported_html
+
+    def test_router_default_to_overview(self, exported_html):
+        """Router defaults to 'overview' section when no hash is set."""
+        assert "navigate('overview')" in exported_html
+
+
+# --- Sections JS tests ---
+
+
+class TestSectionsJs:
+    """Tests that verify sections.js contains all required section renderers."""
+
+    def test_sections_object_in_html(self, exported_html):
+        """HTML contains the Sections object definition."""
+        assert "const Sections" in exported_html
+
+    def test_all_section_ids_present(self, exported_html):
+        """All 15 section IDs have renderers in Sections."""
+        expected_sections = [
+            "overview",
+            "conditions",
+            "medications",
+            "lab_results",
+            "encounters",
+            "imaging",
+            "pathology",
+            "allergies",
+            "clinical_notes",
+            "procedures",
+            "vitals",
+            "immunizations",
+            "sources",
+            "analysis",
+            "sql_console",
+        ]
+        for section_id in expected_sections:
+            # Each section should appear as a method: "section_id(el, db)"
+            assert f"{section_id}(el, db)" in exported_html, (
+                f"Section '{section_id}' renderer not found in exported HTML"
+            )
+
+    def test_sections_use_section_header(self, exported_html):
+        """Section renderers use UI.sectionHeader for consistent headings."""
+        assert "UI.sectionHeader(" in exported_html
+
+    def test_sections_use_empty_state(self, exported_html):
+        """Section renderers use UI.empty for placeholder messages."""
+        assert "UI.empty(" in exported_html
+
+    def test_overview_section_no_table_query(self, exported_html):
+        """Overview section does not query a table for count (no table)."""
+        # Overview should not have a COUNT query for a table
+        # It should just show a header and coming soon message
+        assert "UI.sectionHeader('Overview'" in exported_html
+
+    def test_clinical_sections_query_counts(self, exported_html):
+        """Clinical sections query their respective tables for counts."""
+        table_queries = [
+            "SELECT COUNT(*) AS n FROM conditions",
+            "SELECT COUNT(*) AS n FROM medications",
+            "SELECT COUNT(*) AS n FROM lab_results",
+            "SELECT COUNT(*) AS n FROM encounters",
+            "SELECT COUNT(*) AS n FROM imaging_reports",
+            "SELECT COUNT(*) AS n FROM pathology_reports",
+            "SELECT COUNT(*) AS n FROM allergies",
+            "SELECT COUNT(*) AS n FROM clinical_notes",
+            "SELECT COUNT(*) AS n FROM procedures",
+            "SELECT COUNT(*) AS n FROM vitals",
+            "SELECT COUNT(*) AS n FROM immunizations",
+            "SELECT COUNT(*) AS n FROM source_assets",
+        ]
+        for query in table_queries:
+            assert query in exported_html, (
+                f"Expected count query not found: {query}"
+            )
+
+    def test_sql_console_section_no_count(self, exported_html):
+        """SQL console section does not query a count table."""
+        assert "UI.sectionHeader('SQL Console'" in exported_html
+
+    def test_analysis_section_reads_embedded_json(self, exported_html):
+        """Analysis section reads from the chartfold-analysis embedded data."""
+        # The analysis section should reference the embedded JSON
+        assert "getElementById('chartfold-analysis')" in exported_html
+
+
+# --- App.js wiring tests ---
+
+
+class TestAppJsRouterWiring:
+    """Tests that app.js properly wires Router and Sections together."""
+
+    def test_app_calls_router_init(self, exported_html):
+        """app.js calls Router.init with content and sidebar elements."""
+        assert "Router.init(" in exported_html
+
+    def test_app_registers_sections(self, exported_html):
+        """app.js calls Router.register for each sidebar section."""
+        assert "Router.register(" in exported_html
+
+    def test_app_calls_router_start(self, exported_html):
+        """app.js calls Router.start() to begin navigation."""
+        assert "Router.start()" in exported_html
+
+    def test_app_no_hardcoded_empty_state(self, exported_html):
+        """app.js does not hardcode an empty state in the content area."""
+        # The old hardcoded message should be removed; Router handles it
+        assert "Select a section from the sidebar to begin." not in exported_html
+
+    def test_app_passes_section_renderers(self, exported_html):
+        """app.js passes Sections[sec.id] as the render function."""
+        assert "Sections[sec.id]" in exported_html
+
+    def test_app_content_div_created_empty(self, exported_html):
+        """app.js creates the #content div without child content."""
+        # The content div is created with just className and id, no children
+        # (Router.start() will populate it)
+        assert "id: 'content'" in exported_html
