@@ -699,3 +699,310 @@ class TestAppJsRouterWiring:
         # The content div is created with just className and id, no children
         # (Router.start() will populate it)
         assert "id: 'content'" in exported_html
+
+
+# --- ChartRenderer JS tests ---
+
+
+class TestChartRendererJs:
+    """Tests that verify chart.js contains the ChartRenderer implementation."""
+
+    def test_chart_renderer_object(self, exported_html):
+        """HTML contains the ChartRenderer object definition."""
+        assert "var ChartRenderer" in exported_html
+
+    def test_chart_renderer_has_palette(self, exported_html):
+        """ChartRenderer has a color palette array."""
+        assert "_palette:" in exported_html
+        assert "#0071e3" in exported_html
+        assert "#ff9500" in exported_html
+        assert "#34c759" in exported_html
+
+    def test_chart_renderer_has_line_method(self, exported_html):
+        """ChartRenderer has a line(canvas, datasets, opts) method."""
+        assert "line: function(canvas, datasets, opts)" in exported_html
+
+    def test_chart_renderer_has_create_tooltip(self, exported_html):
+        """ChartRenderer has a createTooltip method."""
+        assert "createTooltip: function(container)" in exported_html
+
+    def test_chart_renderer_has_set_tooltip_content(self, exported_html):
+        """ChartRenderer has a _setTooltipContent helper for safe DOM tooltip rendering."""
+        assert "_setTooltipContent: function(tooltip, label, value, dateStr, source)" in exported_html
+
+    def test_chart_uses_device_pixel_ratio(self, exported_html):
+        """Chart renderer uses devicePixelRatio for high-DPI displays."""
+        assert "devicePixelRatio" in exported_html
+
+    def test_chart_canvas_sizing(self, exported_html):
+        """Chart sets canvas width/height from opts with defaults."""
+        assert "opts.width || 800" in exported_html
+        assert "opts.height || 300" in exported_html
+
+    def test_chart_y_axis_auto_scale(self, exported_html):
+        """Chart auto-scales Y axis from data min/max."""
+        assert "Math.min.apply(null, allY)" in exported_html
+        assert "Math.max.apply(null, allY)" in exported_html
+
+    def test_chart_y_axis_padding(self, exported_html):
+        """Chart adds 10% padding to Y axis range."""
+        assert "yRange * 0.1" in exported_html
+
+    def test_chart_ref_range_extends_scale(self, exported_html):
+        """Chart extends Y scale to include reference range if provided."""
+        assert "Math.min(yMin, refRange.low)" in exported_html
+        assert "Math.max(yMax, refRange.high)" in exported_html
+
+    def test_chart_ref_range_shading(self, exported_html):
+        """Chart draws reference range as a shaded band."""
+        assert "rgba(52, 199, 89, 0.08)" in exported_html
+        assert "fillRect(padLeft" in exported_html
+
+    def test_chart_ref_range_dashed_borders(self, exported_html):
+        """Chart draws dashed borders for reference range."""
+        assert "setLineDash([4, 4])" in exported_html
+
+    def test_chart_gridlines(self, exported_html):
+        """Chart draws Y-axis gridlines."""
+        assert "yTicks = 5" in exported_html
+        assert "#e5e5ea" in exported_html  # gridline color
+
+    def test_chart_x_axis_date_labels(self, exported_html):
+        """Chart renders X-axis date labels from date strings."""
+        assert "months[d.getMonth()]" in exported_html
+        assert "d.getFullYear()" in exported_html
+
+    def test_chart_x_axis_max_labels(self, exported_html):
+        """Chart limits X-axis labels to max 10."""
+        assert "maxXLabels = 10" in exported_html
+
+    def test_chart_x_axis_label_rotation(self, exported_html):
+        """Chart rotates X-axis labels at an angle."""
+        assert "Math.PI / 6" in exported_html
+
+    def test_chart_line_drawing(self, exported_html):
+        """Chart draws connected lines for each dataset."""
+        assert "ctx.lineTo(points[lk].sx, points[lk].sy)" in exported_html
+
+    def test_chart_line_style(self, exported_html):
+        """Chart uses line width 2px with round joins."""
+        assert "lineWidth = 2" in exported_html
+        assert "lineJoin = 'round'" in exported_html
+        assert "lineCap = 'round'" in exported_html
+
+    def test_chart_data_points(self, exported_html):
+        """Chart draws circles at data points with radius 4."""
+        assert "ctx.arc(points[pk].sx, points[pk].sy, 4" in exported_html
+
+    def test_chart_data_points_white_border(self, exported_html):
+        """Chart data points have a white border for visibility."""
+        assert "strokeStyle = '#fff'" in exported_html
+
+    def test_chart_legend(self, exported_html):
+        """Chart draws a legend when multiple datasets exist."""
+        assert "datasets.length > 1" in exported_html
+        assert "Color swatch" in exported_html
+        assert "measureText" in exported_html
+
+    def test_chart_hover_interaction(self, exported_html):
+        """Chart has mousemove event handler for hover tooltips."""
+        assert "addEventListener('mousemove'" in exported_html
+        assert "getBoundingClientRect" in exported_html
+
+    def test_chart_hover_finds_closest_point(self, exported_html):
+        """Chart hover finds closest data point within 40px threshold."""
+        assert "closestDist = Infinity" in exported_html
+        assert "dist < 40" in exported_html
+
+    def test_chart_hover_hides_on_mouseleave(self, exported_html):
+        """Chart hides tooltip on mouseleave."""
+        assert "addEventListener('mouseleave'" in exported_html
+
+    def test_chart_tooltip_styling(self, exported_html):
+        """Chart tooltip has proper styling (z-index, background, shadow)."""
+        assert "z-index:200" in exported_html
+        assert "chart-tooltip" in exported_html
+        assert "pointer-events:none" in exported_html
+
+    def test_chart_tooltip_safe_dom(self, exported_html):
+        """Chart tooltip uses safe DOM methods (textContent, not innerHTML)."""
+        assert "_setTooltipContent(tooltip" in exported_html
+        assert "document.createTextNode" in exported_html
+
+    def test_chart_tooltip_positioning(self, exported_html):
+        """Chart tooltip is positioned near the hovered data point."""
+        assert "closest.sx + 12" in exported_html
+        assert "closest.sy - 12" in exported_html
+
+    def test_chart_tooltip_bounds_check(self, exported_html):
+        """Chart tooltip stays within container bounds."""
+        assert "containerW = canvas.parentNode.offsetWidth" in exported_html
+        assert "tipX + 160 > containerW" in exported_html
+
+    def test_chart_area_padding(self, exported_html):
+        """Chart has defined padding for axes."""
+        assert "padLeft = 60" in exported_html
+        assert "padRight = 20" in exported_html
+        assert "padTop = 20" in exported_html
+        assert "padBottom = 40" in exported_html
+
+    def test_chart_x_range_fallback(self, exported_html):
+        """Chart handles single-point X range with 1 day fallback."""
+        assert "xRange === 0" in exported_html
+        assert "86400000" in exported_html
+
+
+# --- Lab Results section tests ---
+
+
+class TestLabResultsSection:
+    """Tests that verify the lab_results section in sections.js."""
+
+    def test_lab_results_has_renderer(self, exported_html):
+        """Lab results section has a renderer function."""
+        assert "lab_results(el, db)" in exported_html
+
+    def test_lab_results_queries_count(self, exported_html):
+        """Lab results section queries the total count."""
+        assert "SELECT COUNT(*) AS n FROM lab_results" in exported_html
+
+    def test_lab_results_empty_state(self, exported_html):
+        """Lab results shows empty state when no data."""
+        assert "No lab results recorded" in exported_html
+
+    def test_lab_results_has_tab_buttons(self, exported_html):
+        """Lab results section has Charts and Table tab buttons."""
+        assert "Charts" in exported_html
+        assert "Table" in exported_html
+
+    def test_lab_results_default_to_charts(self, exported_html):
+        """Lab results defaults to the Charts tab."""
+        assert "activeTab = 'charts'" in exported_html
+
+    def test_lab_results_tab_switching(self, exported_html):
+        """Lab results has tab switching logic with setActiveTab function."""
+        assert "setActiveTab('charts')" in exported_html
+        assert "setActiveTab('table')" in exported_html
+
+    def test_lab_results_tab_active_styling(self, exported_html):
+        """Lab results tabs use accent color for active state."""
+        assert "style.background = 'var(--accent)'" in exported_html
+        assert "style.color = '#fff'" in exported_html
+
+    def test_lab_results_charts_read_config(self, exported_html):
+        """Lab results charts sub-view reads config for key_tests."""
+        # Already tested that overview reads config, but lab_results also does
+        assert "key_tests.tests" in exported_html
+
+    def test_lab_results_charts_use_aliases(self, exported_html):
+        """Lab results charts use test aliases from config."""
+        assert "key_tests.aliases" in exported_html
+
+    def test_lab_results_charts_query_numeric(self, exported_html):
+        """Lab results charts query only numeric values."""
+        assert "value_numeric IS NOT NULL" in exported_html
+
+    def test_lab_results_charts_group_by_source(self, exported_html):
+        """Lab results charts group data by source for multi-dataset display."""
+        assert "sourceMap" in exported_html
+
+    def test_lab_results_charts_parse_ref_range(self, exported_html):
+        """Lab results charts parse reference range strings."""
+        assert "parseRefRange" in exported_html
+
+    def test_lab_results_ref_range_dash_format(self, exported_html):
+        """Lab results parses dash-separated ref range (e.g., '3.0-10.0')."""
+        # The regex for dash format
+        assert "dashMatch" in exported_html
+
+    def test_lab_results_ref_range_lt_format(self, exported_html):
+        """Lab results parses less-than ref range (e.g., '< 5.0')."""
+        assert "ltMatch" in exported_html
+
+    def test_lab_results_ref_range_gt_format(self, exported_html):
+        """Lab results parses greater-than ref range (e.g., '> 1.0')."""
+        assert "gtMatch" in exported_html
+
+    def test_lab_results_charts_use_chart_renderer(self, exported_html):
+        """Lab results charts call ChartRenderer.line()."""
+        assert "ChartRenderer.line(canvas, datasets" in exported_html
+
+    def test_lab_results_charts_use_chart_container(self, exported_html):
+        """Lab results chart cards use .chart-container class."""
+        assert "chart-container" in exported_html
+
+    def test_lab_results_fallback_top_5(self, exported_html):
+        """Lab results shows top 5 tests by count when no config."""
+        assert "GROUP BY test_name ORDER BY cnt DESC LIMIT 5" in exported_html
+
+    def test_lab_results_no_numeric_empty(self, exported_html):
+        """Lab results shows message when no numeric data for charting."""
+        assert "No numeric lab data available for charting" in exported_html
+
+    def test_lab_results_table_filter_bar(self, exported_html):
+        """Lab results table has a filter bar with test name, abnormal, and dates."""
+        assert "SELECT DISTINCT test_name FROM lab_results ORDER BY test_name" in exported_html
+
+    def test_lab_results_table_filter_test_name(self, exported_html):
+        """Lab results table filter supports test name selection."""
+        assert "test_name = ?" in exported_html
+
+    def test_lab_results_table_filter_abnormal(self, exported_html):
+        """Lab results table filter supports abnormal-only checkbox."""
+        assert "abnormalOnly" in exported_html
+
+    def test_lab_results_table_filter_date_range(self, exported_html):
+        """Lab results table filter supports date range inputs."""
+        assert "dateFrom" in exported_html
+        assert "dateTo" in exported_html
+        assert "result_date >= ?" in exported_html
+        assert "result_date <= ?" in exported_html
+
+    def test_lab_results_table_columns(self, exported_html):
+        """Lab results table has expected columns."""
+        for col in ["Test Name", "Value", "Unit", "Ref Range", "Date", "Source"]:
+            assert col in exported_html, (
+                f"Lab results table should have column '{col}'"
+            )
+
+    def test_lab_results_table_abnormal_badge(self, exported_html):
+        """Lab results table shows red badge for abnormal interpretations."""
+        assert "UI.badge(row.interpretation, 'red')" in exported_html
+
+    def test_lab_results_table_abnormal_interpretations(self, exported_html):
+        """Lab results table checks all standard abnormal interpretation codes."""
+        for interp in ["H", "L", "HH", "LL", "HIGH", "LOW", "ABNORMAL", "A"]:
+            assert f"'{interp}'" in exported_html
+
+    def test_lab_results_table_abnormal_row_highlight(self, exported_html):
+        """Lab results table highlights abnormal rows with subtle red background."""
+        assert "rgba(255, 59, 48, 0.04)" in exported_html
+
+    def test_lab_results_table_pagination(self, exported_html):
+        """Lab results table has pagination with 50 per page."""
+        assert "pageSize = 50" in exported_html
+        assert "UI.pagination(" in exported_html
+
+    def test_lab_results_table_ordering(self, exported_html):
+        """Lab results table orders by date descending, then test name."""
+        assert "ORDER BY result_date DESC, test_name" in exported_html
+
+    def test_lab_results_table_limit_offset(self, exported_html):
+        """Lab results table uses LIMIT and OFFSET for pagination."""
+        assert "LIMIT ? OFFSET ?" in exported_html
+
+    def test_lab_results_table_no_match_empty(self, exported_html):
+        """Lab results table shows empty state when no results match filters."""
+        assert "No lab results match the current filters" in exported_html
+
+    def test_lab_results_table_page_clamping(self, exported_html):
+        """Lab results table clamps currentPage to valid range."""
+        assert "currentPage > totalPages" in exported_html
+
+    def test_lab_results_table_filter_resets_page(self, exported_html):
+        """Lab results table resets to page 1 when filters change."""
+        assert "currentPage = 1" in exported_html
+
+    def test_lab_results_charts_dataset_palette(self, exported_html):
+        """Lab results charts use a color palette for multiple sources."""
+        assert "_labChartPalette" in exported_html

@@ -258,7 +258,281 @@ const Sections = {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM lab_results');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Lab Results', n + ' lab results'));
-    el.appendChild(UI.empty('Lab results section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No lab results recorded.')); return; }
+
+    // --- Tab buttons ---
+    var activeTab = 'charts';
+    var tabBar = UI.el('div', { style: 'display: flex; gap: 4px; margin-bottom: 16px;' });
+    var chartTabBtn = UI.el('button', {
+      textContent: 'Charts',
+      style: 'padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 600; border: 1px solid var(--border); cursor: pointer;'
+    });
+    var tableTabBtn = UI.el('button', {
+      textContent: 'Table',
+      style: 'padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 600; border: 1px solid var(--border); cursor: pointer;'
+    });
+    tabBar.appendChild(chartTabBtn);
+    tabBar.appendChild(tableTabBtn);
+    el.appendChild(tabBar);
+
+    var chartsView = UI.el('div');
+    var tableView = UI.el('div', { style: 'display: none;' });
+    el.appendChild(chartsView);
+    el.appendChild(tableView);
+
+    function setActiveTab(tab) {
+      activeTab = tab;
+      if (tab === 'charts') {
+        chartTabBtn.style.background = 'var(--accent)';
+        chartTabBtn.style.color = '#fff';
+        chartTabBtn.style.borderColor = 'var(--accent)';
+        tableTabBtn.style.background = 'var(--surface)';
+        tableTabBtn.style.color = 'var(--text)';
+        tableTabBtn.style.borderColor = 'var(--border)';
+        chartsView.style.display = '';
+        tableView.style.display = 'none';
+      } else {
+        tableTabBtn.style.background = 'var(--accent)';
+        tableTabBtn.style.color = '#fff';
+        tableTabBtn.style.borderColor = 'var(--accent)';
+        chartTabBtn.style.background = 'var(--surface)';
+        chartTabBtn.style.color = 'var(--text)';
+        chartTabBtn.style.borderColor = 'var(--border)';
+        chartsView.style.display = 'none';
+        tableView.style.display = '';
+      }
+    }
+
+    chartTabBtn.addEventListener('click', function() { setActiveTab('charts'); });
+    tableTabBtn.addEventListener('click', function() { setActiveTab('table'); });
+    setActiveTab('charts');
+
+    // ====== CHARTS SUB-VIEW ======
+    var _labChartPalette = ['#0071e3', '#ff9500', '#34c759', '#ff3b30', '#af52de', '#5856d6'];
+
+    function parseRefRange(rangeStr) {
+      if (!rangeStr) return null;
+      // Try "low - high" or "low-high"
+      var dashMatch = rangeStr.match(/([\d.]+)\s*[-\u2013]\s*([\d.]+)/);
+      if (dashMatch) {
+        return { low: parseFloat(dashMatch[1]), high: parseFloat(dashMatch[2]) };
+      }
+      // Try "< high" or "<= high"
+      var ltMatch = rangeStr.match(/[<≤]\s*([\d.]+)/);
+      if (ltMatch) {
+        return { low: null, high: parseFloat(ltMatch[1]) };
+      }
+      // Try "> low" or ">= low"
+      var gtMatch = rangeStr.match(/[>≥]\s*([\d.]+)/);
+      if (gtMatch) {
+        return { low: parseFloat(gtMatch[1]), high: null };
+      }
+      return null;
+    }
+
+    function renderChart(testName, aliases) {
+      var placeholders = aliases.map(function() { return '?'; }).join(',');
+      var sql = 'SELECT value_numeric, result_date, source, ref_range FROM lab_results ' +
+        'WHERE test_name IN (' + placeholders + ') AND value_numeric IS NOT NULL ' +
+        'ORDER BY result_date';
+      var labRows = db.query(sql, aliases);
+      if (labRows.length === 0) return null;
+
+      // Group by source
+      var sourceMap = {};
+      var refRangeStr = null;
+      for (var ri = 0; ri < labRows.length; ri++) {
+        var lr = labRows[ri];
+        var src = lr.source || 'Unknown';
+        if (!sourceMap[src]) sourceMap[src] = [];
+        sourceMap[src].push({ x: lr.result_date, y: lr.value_numeric, source: src });
+        if (!refRangeStr && lr.ref_range) refRangeStr = lr.ref_range;
+      }
+
+      var sources = Object.keys(sourceMap);
+      var datasets = [];
+      for (var si = 0; si < sources.length; si++) {
+        datasets.push({
+          label: sources[si],
+          data: sourceMap[sources[si]],
+          color: _labChartPalette[si % _labChartPalette.length]
+        });
+      }
+
+      var refRange = parseRefRange(refRangeStr);
+      var chartOpts = { width: 760, height: 280 };
+      if (refRange) {
+        chartOpts.refRange = refRange;
+      }
+
+      var card = UI.el('div', { className: 'chart-container', style: 'margin-bottom: 16px;' });
+      card.appendChild(UI.el('h3', { textContent: testName, style: 'margin: 0 0 12px 0; font-size: 16px;' }));
+      var canvas = UI.el('canvas');
+      card.appendChild(canvas);
+      ChartRenderer.line(canvas, datasets, chartOpts);
+      return card;
+    }
+
+    try {
+      var configEl = document.getElementById('chartfold-config');
+      var config = configEl ? JSON.parse(configEl.textContent) : {};
+      if (config.key_tests && config.key_tests.tests && config.key_tests.tests.length > 0) {
+        for (var kt = 0; kt < config.key_tests.tests.length; kt++) {
+          var testName = config.key_tests.tests[kt];
+          var aliases = (config.key_tests.aliases && config.key_tests.aliases[testName])
+            ? config.key_tests.aliases[testName]
+            : [testName];
+          var chartEl = renderChart(testName, aliases);
+          if (chartEl) chartsView.appendChild(chartEl);
+        }
+      } else {
+        // No config: show charts for top 5 tests by count
+        var topTests = db.query(
+          'SELECT test_name, COUNT(*) AS cnt FROM lab_results ' +
+          'WHERE value_numeric IS NOT NULL ' +
+          'GROUP BY test_name ORDER BY cnt DESC LIMIT 5'
+        );
+        for (var tt = 0; tt < topTests.length; tt++) {
+          var chartEl2 = renderChart(topTests[tt].test_name, [topTests[tt].test_name]);
+          if (chartEl2) chartsView.appendChild(chartEl2);
+        }
+      }
+    } catch (e) {
+      // Config parsing failed, show top tests
+      var topTests2 = db.query(
+        'SELECT test_name, COUNT(*) AS cnt FROM lab_results ' +
+        'WHERE value_numeric IS NOT NULL ' +
+        'GROUP BY test_name ORDER BY cnt DESC LIMIT 5'
+      );
+      for (var tt2 = 0; tt2 < topTests2.length; tt2++) {
+        var chartEl3 = renderChart(topTests2[tt2].test_name, [topTests2[tt2].test_name]);
+        if (chartEl3) chartsView.appendChild(chartEl3);
+      }
+    }
+
+    if (chartsView.children.length === 0) {
+      chartsView.appendChild(UI.empty('No numeric lab data available for charting.'));
+    }
+
+    // ====== TABLE SUB-VIEW ======
+    var abnormalInterps = ['H', 'L', 'HH', 'LL', 'HIGH', 'LOW', 'ABNORMAL', 'A'];
+    var pageSize = 50;
+    var filters = { testName: '', abnormalOnly: false, dateFrom: '', dateTo: '' };
+    var currentPage = 1;
+
+    // Get distinct test names for filter dropdown
+    var testNames = db.query('SELECT DISTINCT test_name FROM lab_results ORDER BY test_name');
+    var testOptions = testNames.map(function(r) { return { value: r.test_name, label: r.test_name }; });
+
+    // Filter bar
+    var filterBarEl = UI.filterBar([
+      { type: 'select', key: 'testName', label: 'Test', options: testOptions },
+      { type: 'checkbox', key: 'abnormalOnly', label: 'Abnormal only' },
+      { type: 'date', key: 'dateFrom', label: 'From' },
+      { type: 'date', key: 'dateTo', label: 'To' }
+    ], filters, function(key, value) {
+      filters[key] = value;
+      currentPage = 1;
+      renderTable();
+    });
+    tableView.appendChild(filterBarEl);
+
+    var tableContainer = UI.el('div');
+    var paginationContainer = UI.el('div');
+    tableView.appendChild(tableContainer);
+    tableView.appendChild(paginationContainer);
+
+    function renderTable() {
+      // Build query with filters
+      var conditions = [];
+      var params = [];
+      if (filters.testName) {
+        conditions.push('test_name = ?');
+        params.push(filters.testName);
+      }
+      if (filters.abnormalOnly) {
+        var interpPlaceholders = abnormalInterps.map(function() { return '?'; }).join(',');
+        conditions.push('interpretation IN (' + interpPlaceholders + ')');
+        for (var ai = 0; ai < abnormalInterps.length; ai++) {
+          params.push(abnormalInterps[ai]);
+        }
+      }
+      if (filters.dateFrom) {
+        conditions.push('result_date >= ?');
+        params.push(filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        conditions.push('result_date <= ?');
+        params.push(filters.dateTo);
+      }
+
+      var whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+
+      // Get total count for pagination
+      var countRow = db.queryOne('SELECT COUNT(*) AS n FROM lab_results' + whereClause, params);
+      var total = countRow ? countRow.n : 0;
+
+      // Clamp currentPage
+      var totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      // Query current page
+      var offset = (currentPage - 1) * pageSize;
+      var dataParams = params.slice();
+      dataParams.push(pageSize);
+      dataParams.push(offset);
+      var rows = db.query(
+        'SELECT test_name, value, value_numeric, unit, ref_range, interpretation, result_date, source FROM lab_results' +
+        whereClause + ' ORDER BY result_date DESC, test_name LIMIT ? OFFSET ?',
+        dataParams
+      );
+
+      // Render table
+      tableContainer.textContent = '';
+      if (rows.length === 0) {
+        tableContainer.appendChild(UI.empty('No lab results match the current filters.'));
+      } else {
+        var cols = [
+          { label: 'Test Name', key: 'test_name' },
+          { label: 'Value', key: 'value', format: function(val, row) {
+            var container = UI.el('span');
+            container.appendChild(document.createTextNode(val != null ? String(val) : ''));
+            if (row.interpretation && abnormalInterps.indexOf(row.interpretation) !== -1) {
+              container.appendChild(document.createTextNode(' '));
+              container.appendChild(UI.badge(row.interpretation, 'red'));
+            }
+            return container;
+          }},
+          { label: 'Unit', key: 'unit' },
+          { label: 'Ref Range', key: 'ref_range' },
+          { label: 'Date', key: 'result_date' },
+          { label: 'Source', key: 'source' }
+        ];
+        tableContainer.appendChild(UI.table(cols, rows));
+
+        // Highlight abnormal rows
+        var trs = tableContainer.querySelectorAll('tbody tr');
+        for (var tri = 0; tri < trs.length; tri++) {
+          if (tri < rows.length) {
+            var rowInterp = rows[tri].interpretation;
+            if (rowInterp && abnormalInterps.indexOf(rowInterp) !== -1) {
+              trs[tri].style.background = 'rgba(255, 59, 48, 0.04)';
+            }
+          }
+        }
+      }
+
+      // Render pagination
+      paginationContainer.textContent = '';
+      if (total > pageSize) {
+        paginationContainer.appendChild(UI.pagination(total, pageSize, currentPage, function(page) {
+          currentPage = page;
+          renderTable();
+        }));
+      }
+    }
+
+    renderTable();
   },
 
   encounters(el, db) {
