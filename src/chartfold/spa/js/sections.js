@@ -697,60 +697,446 @@ const Sections = {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM allergies');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Allergies', n + ' allergies'));
-    el.appendChild(UI.empty('Allergies section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No allergies recorded.')); return; }
+
+    var rows = db.query('SELECT * FROM allergies ORDER BY allergen');
+    el.appendChild(UI.table([
+      { label: 'Allergen', key: 'allergen' },
+      { label: 'Reaction', key: 'reaction' },
+      { label: 'Severity', key: 'severity', format: function(v) {
+        if (!v) return '';
+        var lv = v.toLowerCase();
+        if (lv === 'severe') return UI.badge(v, 'red');
+        if (lv === 'moderate') return UI.badge(v, 'orange');
+        return UI.badge(v, 'gray');
+      }},
+      { label: 'Status', key: 'status', format: function(v) {
+        if (!v) return '';
+        var lv = v.toLowerCase();
+        if (lv === 'active') return UI.badge(v, 'green');
+        return UI.badge(v, 'gray');
+      }},
+      { label: 'Onset Date', key: 'onset_date' },
+      { label: 'Source', key: 'source' }
+    ], rows));
   },
 
   clinical_notes(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM clinical_notes');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Clinical Notes', n + ' clinical notes'));
-    el.appendChild(UI.empty('Clinical notes section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No clinical notes recorded.')); return; }
+
+    var allNotes = db.query('SELECT * FROM clinical_notes ORDER BY note_date DESC');
+    var searchText = '';
+    var currentPage = 1;
+    var pageSize = 20;
+
+    var searchInput = UI.el('input', {
+      type: 'text', placeholder: 'Search notes...', className: 'filter-bar',
+      style: 'display: block; width: 100%; padding: 8px 12px; margin-bottom: 16px; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none;',
+      onInput: function(e) { searchText = e.target.value.toLowerCase(); currentPage = 1; renderNotes(); }
+    });
+    el.appendChild(searchInput);
+
+    var notesContainer = UI.el('div');
+    var paginationContainer = UI.el('div');
+    el.appendChild(notesContainer);
+    el.appendChild(paginationContainer);
+
+    function renderNotes() {
+      var filtered = allNotes;
+      if (searchText) {
+        filtered = allNotes.filter(function(note) {
+          return (note.content || '').toLowerCase().indexOf(searchText) !== -1 ||
+            (note.note_type || '').toLowerCase().indexOf(searchText) !== -1 ||
+            (note.author || '').toLowerCase().indexOf(searchText) !== -1;
+        });
+      }
+      var total = filtered.length;
+      var totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      var start = (currentPage - 1) * pageSize;
+      var pageNotes = filtered.slice(start, start + pageSize);
+
+      notesContainer.textContent = '';
+      if (pageNotes.length === 0) {
+        notesContainer.appendChild(UI.empty('No notes match the search.'));
+      } else {
+        for (var i = 0; i < pageNotes.length; i++) {
+          var note = pageNotes[i];
+          var title = note.note_type || 'Clinical Note';
+          var meta = (note.note_date || '') + (note.author ? ' \u2022 ' + note.author : '');
+          var content = note.content || '';
+          var bodyEl;
+          if (content.length > 300) {
+            var details = UI.el('details');
+            details.appendChild(UI.el('summary', {
+              textContent: content.substring(0, 300) + '... (Show full)',
+              style: 'cursor: pointer;'
+            }));
+            details.appendChild(UI.el('pre', {
+              textContent: content,
+              style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);'
+            }));
+            bodyEl = details;
+          } else {
+            bodyEl = UI.el('div', { textContent: content });
+          }
+          notesContainer.appendChild(UI.clinicalCard(title, meta, bodyEl));
+        }
+      }
+
+      paginationContainer.textContent = '';
+      if (total > pageSize) {
+        paginationContainer.appendChild(UI.pagination(total, pageSize, currentPage, function(page) {
+          currentPage = page;
+          renderNotes();
+        }));
+      }
+    }
+    renderNotes();
   },
 
   procedures(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM procedures');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Procedures', n + ' procedures'));
-    el.appendChild(UI.empty('Procedures section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No procedures recorded.')); return; }
+
+    var rows = db.query('SELECT * FROM procedures ORDER BY procedure_date DESC');
+    var tableContainer = UI.el('div');
+    el.appendChild(tableContainer);
+
+    tableContainer.appendChild(UI.table([
+      { label: 'Name', key: 'name' },
+      { label: 'Date', key: 'procedure_date' },
+      { label: 'Provider', key: 'provider' },
+      { label: 'Facility', key: 'facility' },
+      { label: 'Status', key: 'status', format: function(v) {
+        if (!v) return '';
+        var lv = v.toLowerCase();
+        if (lv === 'completed') return UI.badge(v, 'green');
+        if (lv === 'active' || lv === 'in-progress') return UI.badge(v, 'blue');
+        return UI.badge(v, 'gray');
+      }},
+      { label: 'Source', key: 'source' }
+    ], rows));
+
+    // Show operative notes as expandable details below the table
+    var hasNotes = false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].operative_note) {
+        if (!hasNotes) {
+          el.appendChild(UI.el('h3', { textContent: 'Operative Notes', style: 'margin: 24px 0 8px;' }));
+          hasNotes = true;
+        }
+        var details = UI.el('details', { style: 'margin-bottom: 8px;' });
+        details.appendChild(UI.el('summary', {
+          textContent: (rows[i].name || 'Procedure') + ' (' + (rows[i].procedure_date || 'Unknown date') + ')',
+          style: 'cursor: pointer; font-weight: 500; padding: 6px 0;'
+        }));
+        details.appendChild(UI.el('pre', {
+          textContent: rows[i].operative_note,
+          style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);'
+        }));
+        el.appendChild(details);
+      }
+    }
   },
 
   vitals(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM vitals');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Vitals', n + ' vitals'));
-    el.appendChild(UI.empty('Vitals section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No vitals recorded.')); return; }
+
+    var rows = db.query('SELECT * FROM vitals ORDER BY recorded_date DESC, vital_type');
+    el.appendChild(UI.table([
+      { label: 'Date', key: 'recorded_date' },
+      { label: 'Type', key: 'vital_type' },
+      { label: 'Value', key: 'value', format: function(v, row) {
+        var display = row.value_text || (v != null ? String(v) : '');
+        if (row.unit) display += ' ' + row.unit;
+        return display;
+      }},
+      { label: 'Source', key: 'source' }
+    ], rows));
   },
 
   immunizations(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM immunizations');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Immunizations', n + ' immunizations'));
-    el.appendChild(UI.empty('Immunizations section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No immunizations recorded.')); return; }
+
+    var rows = db.query('SELECT * FROM immunizations ORDER BY admin_date DESC');
+    el.appendChild(UI.table([
+      { label: 'Vaccine Name', key: 'vaccine_name' },
+      { label: 'Date', key: 'admin_date' },
+      { label: 'Lot Number', key: 'lot_number' },
+      { label: 'Site', key: 'site' },
+      { label: 'Status', key: 'status', format: function(v) {
+        if (!v) return '';
+        var lv = v.toLowerCase();
+        if (lv === 'completed') return UI.badge(v, 'green');
+        return UI.badge(v, 'gray');
+      }},
+      { label: 'Source', key: 'source' }
+    ], rows));
   },
 
   sources(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM source_assets');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Sources', n + ' source assets'));
-    el.appendChild(UI.empty('Sources section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No source assets recorded.')); return; }
+
+    // Load embedded images
+    var images = {};
+    try {
+      var imgEl = document.getElementById('chartfold-images');
+      if (imgEl) images = JSON.parse(imgEl.textContent);
+    } catch (e) { /* ignore */ }
+
+    var assets = db.query('SELECT * FROM source_assets ORDER BY encounter_date DESC, asset_type, file_name');
+
+    // Group by encounter_date
+    var groups = {};
+    var groupOrder = [];
+    for (var i = 0; i < assets.length; i++) {
+      var dateKey = assets[i].encounter_date || 'No date';
+      if (!groups[dateKey]) { groups[dateKey] = []; groupOrder.push(dateKey); }
+      groups[dateKey].push(assets[i]);
+    }
+
+    for (var gi = 0; gi < groupOrder.length; gi++) {
+      var gDate = groupOrder[gi];
+      var gAssets = groups[gDate];
+      var details = UI.el('details', { style: 'margin-bottom: 8px;' });
+      if (gi === 0) details.setAttribute('open', '');
+      details.appendChild(UI.el('summary', {
+        textContent: gDate + ' (' + gAssets.length + ' assets)',
+        style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
+      }));
+
+      var assetList = UI.el('div', { style: 'padding: 4px 0 8px 16px;' });
+      for (var ai = 0; ai < gAssets.length; ai++) {
+        var asset = gAssets[ai];
+        var assetRow = UI.el('div', { style: 'display: flex; align-items: center; gap: 8px; padding: 4px 0;' });
+        var typeBadge = (asset.asset_type || '').toLowerCase().indexOf('pdf') !== -1
+          ? UI.badge(asset.asset_type || 'file', 'blue')
+          : UI.badge(asset.asset_type || 'file', 'gray');
+        assetRow.appendChild(typeBadge);
+        assetRow.appendChild(UI.el('span', { textContent: asset.file_name || asset.title || 'Unknown' }));
+
+        // Thumbnail for embedded images
+        var assetId = String(asset.id);
+        if (images[assetId]) {
+          var thumb = UI.el('img', {
+            src: images[assetId],
+            style: 'max-height: 80px; border-radius: 4px; border: 1px solid var(--border); margin-left: 8px;'
+          });
+          assetRow.appendChild(thumb);
+        }
+        assetList.appendChild(assetRow);
+      }
+      details.appendChild(assetList);
+      el.appendChild(details);
+    }
   },
 
   analysis(el, db) {
-    var n = 0;
+    var data = [];
     try {
-      var data = JSON.parse(
-        document.getElementById('chartfold-analysis').textContent
-      );
-      if (Array.isArray(data)) n = data.length;
-    } catch (e) {
-      // ignore
+      var raw = JSON.parse(document.getElementById('chartfold-analysis').textContent);
+      if (Array.isArray(raw)) data = raw;
+    } catch (e) { /* ignore */ }
+
+    el.appendChild(UI.sectionHeader('Analysis', data.length + ' analyses'));
+
+    if (data.length === 0) {
+      el.appendChild(UI.empty('No analysis files found. Use --analysis-dir to include markdown analysis files in your export.'));
+      return;
     }
-    el.appendChild(UI.sectionHeader('Analysis', n + ' analyses'));
-    el.appendChild(UI.empty('Analysis section coming soon.'));
+
+    for (var i = 0; i < data.length; i++) {
+      var entry = data[i];
+      var contentDiv = UI.el('div', { className: 'analysis-content' });
+      contentDiv.innerHTML = Markdown.render(entry.body);
+
+      if (i === 0) {
+        // First entry expanded by default
+        el.appendChild(UI.clinicalCard(entry.title, entry.filename || '', contentDiv));
+      } else {
+        var details = UI.el('details', { style: 'margin-bottom: 8px;' });
+        details.appendChild(UI.el('summary', {
+          textContent: entry.title,
+          style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
+        }));
+        var cardInner = UI.clinicalCard(entry.title, entry.filename || '', contentDiv);
+        details.appendChild(cardInner);
+        el.appendChild(details);
+      }
+    }
   },
 
   sql_console(el, db) {
     el.appendChild(UI.sectionHeader('SQL Console', 'Query your data directly'));
-    el.appendChild(UI.empty('SQL console coming soon.'));
+
+    var wrapper = UI.el('div', { className: 'sql-console' });
+
+    // Example query chips
+    var chips = [
+      { label: 'Recent abnormal labs', sql: "SELECT test_name, value, interpretation, result_date FROM lab_results WHERE interpretation IN ('H','L','HH','LL') ORDER BY result_date DESC LIMIT 20" },
+      { label: 'Active medications', sql: "SELECT name, sig, route, start_date FROM medications WHERE LOWER(status) = 'active' ORDER BY name" },
+      { label: 'Encounter timeline', sql: "SELECT encounter_date, encounter_type, facility, provider FROM encounters ORDER BY encounter_date DESC LIMIT 30" }
+    ];
+    var chipBar = UI.el('div', { style: 'display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;' });
+    for (var ci = 0; ci < chips.length; ci++) {
+      (function(chip) {
+        var btn = UI.el('button', {
+          textContent: chip.label,
+          style: 'padding: 4px 12px; font-size: 13px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;',
+          onClick: function() { textarea.value = chip.sql; }
+        });
+        chipBar.appendChild(btn);
+      })(chips[ci]);
+    }
+    wrapper.appendChild(chipBar);
+
+    // Textarea
+    var textarea = UI.el('textarea', {
+      placeholder: 'Enter SQL query (SELECT only)...',
+      rows: '5'
+    });
+    wrapper.appendChild(textarea);
+
+    // Run button + shortcut hint
+    var btnRow = UI.el('div', { style: 'display: flex; align-items: center; gap: 12px;' });
+    var runBtn = UI.el('button', {
+      className: 'run-btn',
+      textContent: 'Run Query',
+      onClick: function() { runQuery(); }
+    });
+    btnRow.appendChild(runBtn);
+    btnRow.appendChild(UI.el('span', {
+      textContent: 'Ctrl+Enter to run',
+      style: 'font-size: 12px; color: var(--text-secondary);'
+    }));
+    wrapper.appendChild(btnRow);
+
+    // Results area
+    var statusEl = UI.el('div', { style: 'margin-top: 12px; font-size: 13px; color: var(--text-secondary);' });
+    var resultsEl = UI.el('div', { style: 'margin-top: 8px;' });
+    wrapper.appendChild(statusEl);
+    wrapper.appendChild(resultsEl);
+
+    // Query history
+    var history = [];
+    try {
+      var stored = sessionStorage.getItem('chartfold-sql-history');
+      if (stored) history = JSON.parse(stored);
+    } catch (e) { /* ignore */ }
+
+    var historyDetails = UI.el('details', { style: 'margin-top: 16px;' });
+    historyDetails.appendChild(UI.el('summary', {
+      textContent: 'Query History',
+      style: 'cursor: pointer; font-weight: 600; padding: 4px 0; font-size: 13px; color: var(--text-secondary);'
+    }));
+    var historyList = UI.el('div', { style: 'padding: 4px 0;' });
+    historyDetails.appendChild(historyList);
+    wrapper.appendChild(historyDetails);
+
+    function renderHistory() {
+      historyList.textContent = '';
+      for (var hi = history.length - 1; hi >= 0; hi--) {
+        (function(sql) {
+          var item = UI.el('div', {
+            textContent: sql.length > 80 ? sql.substring(0, 80) + '...' : sql,
+            style: 'padding: 4px 8px; font-size: 12px; font-family: monospace; cursor: pointer; color: var(--text-secondary); border-bottom: 1px solid var(--border);',
+            onClick: function() { textarea.value = sql; }
+          });
+          historyList.appendChild(item);
+        })(history[hi]);
+      }
+    }
+    renderHistory();
+
+    // Ctrl+Enter shortcut
+    textarea.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runQuery();
+      }
+    });
+
+    function runQuery() {
+      var sql = textarea.value.trim();
+      if (!sql) return;
+
+      // Read-only enforcement
+      var forbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i;
+      if (forbidden.test(sql)) {
+        statusEl.textContent = '';
+        resultsEl.textContent = '';
+        resultsEl.appendChild(UI.el('div', {
+          textContent: 'Error: Only SELECT queries are allowed. INSERT, UPDATE, DELETE, DROP, ALTER, and CREATE are not permitted.',
+          style: 'color: #ff3b30; font-size: 14px; padding: 8px 0;'
+        }));
+        return;
+      }
+
+      // Add to history
+      var idx = history.indexOf(sql);
+      if (idx !== -1) history.splice(idx, 1);
+      history.push(sql);
+      if (history.length > 20) history.shift();
+      try { sessionStorage.setItem('chartfold-sql-history', JSON.stringify(history)); } catch (e) { /* ignore */ }
+      renderHistory();
+
+      // Run the query
+      var startTime = performance.now();
+      try {
+        var results = db.exec(sql);
+        var elapsed = (performance.now() - startTime).toFixed(1);
+
+        resultsEl.textContent = '';
+        if (!results || results.length === 0 || !results[0].columns) {
+          statusEl.textContent = '0 rows in ' + elapsed + 'ms';
+          resultsEl.appendChild(UI.empty('Query returned no results.'));
+          return;
+        }
+
+        var columns = results[0].columns;
+        var values = results[0].values;
+        statusEl.textContent = values.length + ' rows in ' + elapsed + 'ms';
+
+        // Convert to row objects for UI.table
+        var rowObjects = [];
+        for (var ri = 0; ri < values.length; ri++) {
+          var obj = {};
+          for (var colIdx = 0; colIdx < columns.length; colIdx++) {
+            obj[columns[colIdx]] = values[ri][colIdx];
+          }
+          rowObjects.push(obj);
+        }
+
+        var tableCols = columns.map(function(c) {
+          return { label: c, key: c };
+        });
+        resultsEl.appendChild(UI.table(tableCols, rowObjects));
+      } catch (e) {
+        var elapsed2 = (performance.now() - startTime).toFixed(1);
+        statusEl.textContent = 'Error in ' + elapsed2 + 'ms';
+        resultsEl.textContent = '';
+        resultsEl.appendChild(UI.el('div', {
+          textContent: 'SQL Error: ' + e.message,
+          style: 'color: #ff3b30; font-size: 14px; padding: 8px 0;'
+        }));
+      }
+    }
+
+    el.appendChild(wrapper);
   }
 };
