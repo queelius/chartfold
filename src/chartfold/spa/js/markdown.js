@@ -8,7 +8,7 @@ var Markdown = {
     var i, line;
 
     function esc(s) {
-      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function inline(s) {
@@ -21,11 +21,13 @@ var Markdown = {
       s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
       // inline code
       s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-      // links — sanitize URL to block javascript:/data:/vbscript: protocols
+      // links — sanitize URL to block dangerous protocols and prevent attribute breakout
       s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) {
         var trimmed = url.replace(/\s/g, '').toLowerCase();
         if (trimmed.match(/^(javascript|data|vbscript):/)) return text;
-        return '<a href="' + url + '">' + text + '</a>';
+        // Re-encode &quot; as %22 to prevent attribute breakout (esc() already ran)
+        var safeUrl = url.replace(/&quot;/g, '%22').replace(/&#39;/g, '%27');
+        return '<a href="' + safeUrl + '">' + text + '</a>';
       });
       return s;
     }

@@ -31,6 +31,15 @@ _JS_FILES = [
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+def _safe_json_for_script(json_str: str) -> str:
+    """Escape JSON for safe embedding inside <script> tags.
+
+    Replaces '</' with '<\\/' to prevent premature closing of <script> elements.
+    This is standard practice for inline JSON in HTML.
+    """
+    return json_str.replace("</", "<\\/")
+
+
 def _load_config_json(path: str) -> str:
     """Load a TOML config file and return its contents as a JSON string.
 
@@ -94,15 +103,16 @@ def _load_images_json(db_path: str) -> str:
 
     try:
         conn = sqlite3.connect(db_path)
+    except Exception:
+        return "{}"
+
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             "SELECT id, asset_type, file_path, content_type FROM source_assets"
         )
         rows = cursor.fetchall()
-    except Exception:
-        return "{}"
 
-    try:
         for row in rows:
             asset_type = row["asset_type"] or ""
             if asset_type.lower() not in IMAGE_MIME_TYPES:
@@ -120,6 +130,8 @@ def _load_images_json(db_path: str) -> str:
             )
             data_b64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
             result[str(row["id"])] = f"data:{mime};base64,{data_b64}"
+    except Exception:
+        pass
     finally:
         conn.close()
 
@@ -172,10 +184,12 @@ def export_spa(
     css_path = _SPA_DIR / "css" / "styles.css"
     css = css_path.read_text(encoding="utf-8") if css_path.is_file() else ""
 
-    # 6. Load optional data
-    config_json = _load_config_json(config_path)
-    analysis_json = _load_analysis_json(analysis_dir)
-    images_json = _load_images_json(db_path) if embed_images else "{}"
+    # 6. Load optional data (escaped for safe embedding in <script> tags)
+    config_json = _safe_json_for_script(_load_config_json(config_path))
+    analysis_json = _safe_json_for_script(_load_analysis_json(analysis_dir))
+    images_json = _safe_json_for_script(
+        _load_images_json(db_path) if embed_images else "{}"
+    )
 
     # 7. Assemble HTML
     html = f"""<!DOCTYPE html>

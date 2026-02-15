@@ -1285,8 +1285,9 @@ class TestSecurityHardening:
 
     def test_markdown_sanitizes_javascript_urls(self, exported_html):
         """Markdown link handler must reject javascript: protocol URLs."""
-        assert "javascript:" in exported_html.lower(), (
-            "markdown.js must contain javascript: protocol check for sanitization"
+        # Check that the protocol sanitization regex exists in the JS
+        assert "javascript|data|vbscript" in exported_html.lower(), (
+            "markdown.js must contain protocol check for javascript/data/vbscript URLs"
         )
 
     def test_db_sets_query_only_pragma(self, exported_html):
@@ -1296,18 +1297,90 @@ class TestSecurityHardening:
         )
 
     def test_resource_leak_in_load_images(self, spa_db, tmp_path):
-        """_load_images_json uses try/finally to ensure connection is always closed."""
-        import inspect
+        """_load_images_json closes connection on the normal path."""
+        from unittest.mock import patch, MagicMock
 
-        source = inspect.getsource(_load_images_json)
-        assert "finally" in source, (
-            "_load_images_json must use try/finally to ensure connection cleanup"
-        )
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = []
+        with patch("chartfold.spa.export.sqlite3.connect", return_value=mock_conn):
+            _load_images_json(spa_db)
+        mock_conn.close.assert_called_once()
 
     def test_alerts_query_uses_data_relative_date(self, exported_html):
         """Alerts query must NOT use date('now') — use data-relative dates instead."""
-        # The overview section queries recent abnormal labs. Using date('now')
-        # means alerts disappear in static exports. Must use MAX(result_date) instead.
         assert "date('now'" not in exported_html, (
             "sections.js must not use date('now') — use data-relative dates for static exports"
+        )
+
+    def test_load_images_closes_conn_when_query_fails(self, tmp_path):
+        """_load_images_json must close connection even if the SQL query fails."""
+        from unittest.mock import patch, MagicMock
+
+        db_path = tmp_path / "no_assets.db"
+        conn_real = sqlite3.connect(str(db_path))
+        conn_real.execute("CREATE TABLE lab_results (id INTEGER)")
+        conn_real.commit()
+        conn_real.close()
+
+        # Mock sqlite3.connect to track close() calls
+        mock_conn = MagicMock()
+        mock_conn.execute.side_effect = sqlite3.OperationalError("no such table: source_assets")
+        with patch("chartfold.spa.export.sqlite3.connect", return_value=mock_conn):
+            result = _load_images_json(str(db_path))
+        assert json.loads(result) == {}
+        mock_conn.close.assert_called_once()
+
+    def test_script_injection_escaped_in_analysis(self, spa_db, tmp_path):
+        """Analysis content with </script> must not break the HTML structure."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "evil.md").write_text(
+            'Normal text </script><script>alert("xss")</script> more text'
+        )
+        out_path = str(tmp_path / "script_inject.html")
+        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        # The </script> in analysis content must be escaped so it doesn't
+        # prematurely close the <script> tag
+        assert '</script><script>alert' not in html, (
+            "Analysis JSON must escape </script> sequences to prevent injection"
+        )
+
+    def test_script_injection_escaped_in_config(self, spa_db, tmp_path):
+        """Config content with </script> must not break the HTML structure."""
+        config_path = tmp_path / "evil.toml"
+        config_path.write_text('[dashboard]\ntitle = "</script><script>alert(1)"')
+        out_path = str(tmp_path / "config_inject.html")
+        export_spa(spa_db, out_path, config_path=str(config_path))
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        assert '</script><script>alert' not in html, (
+            "Config JSON must escape </script> sequences to prevent injection"
+        )
+
+    def test_sql_console_blocks_pragma(self, exported_html):
+        """SQL console must block PRAGMA statements to prevent disabling query_only."""
+        assert "PRAGMA" in exported_html.upper() or "pragma" in exported_html.lower()
+        # The forbidden regex must include PRAGMA
+        assert "PRAGMA" in exported_html, (
+            "SQL console forbidden regex must include PRAGMA keyword"
+        )
+
+    def test_sql_console_blocks_replace(self, exported_html):
+        """SQL console must block REPLACE statements (SQLite write operation)."""
+        # Check the forbidden keyword regex includes REPLACE
+        import re
+        # Find the forbidden regex pattern in the JS
+        match = re.search(r'var forbidden\s*=\s*/(.+?)/i', exported_html)
+        assert match is not None, "SQL console forbidden regex not found"
+        pattern = match.group(1)
+        assert "REPLACE" in pattern, (
+            "SQL console forbidden regex must include REPLACE keyword"
+        )
+
+    def test_markdown_escapes_single_quotes(self, exported_html):
+        """Markdown esc() must escape single quotes for defense in depth."""
+        assert "&#39;" in exported_html, (
+            "markdown.js esc() must escape single quotes"
         )

@@ -1061,12 +1061,12 @@ const Sections = {
       if (!sql) return;
 
       // Read-only enforcement
-      var forbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i;
+      var forbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|PRAGMA|ATTACH|DETACH)\b/i;
       if (forbidden.test(sql)) {
         statusEl.textContent = '';
         resultsEl.textContent = '';
         resultsEl.appendChild(UI.el('div', {
-          textContent: 'Error: Only SELECT queries are allowed. INSERT, UPDATE, DELETE, DROP, ALTER, and CREATE are not permitted.',
+          textContent: 'Error: Only SELECT queries are allowed. Write operations (INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, REPLACE) and system commands (PRAGMA, ATTACH, DETACH) are not permitted.',
           style: 'color: #ff3b30; font-size: 14px; padding: 8px 0;'
         }));
         return;
