@@ -463,8 +463,10 @@ def _extract_medications(section) -> list[dict]:
                 col_map["start_date"] = i
             elif "stop" in hl and "date" in hl:
                 col_map["stop_date"] = i
-            elif "status" in hl:
+            elif hl == "status":
                 col_map["status"] = i
+            elif hl == "fill status":
+                col_map["fill_status"] = i
 
         for row in _iter_rows(table):
             cells = [el_text(td) for td in row]
@@ -490,6 +492,9 @@ def _extract_medications(section) -> list[dict]:
                     else "",
                     "status": cells[col_map["status"]].strip()
                     if "status" in col_map and col_map["status"] < len(cells)
+                    else "",
+                    "fill_status": cells[col_map["fill_status"]].strip()
+                    if "fill_status" in col_map and col_map["fill_status"] < len(cells)
                     else "",
                 }
             )

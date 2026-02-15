@@ -229,6 +229,58 @@ class TestMedicationExtraction:
         assert "levothyroxine" in meds[1]["name"]
         assert meds[1]["status"] == "active"
 
+    def test_status_not_overwritten_by_fill_status(self):
+        """'Fill Status' column must not overwrite the real 'Status' column."""
+        section = _make_section(
+            "Medications",
+            """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Sig</th>
+                        <th>Start Date</th>
+                        <th>Stop Date</th>
+                        <th>Status</th>
+                        <th>Note</th>
+                        <th>Indication</th>
+                        <th>Fill Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>erythromycin 500 mg tablet</td>
+                        <td>TAKE 1 G BY MOUTH</td>
+                        <td/>
+                        <td>03/01/2022</td>
+                        <td>aborted</td>
+                        <td/>
+                        <td/>
+                        <td>Not available</td>
+                    </tr>
+                    <tr>
+                        <td>levothyroxine 50 mcg tablet</td>
+                        <td>TAKE 1 TABLET DAILY</td>
+                        <td>01/18/2023</td>
+                        <td/>
+                        <td>active</td>
+                        <td/>
+                        <td/>
+                        <td>Not available</td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+        )
+        meds = _extract_medications(section)
+        assert len(meds) == 2
+        # Status should come from column 4 ("Status"), NOT column 7 ("Fill Status")
+        assert meds[0]["status"] == "aborted"
+        assert meds[1]["status"] == "active"
+        # Fill status captured separately
+        assert meds[0]["fill_status"] == "Not available"
+        assert meds[1]["fill_status"] == "Not available"
+
 
 class TestProblemExtraction:
     def test_extract_problems(self):
