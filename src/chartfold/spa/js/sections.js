@@ -109,7 +109,7 @@ const Sections = {
         "SELECT test_name, value, unit, interpretation, result_date, source " +
         "FROM lab_results " +
         "WHERE interpretation IN ('H','L','HH','LL','HIGH','LOW','ABNORMAL','A') " +
-        "AND result_date >= date('now', '-30 days') " +
+        "AND result_date >= date((SELECT MAX(result_date) FROM lab_results), '-30 days') " +
         "ORDER BY result_date DESC LIMIT 10"
       );
 

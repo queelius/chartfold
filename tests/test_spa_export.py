@@ -1251,3 +1251,11 @@ class TestSecurityHardening:
         assert "finally" in source, (
             "_load_images_json must use try/finally to ensure connection cleanup"
         )
+
+    def test_alerts_query_uses_data_relative_date(self, exported_html):
+        """Alerts query must NOT use date('now') — use data-relative dates instead."""
+        # The overview section queries recent abnormal labs. Using date('now')
+        # means alerts disappear in static exports. Must use MAX(result_date) instead.
+        assert "date('now'" not in exported_html, (
+            "sections.js must not use date('now') — use data-relative dates for static exports"
+        )
