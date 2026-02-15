@@ -245,7 +245,7 @@ def _extract_epic_result_items(section) -> list[dict]:
         caption = el_text(caption_el)
 
         m = re.match(
-            r"(.+?)\s*-\s*(?:Final|Preliminary)\s+result\s*\((\d{2}/\d{2}/\d{4})\s+(\d+:\d+\s*[AP]M\s*\w+)\)",
+            r"(.+?)\s*-\s*(?:(?:Final|Preliminary)\s+[Rr]esult|Edited\s+Result\s*-\s*FINAL)\s*\((\d{2}/\d{2}/\d{4})\s+(\d+:\d+\s*[AP]M\s*\w+)\)",
             caption,
         )
         if not m:

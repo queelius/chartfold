@@ -4,6 +4,7 @@ from lxml import etree
 
 from chartfold.core.cda import NS
 from chartfold.sources.athena import (
+    _extract_clinical_notes,
     _extract_encounters,
     _extract_family_history,
     _extract_medications,
@@ -554,3 +555,146 @@ class TestFamilyHistoryExtraction:
         section = _make_section("Family History", "")
         entries = _extract_family_history(section)
         assert entries == []
+
+
+class TestClinicalNotesExtraction:
+    def test_notes_section_with_table(self):
+        """Notes section with Date/Note/Provider columns parses individual rows."""
+        section = _make_section(
+            "Notes",
+            """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Note Type</th>
+                        <th>Note</th>
+                        <th>Provider Name and Address</th>
+                        <th>Organization Details</th>
+                        <th>Recorded Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>09/27/2021</td>
+                        <td>text/html</td>
+                        <td>Patient presents with rash on chest. New patient establishing PCP.</td>
+                        <td>Nanthini Suthan, MD</td>
+                        <td>IL - SIHF</td>
+                        <td>09/27/2021 15:15:47</td>
+                    </tr>
+                    <tr>
+                        <td>02/10/2025</td>
+                        <td>text/html</td>
+                        <td>Patient presents with acute cough and bloody sputum.</td>
+                        <td>Kelsey Beard, FNP-BC</td>
+                        <td>IL - SIHF</td>
+                        <td>02/10/2025 09:30:00</td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+        )
+        notes = _extract_clinical_notes(section, "Notes")
+        assert len(notes) == 2
+        assert notes[0]["date"] == "2021-09-27"
+        assert notes[0]["author"] == "Nanthini Suthan, MD"
+        assert "rash" in notes[0]["content"]
+        assert notes[0]["type"] == "Notes"
+        assert notes[1]["date"] == "2025-02-10"
+        assert notes[1]["author"] == "Kelsey Beard, FNP-BC"
+
+    def test_assessment_section(self):
+        """Assessment section with Encounter Date/Assessment columns parses rows."""
+        section = _make_section(
+            "Assessment",
+            """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Encounter Date</th>
+                        <th>Assessment Date</th>
+                        <th>Assessment</th>
+                        <th>LastModified by</th>
+                        <th>Organization Details</th>
+                        <th>LastModified Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>10/27/2025</td>
+                        <td>10/27/2025</td>
+                        <td>MEDICAL HISTORY: Colon cancer stage 4. Psychiatric evaluation today.</td>
+                        <td>nbennett54</td>
+                        <td>IL - SIHF</td>
+                        <td>10/27/2025 14:42:25</td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+        )
+        notes = _extract_clinical_notes(section, "Assessment")
+        assert len(notes) == 1
+        assert notes[0]["date"] == "2025-10-27"
+        assert notes[0]["author"] == "nbennett54"
+        assert "Colon cancer" in notes[0]["content"]
+
+    def test_short_content_skipped(self):
+        """Notes with very short content (<10 chars) are skipped."""
+        section = _make_section(
+            "Notes",
+            """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Note Type</th>
+                        <th>Note</th>
+                        <th>Provider Name and Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>01/01/2025</td>
+                        <td>text/html</td>
+                        <td>OK</td>
+                        <td>Dr. Smith</td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+        )
+        notes = _extract_clinical_notes(section, "Notes")
+        assert len(notes) == 0
+
+    def test_no_table_returns_empty(self):
+        """Sections without tables return empty list (triggering blob fallback)."""
+        section = _make_section("Reason for Referral", "<paragraph>Some referral text here.</paragraph>")
+        notes = _extract_clinical_notes(section, "Reason for Referral")
+        assert notes == []
+
+    def test_no_content_column_returns_empty(self):
+        """Tables without a recognizable content column return empty (blob fallback)."""
+        section = _make_section(
+            "Plan of Treatment",
+            """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reminders</th>
+                        <th>Order Date</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Flu shot</td>
+                        <td>10/01/2025</td>
+                        <td>Annual flu vaccination recommended</td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+        )
+        notes = _extract_clinical_notes(section, "Plan of Treatment")
+        assert notes == []

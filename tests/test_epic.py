@@ -77,6 +77,47 @@ EPIC_RESULTS_XML = f"""<section xmlns="{NS}">
           </tbody>
         </table>
       </item>
+      <item>
+        <caption>TEMPUS XT DNA AND RNA SOLID TUMOR - Edited Result - FINAL (07/09/2025  8:07 AM CDT)</caption>
+        <table>
+          <tbody>
+            <tr>
+              <td>MSI Status</td>
+              <td>Stable</td>
+              <td/>
+            </tr>
+            <tr>
+              <td>TMB</td>
+              <td>3.7 m/MB</td>
+              <td/>
+            </tr>
+            <tr>
+              <td>HRD Status</td>
+              <td>Not Detected (score 23, threshold 50)</td>
+              <td/>
+            </tr>
+          </tbody>
+        </table>
+        <table>
+          <tbody>
+            <tr>
+              <td>LAB GENERAL</td>
+            </tr>
+          </tbody>
+        </table>
+      </item>
+      <item>
+        <caption>SCAN - PATHOLOGY - Edited Result - FINAL (08/23/2024 12:00 PM CDT)</caption>
+        <table>
+          <tbody>
+            <tr>
+              <td>Report</td>
+              <td>Liver biopsy results</td>
+              <td/>
+            </tr>
+          </tbody>
+        </table>
+      </item>
     </list>
   </text>
 </section>"""
@@ -91,7 +132,7 @@ class TestEpicResultItems:
 
     def test_extract_items(self, results_section):
         items = _extract_epic_result_items(results_section)
-        assert len(items) == 3
+        assert len(items) == 5
 
     def test_cea_panel(self, results_section):
         items = _extract_epic_result_items(results_section)
@@ -117,6 +158,33 @@ class TestEpicResultItems:
         items = _extract_epic_result_items(results_section)
         cea = items[0]
         assert _classify_result(cea) == "lab"
+
+    def test_edited_result_parsed(self, results_section):
+        """Edited Result - FINAL captions should be parsed (e.g., Tempus xT panels)."""
+        items = _extract_epic_result_items(results_section)
+        tempus = items[3]
+        assert tempus["panel"] == "TEMPUS XT DNA AND RNA SOLID TUMOR"
+        assert tempus["date"] == "07/09/2025"
+        assert tempus["time"] == "8:07 AM CDT"
+        assert len(tempus["components"]) == 3
+        assert tempus["components"][0]["name"] == "MSI Status"
+        assert tempus["components"][0]["value"] == "Stable"
+        assert tempus["components"][2]["name"] == "HRD Status"
+        assert tempus["components"][2]["value"] == "Not Detected (score 23, threshold 50)"
+
+    def test_edited_result_classification(self, results_section):
+        """Edited Result lab panels should classify as 'lab'."""
+        items = _extract_epic_result_items(results_section)
+        tempus = items[3]
+        assert _classify_result(tempus) == "lab"
+
+    def test_edited_result_pathology(self, results_section):
+        """Edited Result pathology scans should classify as 'pathology'."""
+        items = _extract_epic_result_items(results_section)
+        path_scan = items[4]
+        assert path_scan["panel"] == "SCAN - PATHOLOGY"
+        assert path_scan["date"] == "08/23/2024"
+        assert _classify_result(path_scan) == "pathology"
 
 
 class TestCEAExtraction:

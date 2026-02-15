@@ -147,20 +147,26 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
         if "Past Encounters" in sections:
             data["encounters"].extend(_extract_encounters(sections["Past Encounters"]))
 
-        # Clinical notes
+        # Clinical notes — parse table rows when possible, fall back to blob
         for sec_name in config.note_sections:
             if sec_name in sections:
-                text_el = sections[sec_name].find(f"{{{NS}}}text")
-                if text_el is not None:
-                    text = el_text(text_el)
-                    if text.strip() and len(text.strip()) > 20:
-                        data["clinical_notes"].append(
-                            {
-                                "type": sec_name,
-                                "content": text.strip(),
-                                "date": "",
-                            }
-                        )
+                parsed = _extract_clinical_notes(sections[sec_name], sec_name)
+                if parsed:
+                    data["clinical_notes"].extend(parsed)
+                else:
+                    # Fallback: store entire section text as one note
+                    text_el = sections[sec_name].find(f"{{{NS}}}text")
+                    if text_el is not None:
+                        text = el_text(text_el)
+                        if text.strip() and len(text.strip()) > 20:
+                            data["clinical_notes"].append(
+                                {
+                                    "type": sec_name,
+                                    "content": text.strip(),
+                                    "date": "",
+                                    "author": "",
+                                }
+                            )
 
     print(
         f"\nathena extraction: {len(data['lab_results'])} labs, "
@@ -863,6 +869,77 @@ def _extract_mental_status(section) -> list[dict[str, Any]]:
                     )
 
     return entries
+
+
+def _extract_clinical_notes(section, section_name: str) -> list[dict]:
+    """Extract individual clinical notes from athena note sections.
+
+    Parses table rows when the section has a structured table with Date, Note,
+    and Provider columns (e.g., Notes, Assessment sections). Returns empty list
+    if the section doesn't have a parseable table structure, signaling the caller
+    to fall back to blob extraction.
+    """
+    text_el = section.find(f"{{{NS}}}text")
+    if text_el is None:
+        return []
+
+    notes = []
+    for table in text_el.findall(f".//{{{NS}}}table"):
+        headers = _get_headers(table)
+        if not headers:
+            continue
+
+        # Build column map from headers
+        col_map: dict[str, int] = {}
+        for i, h in enumerate(headers):
+            hl = h.lower().strip()
+            if hl == "date" or hl == "encounter date":
+                col_map.setdefault("date", i)
+            elif "assessment date" in hl:
+                col_map.setdefault("date2", i)
+            elif hl in ("note", "assessment"):
+                col_map["content"] = i
+            elif "provider" in hl or "lastmodified by" in hl:
+                col_map.setdefault("author", i)
+            elif "recorded time" in hl or "lastmodified time" in hl:
+                col_map.setdefault("time", i)
+
+        # Need at least a content column to parse individual rows
+        if "content" not in col_map:
+            continue
+
+        for row in _iter_rows(table):
+            cells = [el_text(td) for td in row]
+
+            content = (
+                cells[col_map["content"]].strip()
+                if col_map["content"] < len(cells)
+                else ""
+            )
+            if not content or len(content) < 10:
+                continue
+
+            date_str = ""
+            if "date" in col_map and col_map["date"] < len(cells):
+                date_str = cells[col_map["date"]].strip()
+            elif "date2" in col_map and col_map["date2"] < len(cells):
+                date_str = cells[col_map["date2"]].strip()
+
+            author = ""
+            if "author" in col_map and col_map["author"] < len(cells):
+                # Clean up provider text (often has address info after name)
+                raw = cells[col_map["author"]].strip()
+                # Take first line as author name
+                author = raw.split("\n")[0].strip().rstrip(",")
+
+            notes.append({
+                "type": section_name,
+                "content": content,
+                "date": normalize_date_to_iso(date_str) if date_str else "",
+                "author": author,
+            })
+
+    return notes
 
 
 def _extract_encounters(section) -> list[dict[str, Any]]:

@@ -235,7 +235,8 @@ def _parse_condition(cond: dict) -> dict:
 
 def _parse_diagnostic_report(dr: dict) -> dict:
     code = dr.get("code", {})
-    cat = dr.get("category", [{}])[0].get("coding", [{}])[0].get("display", "")
+    cat_coding = dr.get("category", [{}])[0].get("coding", [{}])[0]
+    cat = cat_coding.get("display", "") or cat_coding.get("code", "")
     eff = dr.get("effectiveDateTime", "")
     if not eff:
         period = dr.get("effectivePeriod", {})

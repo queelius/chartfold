@@ -499,10 +499,27 @@ def _add_fhir_immunizations(
         )
 
 
+_IMAGING_TERMS = frozenset([
+    "x-ray", "ct ", "computed tomography", "mri ", "magnetic resonance",
+    "pet ", "positron emission", "ultrasound", "nuclear medicine",
+    "mammogra", "fluoroscop", "angiogra", "echocardiogra",
+])
+
+
+def _is_imaging_report_name(name_lower: str) -> bool:
+    """Check if a DiagnosticReport name refers to an actual imaging study."""
+    return any(term in name_lower for term in _IMAGING_TERMS)
+
+
 def _add_fhir_diagnostic_reports(
     records: UnifiedRecords, diagnostic_reports: list[dict], source: str
 ) -> None:
-    """Classify FHIR DiagnosticReports by category into PathologyReport, ImagingReport, or ClinicalNote."""
+    """Classify FHIR DiagnosticReports by category into PathologyReport, ImagingReport, or ClinicalNote.
+
+    LAB reports are skipped — their individual results are already captured via
+    FHIR Observations parsed as lab_results. Cardiology and other categories
+    are stored as clinical notes only if they have meaningful content.
+    """
     for dr in diagnostic_reports:
         cat = dr.get("category", "").lower()
         name = dr.get("text", "")
@@ -519,16 +536,34 @@ def _add_fhir_diagnostic_reports(
                 )
             )
         elif "radiology" in cat or "imaging" in cat:
-            records.imaging_reports.append(
-                ImagingReport(
-                    source=source,
-                    study_name=name,
-                    study_date=date,
-                    full_text=full_text,
+            # MEDITECH labels ALL non-lab/non-pathology reports as "Radiology",
+            # including office visits, H&Ps, op notes, etc. Use code.text to
+            # distinguish actual imaging from non-imaging reports.
+            name_lower = name.lower()
+            if _is_imaging_report_name(name_lower):
+                records.imaging_reports.append(
+                    ImagingReport(
+                        source=source,
+                        study_name=name,
+                        study_date=date,
+                        full_text=full_text,
+                    )
                 )
-            )
+            elif full_text or name:
+                records.clinical_notes.append(
+                    ClinicalNote(
+                        source=source,
+                        note_type=name or "Diagnostic Report",
+                        note_date=date,
+                        content=full_text,
+                    )
+                )
+        elif cat == "lab":
+            # LAB DiagnosticReports are reference containers — individual results
+            # are already captured via FHIR Observations as lab_results.
+            continue
         else:
-            # Default: treat as clinical note
+            # Cardiology, other categories: treat as clinical note
             if full_text or name:
                 records.clinical_notes.append(
                     ClinicalNote(

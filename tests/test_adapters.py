@@ -2,7 +2,7 @@
 
 from chartfold.adapters.athena_adapter import athena_to_unified
 from chartfold.adapters.epic_adapter import epic_to_unified, _guess_modality
-from chartfold.adapters.meditech_adapter import meditech_to_unified
+from chartfold.adapters.meditech_adapter import meditech_to_unified, _is_imaging_report_name
 
 
 class TestEpicAdapter:
@@ -584,6 +584,62 @@ class TestMeditechAdapterCCDAMerge:
         assert cn is not None
         assert "treatment options" in cn.content
 
+    def test_fhir_diagnostic_report_lab_skipped(self, sample_meditech_data):
+        """LAB-category DiagnosticReports are skipped (results come from Observations)."""
+        baseline = meditech_to_unified(sample_meditech_data)
+        baseline_notes = len(baseline.clinical_notes)
+
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "CBC",
+            "category": "LAB",
+            "date_iso": "2024-06-01",
+            "full_text": "",
+        })
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "Comprehensive Metabolic Panel",
+            "category": "lab",
+            "date_iso": "2024-06-01",
+            "full_text": "",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        # LAB reports should not appear as clinical notes
+        assert len(records.clinical_notes) == baseline_notes
+
+    def test_fhir_diagnostic_report_radiology_non_imaging_becomes_note(self, sample_meditech_data):
+        """Non-imaging reports categorized as 'Radiology' become clinical notes, not imaging."""
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "Office Visit",
+            "category": "Radiology",
+            "date_iso": "2025-01-12",
+            "full_text": "Follow-up visit, patient doing well.",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        # Should NOT appear as imaging
+        assert not any(
+            r.study_name == "Office Visit" for r in records.imaging_reports
+        )
+        # Should appear as a clinical note instead
+        cn = next(
+            (n for n in records.clinical_notes if "Office Visit" in n.note_type), None
+        )
+        assert cn is not None
+        assert cn.content == "Follow-up visit, patient doing well."
+
+    def test_fhir_diagnostic_report_radiology_imaging_stays_imaging(self, sample_meditech_data):
+        """Actual imaging reports with 'Radiology' category remain as imaging reports."""
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
+            "text": "MRI Brain",
+            "category": "Radiology",
+            "date_iso": "2025-01-13",
+            "full_text": "No acute intracranial abnormality.",
+        })
+        records = meditech_to_unified(sample_meditech_data)
+        mri = next(
+            (r for r in records.imaging_reports if r.study_name == "MRI Brain"), None
+        )
+        assert mri is not None
+        assert "No acute" in mri.full_text
+
     def test_fhir_allergy_empty_allergen_skipped(self, sample_meditech_data):
         """Allergy records with empty allergen are skipped."""
         sample_meditech_data["fhir_data"]["allergy_intolerances"].append({
@@ -593,6 +649,34 @@ class TestMeditechAdapterCCDAMerge:
         records = meditech_to_unified(sample_meditech_data)
         # Should only have the original Sulfa drugs, not the empty one
         assert all(a.allergen for a in records.allergies)
+
+
+class TestIsImagingReportName:
+    """Unit tests for _is_imaging_report_name helper."""
+
+    def test_ct_scan(self):
+        assert _is_imaging_report_name("ct abdomen pelvis") is True
+
+    def test_mri(self):
+        assert _is_imaging_report_name("mri brain with contrast") is True
+
+    def test_xray(self):
+        assert _is_imaging_report_name("x-ray chest pa and lateral") is True
+
+    def test_ultrasound(self):
+        assert _is_imaging_report_name("ultrasound abdomen") is True
+
+    def test_office_visit_not_imaging(self):
+        assert _is_imaging_report_name("office visit") is False
+
+    def test_history_physical_not_imaging(self):
+        assert _is_imaging_report_name("history and physical") is False
+
+    def test_operative_note_not_imaging(self):
+        assert _is_imaging_report_name("operative note") is False
+
+    def test_empty_string(self):
+        assert _is_imaging_report_name("") is False
 
 
 class TestEpicAdapterEdgeCases:
