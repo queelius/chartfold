@@ -20,6 +20,7 @@ const DB = {
     const dbBytes = await this.decompress(dbCompressed);
 
     this.instance = new SQL.Database(dbBytes);
+    this.instance.run("PRAGMA query_only = ON");
     status.textContent = 'Ready';
   },
 

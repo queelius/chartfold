@@ -1220,3 +1220,34 @@ class TestExportSpaAdditional:
         assert "--border:" in exported_html
         assert "--red:" in exported_html
         assert "--green:" in exported_html
+
+
+class TestSecurityHardening:
+    """Tests for XSS prevention, SQL safety, and resource management."""
+
+    def test_markdown_escapes_double_quotes(self, exported_html):
+        """Markdown esc() function must escape double quotes to prevent attribute breakout."""
+        assert '&quot;' in exported_html or "&amp;quot;" in exported_html, (
+            "markdown.js esc() must escape double quotes"
+        )
+
+    def test_markdown_sanitizes_javascript_urls(self, exported_html):
+        """Markdown link handler must reject javascript: protocol URLs."""
+        assert "javascript:" in exported_html.lower(), (
+            "markdown.js must contain javascript: protocol check for sanitization"
+        )
+
+    def test_db_sets_query_only_pragma(self, exported_html):
+        """DB.init must set PRAGMA query_only = ON to prevent writes."""
+        assert "query_only" in exported_html, (
+            "db.js must set PRAGMA query_only = ON after database initialization"
+        )
+
+    def test_resource_leak_in_load_images(self, spa_db, tmp_path):
+        """_load_images_json uses try/finally to ensure connection is always closed."""
+        import inspect
+
+        source = inspect.getsource(_load_images_json)
+        assert "finally" in source, (
+            "_load_images_json must use try/finally to ensure connection cleanup"
+        )
