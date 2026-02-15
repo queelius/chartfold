@@ -79,7 +79,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004", "E501"]  # Test XML fixtures can be long
 "**/__init__.py" = ["F401"]  # Re-exports are intentional
-"src/chartfold/export_html.py" = ["E501", "SIM102"]  # Embedded CSS/JS is long; nested if is clearer
 "src/chartfold/mcp/server.py" = ["E501", "PERF402"]  # MCP decorator strings; list.extend not clearer
 
 [tool.mypy]

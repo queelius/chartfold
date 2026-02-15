@@ -9,7 +9,7 @@ Usage:
     python -m chartfold query <sql> [--db chartfold.db]
     python -m chartfold summary [--db chartfold.db]
     python -m chartfold export markdown [--output FILE] [--lookback N] [--full] [--pdf]
-    python -m chartfold export html [--output FILE] [--lookback N] [--full]
+    python -m chartfold export html [--output FILE] [--embed-images] [--config FILE]
     python -m chartfold export json [--output FILE]
     python -m chartfold export hugo [--output DIR] [--config FILE] [--linked-sources]
     python -m chartfold serve-mcp [--db chartfold.db]
@@ -111,15 +111,11 @@ def main():
     json_parser.add_argument("--exclude-notes", action="store_true", help="Exclude personal notes")
 
     # export html
-    html_parser = export_sub.add_parser("html", help="Export as self-contained HTML with charts")
+    html_parser = export_sub.add_parser(
+        "html", help="Export as self-contained HTML SPA with embedded SQLite"
+    )
     html_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     html_parser.add_argument("--output", default="chartfold_export.html", help="Output file path")
-    html_parser.add_argument(
-        "--lookback", type=int, default=6, help="Months of recent data to include"
-    )
-    html_parser.add_argument(
-        "--full", action="store_true", help="Export all data (full database dump)"
-    )
     html_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
     html_parser.add_argument(
         "--analysis-dir",
@@ -127,14 +123,9 @@ def main():
         help="Directory containing analysis markdown files",
     )
     html_parser.add_argument(
-        "--classic",
-        action="store_true",
-        help="Use classic HTML export instead of SPA",
-    )
-    html_parser.add_argument(
         "--embed-images",
         action="store_true",
-        help="Embed image assets in the HTML file (SPA only)",
+        help="Embed image assets from source_assets in the HTML file",
     )
 
     # export hugo (moved from generate-site)
@@ -452,34 +443,15 @@ def _handle_export(args):
             )
 
         elif args.export_format == "html":
-            if getattr(args, "classic", False):
-                from chartfold.export_html import export_html, export_html_full
+            from chartfold.spa.export import export_spa
 
-                if getattr(args, "full", False):
-                    path = export_html_full(
-                        db,
-                        output_path=args.output,
-                        config_path=getattr(args, "config", ""),
-                        analysis_dir=getattr(args, "analysis_dir", ""),
-                    )
-                else:
-                    path = export_html(
-                        db,
-                        output_path=args.output,
-                        lookback_months=args.lookback,
-                        config_path=getattr(args, "config", ""),
-                        analysis_dir=getattr(args, "analysis_dir", ""),
-                    )
-            else:
-                from chartfold.spa.export import export_spa
-
-                path = export_spa(
-                    db_path=args.db,
-                    output_path=args.output,
-                    config_path=getattr(args, "config", ""),
-                    analysis_dir=getattr(args, "analysis_dir", ""),
-                    embed_images=getattr(args, "embed_images", False),
-                )
+            path = export_spa(
+                db_path=args.db,
+                output_path=args.output,
+                config_path=getattr(args, "config", ""),
+                analysis_dir=getattr(args, "analysis_dir", ""),
+                embed_images=getattr(args, "embed_images", False),
+            )
 
         elif args.export_format == "hugo":
             from chartfold.hugo.generate import generate_site
