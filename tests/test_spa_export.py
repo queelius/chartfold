@@ -1192,6 +1192,58 @@ class TestExportSpaAdditional:
         asset_id = list(data.keys())[0]
         assert data[asset_id].startswith("data:image/png;base64,")
 
+    def test_embed_images_skips_oversized(self, spa_db, tmp_path):
+        """Images larger than 10 MB are skipped during embedding."""
+        img_path = tmp_path / "huge_image.png"
+        # Write 11 MB of data (over _MAX_IMAGE_SIZE = 10 * 1024 * 1024)
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * (11 * 1024 * 1024))
+
+        conn = sqlite3.connect(spa_db)
+        conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, content_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test", "png", str(img_path), "huge_image.png", "image/png"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = _load_images_json(spa_db)
+        data = json.loads(result)
+        assert len(data) == 0, "Oversized images should be skipped"
+
+    def test_embed_images_skips_missing_file(self, spa_db, tmp_path):
+        """Images with non-existent file paths are skipped."""
+        conn = sqlite3.connect(spa_db)
+        conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, content_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test", "png", "/nonexistent/path/image.png", "missing.png", "image/png"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = _load_images_json(spa_db)
+        data = json.loads(result)
+        assert len(data) == 0, "Missing file should be skipped"
+
+    def test_embed_images_skips_non_image_types(self, spa_db, tmp_path):
+        """Non-image asset types (pdf, xml) are skipped during embedding."""
+        pdf_path = tmp_path / "document.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake pdf")
+
+        conn = sqlite3.connect(spa_db)
+        conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, content_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test", "pdf", str(pdf_path), "document.pdf", "application/pdf"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = _load_images_json(spa_db)
+        data = json.loads(result)
+        assert len(data) == 0, "Non-image types should be skipped"
+
     def test_js_files_concatenated_in_order(self, exported_html):
         """db.js code appears before app.js code in the output."""
         # DB module should appear before app.js wiring
