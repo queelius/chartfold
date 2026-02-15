@@ -6,6 +6,8 @@ import base64
 import gzip
 import json
 import re
+import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -1006,3 +1008,177 @@ class TestLabResultsSection:
     def test_lab_results_charts_dataset_palette(self, exported_html):
         """Lab results charts use a color palette for multiple sources."""
         assert "_labChartPalette" in exported_html
+
+
+# --- Additional export tests ---
+
+
+class TestExportSpaAdditional:
+    """Additional tests for the SPA export module."""
+
+    def test_empty_database(self, tmp_path):
+        """Export succeeds with a schema-only database (no data)."""
+        db_path = tmp_path / "empty.db"
+        schema = (Path(__file__).parent.parent / "src" / "chartfold" / "schema.sql").read_text()
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(schema)
+        conn.close()
+
+        out_path = str(tmp_path / "empty_export.html")
+        result = export_spa(str(db_path), out_path)
+        assert result == out_path
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        assert html.startswith("<!DOCTYPE html>")
+        assert html.rstrip().endswith("</html>")
+        assert 'id="chartfold-db"' in html
+
+    def test_gzip_compression_reduces_size(self, spa_db, tmp_path):
+        """The gzip-compressed base64 DB is smaller than the raw DB file."""
+        out_path = str(tmp_path / "compressed.html")
+        export_spa(spa_db, out_path)
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+
+        match = re.search(
+            r'<script id="chartfold-db" type="application/gzip\+base64">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        db_b64 = match.group(1).strip()
+        compressed_bytes = base64.b64decode(db_b64)
+        raw_size = Path(spa_db).stat().st_size
+        assert len(compressed_bytes) < raw_size
+
+    def test_missing_config_no_error(self, spa_db, tmp_path):
+        """Export with a non-existent config path succeeds gracefully."""
+        out_path = str(tmp_path / "no_config.html")
+        result = export_spa(spa_db, out_path, config_path="/nonexistent/config.toml")
+        assert result == out_path
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        # Config should fall back to empty object
+        match = re.search(
+            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        assert json.loads(match.group(1)) == {}
+
+    def test_missing_analysis_dir_no_error(self, spa_db, tmp_path):
+        """Export with a non-existent analysis dir succeeds gracefully."""
+        out_path = str(tmp_path / "no_analysis.html")
+        result = export_spa(spa_db, out_path, analysis_dir="/nonexistent/analysis")
+        assert result == out_path
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        match = re.search(
+            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        assert json.loads(match.group(1)) == []
+
+    def test_config_embedded_as_json(self, spa_db, tmp_path):
+        """A TOML config file is embedded as JSON in the output."""
+        toml_path = tmp_path / "test_config.toml"
+        toml_path.write_text(
+            '[dashboard]\ntitle = "Health Dashboard"\n\n[key_tests]\ntests = ["CEA", "WBC"]\n'
+        )
+        out_path = str(tmp_path / "with_config.html")
+        export_spa(spa_db, out_path, config_path=str(toml_path))
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        match = re.search(
+            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        data = json.loads(match.group(1))
+        assert data["dashboard"]["title"] == "Health Dashboard"
+        assert data["key_tests"]["tests"] == ["CEA", "WBC"]
+
+    def test_analysis_markdown_embedded(self, spa_db, tmp_path):
+        """Markdown files from analysis dir appear as JSON array in output."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        (analysis_dir / "cea-analysis.md").write_text("CEA values are stable.\n\nNo concerns.")
+        out_path = str(tmp_path / "with_analysis.html")
+        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        match = re.search(
+            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        data = json.loads(match.group(1))
+        assert len(data) == 1
+        assert data[0]["title"] == "Cea Analysis"
+        assert data[0]["filename"] == "cea-analysis.md"
+        assert "CEA values are stable." in data[0]["body"]
+
+    def test_embed_images_flag(self, spa_db, tmp_path):
+        """embed_images=True triggers image asset loading from database."""
+        # Create a small image file
+        img_path = tmp_path / "test_image.png"
+        img_path.write_bytes(b"\x89PNG\r\n\x1a\nfake_png_data_for_testing")
+
+        # Insert an image asset into the database
+        conn = sqlite3.connect(spa_db)
+        conn.execute(
+            "INSERT INTO source_assets (source, asset_type, file_path, file_name, content_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test", "png", str(img_path), "test_image.png", "image/png"),
+        )
+        conn.commit()
+        conn.close()
+
+        out_path = str(tmp_path / "with_images.html")
+        export_spa(spa_db, out_path, embed_images=True)
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        match = re.search(
+            r'<script id="chartfold-images" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        data = json.loads(match.group(1))
+        assert len(data) == 1
+        asset_id = list(data.keys())[0]
+        assert data[asset_id].startswith("data:image/png;base64,")
+
+    def test_js_files_concatenated_in_order(self, exported_html):
+        """db.js code appears before app.js code in the output."""
+        # DB module should appear before app.js wiring
+        db_pos = exported_html.find("const DB")
+        app_pos = exported_html.find("Router.start()")
+        assert db_pos != -1, "DB module not found in HTML"
+        assert app_pos != -1, "App startup code not found in HTML"
+        assert db_pos < app_pos, "db.js must come before app.js in concatenation order"
+
+    def test_output_is_valid_html(self, exported_html):
+        """Output has proper HTML structure: DOCTYPE, html, head, body tags."""
+        assert "<!DOCTYPE html>" in exported_html
+        assert "<html" in exported_html
+        assert "<head>" in exported_html
+        assert "<body>" in exported_html
+        assert "</head>" in exported_html
+        assert "</body>" in exported_html
+        assert "</html>" in exported_html
+
+    def test_css_custom_properties_present(self, exported_html):
+        """CSS custom properties for theming are present in the output."""
+        assert "--bg:" in exported_html
+        assert "--accent:" in exported_html
+        assert "--surface:" in exported_html
+        assert "--text:" in exported_html
+        assert "--border:" in exported_html
+        assert "--red:" in exported_html
+        assert "--green:" in exported_html

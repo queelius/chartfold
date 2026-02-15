@@ -126,6 +126,16 @@ def main():
         default="",
         help="Directory containing analysis markdown files",
     )
+    html_parser.add_argument(
+        "--classic",
+        action="store_true",
+        help="Use classic HTML export instead of SPA",
+    )
+    html_parser.add_argument(
+        "--embed-images",
+        action="store_true",
+        help="Embed image assets in the HTML file (SPA only)",
+    )
 
     # export hugo (moved from generate-site)
     hugo_parser = export_sub.add_parser("hugo", help="Generate Hugo static site")
@@ -442,22 +452,33 @@ def _handle_export(args):
             )
 
         elif args.export_format == "html":
-            from chartfold.export_html import export_html, export_html_full
+            if getattr(args, "classic", False):
+                from chartfold.export_html import export_html, export_html_full
 
-            if getattr(args, "full", False):
-                path = export_html_full(
-                    db,
-                    output_path=args.output,
-                    config_path=getattr(args, "config", ""),
-                    analysis_dir=getattr(args, "analysis_dir", ""),
-                )
+                if getattr(args, "full", False):
+                    path = export_html_full(
+                        db,
+                        output_path=args.output,
+                        config_path=getattr(args, "config", ""),
+                        analysis_dir=getattr(args, "analysis_dir", ""),
+                    )
+                else:
+                    path = export_html(
+                        db,
+                        output_path=args.output,
+                        lookback_months=args.lookback,
+                        config_path=getattr(args, "config", ""),
+                        analysis_dir=getattr(args, "analysis_dir", ""),
+                    )
             else:
-                path = export_html(
-                    db,
+                from chartfold.spa.export import export_spa
+
+                path = export_spa(
+                    db_path=args.db,
                     output_path=args.output,
-                    lookback_months=args.lookback,
                     config_path=getattr(args, "config", ""),
                     analysis_dir=getattr(args, "analysis_dir", ""),
+                    embed_images=getattr(args, "embed_images", False),
                 )
 
         elif args.export_format == "hugo":
