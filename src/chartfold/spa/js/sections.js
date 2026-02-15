@@ -539,21 +539,158 @@ const Sections = {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM encounters');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Encounters', n + ' encounters'));
-    el.appendChild(UI.empty('Encounters section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No encounters recorded.')); return; }
+
+    var pageSize = 20;
+    var currentPage = 1;
+    var tableContainer = UI.el('div');
+    var paginationContainer = UI.el('div');
+    el.appendChild(tableContainer);
+    el.appendChild(paginationContainer);
+
+    function encounterTypeBadge(type) {
+      if (!type) return UI.badge('Unknown', 'gray');
+      var lt = type.toLowerCase();
+      if (lt.indexOf('emergency') !== -1 || lt === 'er') return UI.badge(type, 'red');
+      if (lt.indexOf('inpatient') !== -1) return UI.badge(type, 'orange');
+      if (lt.indexOf('office') !== -1 || lt.indexOf('visit') !== -1) return UI.badge(type, 'blue');
+      return UI.badge(type, 'gray');
+    }
+
+    function renderPage() {
+      var offset = (currentPage - 1) * pageSize;
+      var rows = db.query(
+        'SELECT * FROM encounters ORDER BY encounter_date DESC LIMIT ? OFFSET ?',
+        [pageSize, offset]
+      );
+      tableContainer.textContent = '';
+      tableContainer.appendChild(UI.table([
+        { label: 'Date', key: 'encounter_date' },
+        { label: 'Type', key: 'encounter_type', format: function(v) { return encounterTypeBadge(v); } },
+        { label: 'Facility', key: 'facility' },
+        { label: 'Provider', key: 'provider' },
+        { label: 'Reason', key: 'reason' },
+        { label: 'Source', key: 'source' }
+      ], rows));
+
+      paginationContainer.textContent = '';
+      if (n > pageSize) {
+        paginationContainer.appendChild(UI.pagination(n, pageSize, currentPage, function(page) {
+          currentPage = page;
+          renderPage();
+        }));
+      }
+    }
+    renderPage();
   },
 
   imaging(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM imaging_reports');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Imaging', n + ' imaging reports'));
-    el.appendChild(UI.empty('Imaging section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No imaging reports recorded.')); return; }
+
+    var reports = db.query('SELECT * FROM imaging_reports ORDER BY study_date DESC');
+    for (var i = 0; i < reports.length; i++) {
+      var r = reports[i];
+      // Build meta element with date, modality badge, and provider
+      var metaParts = [];
+      if (r.study_date) metaParts.push(UI.el('span', { textContent: r.study_date }));
+      if (r.modality) { metaParts.push(document.createTextNode(' ')); metaParts.push(UI.badge(r.modality, 'blue')); }
+      if (r.ordering_provider) { metaParts.push(document.createTextNode(' \u2022 ')); metaParts.push(UI.el('span', { textContent: r.ordering_provider })); }
+      var metaEl = UI.el('div', { className: 'text-secondary' }, metaParts);
+
+      // Body: truncated findings
+      var bodyText = '';
+      if (r.findings) {
+        bodyText = r.findings.length > 200 ? r.findings.substring(0, 200) + '...' : r.findings;
+      }
+
+      // Card options
+      var cardOpts = {};
+      if (r.impression) cardOpts.impression = r.impression;
+
+      var card = UI.clinicalCard(r.study_name || 'Imaging Report', metaEl, bodyText, cardOpts);
+
+      // Linked assets
+      try {
+        var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', ['imaging_reports', r.id]);
+        if (assets.length > 0) {
+          var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
+          for (var ai = 0; ai < assets.length; ai++) {
+            assetRow.appendChild(UI.badge(assets[ai].file_name, 'gray'));
+          }
+          card.appendChild(assetRow);
+        }
+      } catch (e) { /* source_assets may not exist */ }
+
+      el.appendChild(card);
+
+      // Expandable full text
+      if (r.full_text) {
+        var combined = (r.findings || '') + (r.impression || '');
+        if (r.full_text !== combined && r.full_text.length > combined.length) {
+          var details = UI.el('details', { style: 'margin: 0 0 12px 0;' });
+          details.appendChild(UI.el('summary', { textContent: 'Full Report Text', style: 'cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 4px 0;' }));
+          details.appendChild(UI.el('pre', { textContent: r.full_text, style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);' }));
+          el.appendChild(details);
+        }
+      }
+    }
   },
 
   pathology(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM pathology_reports');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Pathology', n + ' pathology reports'));
-    el.appendChild(UI.empty('Pathology section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No pathology reports recorded.')); return; }
+
+    var reports = db.query('SELECT * FROM pathology_reports ORDER BY report_date DESC');
+    for (var i = 0; i < reports.length; i++) {
+      var r = reports[i];
+      var title = r.specimen || 'Pathology Report';
+      var metaText = (r.report_date || '') + (r.source ? ' \u2022 ' + r.source : '');
+
+      // Badge for staging
+      var cardOpts = {};
+      if (r.staging) {
+        var stageMatch = r.staging.match(/stage\s+[IVX\d]+[A-C]?/i);
+        if (stageMatch) cardOpts.badge = { text: stageMatch[0], variant: 'orange' };
+      }
+
+      // Build body from diagnosis, margins, lymph_nodes
+      var bodyParts = [];
+      if (r.margins) bodyParts.push('Margins: ' + r.margins);
+      if (r.lymph_nodes) bodyParts.push('Lymph Nodes: ' + r.lymph_nodes);
+      var bodyText = bodyParts.join('\n');
+
+      // Impression from diagnosis
+      if (r.diagnosis) cardOpts.impression = r.diagnosis;
+
+      var card = UI.clinicalCard(title, metaText, bodyText, cardOpts);
+
+      // Linked assets
+      try {
+        var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', ['pathology_reports', r.id]);
+        if (assets.length > 0) {
+          var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
+          for (var ai = 0; ai < assets.length; ai++) {
+            assetRow.appendChild(UI.badge(assets[ai].file_name, 'gray'));
+          }
+          card.appendChild(assetRow);
+        }
+      } catch (e) { /* source_assets may not exist */ }
+
+      el.appendChild(card);
+
+      // Expandable full text
+      if (r.full_text) {
+        var details = UI.el('details', { style: 'margin: 0 0 12px 0;' });
+        details.appendChild(UI.el('summary', { textContent: 'Full Report Text', style: 'cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 4px 0;' }));
+        details.appendChild(UI.el('pre', { textContent: r.full_text, style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);' }));
+        el.appendChild(details);
+      }
+    }
   },
 
   allergies(el, db) {
