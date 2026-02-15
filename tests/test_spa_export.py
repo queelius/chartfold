@@ -605,6 +605,67 @@ class TestSectionsJs:
         # The analysis section should reference the embedded JSON
         assert "getElementById('chartfold-analysis')" in exported_html
 
+    # --- Conditions section tests ---
+
+    def test_conditions_queries_active(self, exported_html):
+        """Conditions section queries active conditions with LOWER()."""
+        assert "LOWER(clinical_status) = 'active'" in exported_html
+
+    def test_conditions_queries_resolved(self, exported_html):
+        """Conditions section queries non-active conditions."""
+        assert "LOWER(clinical_status) != 'active'" in exported_html
+
+    def test_conditions_active_green_badge(self, exported_html):
+        """Conditions section uses green badge for active status."""
+        assert "UI.badge('Active', 'green')" in exported_html
+
+    def test_conditions_resolved_gray_badge(self, exported_html):
+        """Conditions section uses gray badge for resolved status."""
+        assert "UI.badge('Resolved', 'gray')" in exported_html
+
+    def test_conditions_icd10_badge(self, exported_html):
+        """Conditions section shows ICD-10 codes as gray badges."""
+        assert "icd10_code" in exported_html
+
+    def test_conditions_collapsible_resolved(self, exported_html):
+        """Conditions section puts resolved conditions in a details element."""
+        assert "Resolved & Other" in exported_html
+
+    def test_conditions_empty_state(self, exported_html):
+        """Conditions section shows empty state when no conditions."""
+        assert "No conditions recorded" in exported_html
+
+    # --- Medications section tests ---
+
+    def test_medications_queries_all(self, exported_html):
+        """Medications section queries all meds ordered by status and name."""
+        assert "SELECT * FROM medications ORDER BY status, name" in exported_html
+
+    def test_medications_cross_source_detection(self, exported_html):
+        """Medications section detects multi-source medications."""
+        assert "Multi-source" in exported_html
+
+    def test_medications_uses_clinical_cards(self, exported_html):
+        """Medications section uses clinicalCard for active medications."""
+        assert "UI.clinicalCard(" in exported_html
+
+    def test_medications_groups_by_status(self, exported_html):
+        """Medications section splits active from other status groups."""
+        assert "activeMeds" in exported_html
+        assert "otherGroups" in exported_html
+
+    def test_medications_table_for_non_active(self, exported_html):
+        """Medications non-active groups rendered as sortable tables."""
+        assert "UI.table(tableCols, gMeds)" in exported_html
+
+    def test_medications_empty_state(self, exported_html):
+        """Medications section shows empty state when no medications."""
+        assert "No medications recorded" in exported_html
+
+    def test_medications_case_insensitive_status(self, exported_html):
+        """Medications section uses toLowerCase for case-insensitive status."""
+        assert "toLowerCase()" in exported_html
+
 
 # --- App.js wiring tests ---
 

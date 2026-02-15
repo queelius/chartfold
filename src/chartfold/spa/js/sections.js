@@ -151,14 +151,107 @@ const Sections = {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM conditions');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Conditions', n + ' conditions'));
-    el.appendChild(UI.empty('Conditions section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No conditions recorded.')); return; }
+
+    var cols = [
+      { label: 'Condition', key: 'condition_name' },
+      { label: 'Status', key: 'clinical_status', format: function(v) {
+        if (!v) return UI.badge('Unknown', 'orange');
+        var lv = v.toLowerCase();
+        if (lv === 'active') return UI.badge('Active', 'green');
+        if (lv === 'resolved') return UI.badge('Resolved', 'gray');
+        return UI.badge(v, 'orange');
+      }},
+      { label: 'ICD-10', key: 'icd10_code', format: function(v) {
+        return v ? UI.badge(v, 'gray') : '';
+      }},
+      { label: 'Onset Date', key: 'onset_date' },
+      { label: 'Source', key: 'source' }
+    ];
+
+    // Active conditions
+    var active = db.query("SELECT * FROM conditions WHERE LOWER(clinical_status) = 'active' ORDER BY condition_name");
+    if (active.length > 0) {
+      el.appendChild(UI.el('h3', { textContent: 'Active Conditions (' + active.length + ')', style: 'margin: 16px 0 8px;' }));
+      el.appendChild(UI.table(cols, active));
+    } else {
+      el.appendChild(UI.el('p', { textContent: 'No active conditions.', style: 'color: var(--text-secondary); margin: 16px 0;' }));
+    }
+
+    // Resolved & other
+    var other = db.query("SELECT * FROM conditions WHERE LOWER(clinical_status) != 'active' OR clinical_status IS NULL ORDER BY condition_name");
+    if (other.length > 0) {
+      var details = UI.el('details', { style: 'margin-top: 16px;' });
+      details.appendChild(UI.el('summary', { textContent: 'Resolved & Other (' + other.length + ')', style: 'cursor: pointer; font-weight: 600; padding: 8px 0;' }));
+      details.appendChild(UI.table(cols, other));
+      el.appendChild(details);
+    }
   },
 
   medications(el, db) {
     var row = db.queryOne('SELECT COUNT(*) AS n FROM medications');
     var n = row ? row.n : 0;
     el.appendChild(UI.sectionHeader('Medications', n + ' medications'));
-    el.appendChild(UI.empty('Medications section coming soon.'));
+    if (n === 0) { el.appendChild(UI.empty('No medications recorded.')); return; }
+
+    var allMeds = db.query('SELECT * FROM medications ORDER BY status, name');
+
+    // Build cross-source map: lowercase name -> Set of sources
+    var sourceMap = {};
+    for (var i = 0; i < allMeds.length; i++) {
+      var key = (allMeds[i].name || '').toLowerCase();
+      if (!sourceMap[key]) sourceMap[key] = {};
+      if (allMeds[i].source) sourceMap[key][allMeds[i].source] = true;
+    }
+
+    // Split into active vs other status groups
+    var activeMeds = [];
+    var otherGroups = {};
+    for (var j = 0; j < allMeds.length; j++) {
+      var med = allMeds[j];
+      var status = (med.status || '').toLowerCase();
+      if (status === 'active') {
+        activeMeds.push(med);
+      } else {
+        var groupLabel = med.status || 'Unknown';
+        if (!otherGroups[groupLabel]) otherGroups[groupLabel] = [];
+        otherGroups[groupLabel].push(med);
+      }
+    }
+
+    // Active medications as clinical cards
+    if (activeMeds.length > 0) {
+      el.appendChild(UI.el('h3', { textContent: 'Active Medications (' + activeMeds.length + ')', style: 'margin: 16px 0 8px;' }));
+      for (var a = 0; a < activeMeds.length; a++) {
+        var m = activeMeds[a];
+        var parts = [];
+        if (m.route) parts.push('Route: ' + m.route);
+        if (m.start_date) parts.push('Started: ' + m.start_date);
+        if (m.prescriber) parts.push('Prescriber: ' + m.prescriber);
+        var multiSource = Object.keys(sourceMap[(m.name || '').toLowerCase()] || {}).length > 1;
+        var badgeOpt = multiSource ? { text: 'Multi-source', variant: 'blue' } : null;
+        var cardOpts = {};
+        if (badgeOpt) cardOpts.badge = badgeOpt;
+        el.appendChild(UI.clinicalCard(m.name || 'Unknown', m.sig || '', parts.join(' | '), cardOpts));
+      }
+    }
+
+    // Other status groups as tables
+    var tableCols = [
+      { label: 'Name', key: 'name' },
+      { label: 'Sig', key: 'sig' },
+      { label: 'Route', key: 'route' },
+      { label: 'Start Date', key: 'start_date' },
+      { label: 'Stop Date', key: 'stop_date' },
+      { label: 'Source', key: 'source' }
+    ];
+    var groupNames = Object.keys(otherGroups).sort();
+    for (var g = 0; g < groupNames.length; g++) {
+      var gName = groupNames[g];
+      var gMeds = otherGroups[gName];
+      el.appendChild(UI.el('h3', { textContent: gName + ' (' + gMeds.length + ')', style: 'margin: 24px 0 8px;' }));
+      el.appendChild(UI.table(tableCols, gMeds));
+    }
   },
 
   lab_results(el, db) {
