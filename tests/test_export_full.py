@@ -6,11 +6,12 @@ import pytest
 
 from chartfold.db import ChartfoldDB
 from chartfold.export_full import (
-    CLINICAL_TABLES,
     EXPORT_VERSION,
     SCHEMA_VERSION,
+    _discover_fk_graph,
+    _discover_tables,
+    _topological_sort,
     export_full_json,
-    export_full_markdown,
     import_json,
     validate_json_export,
 )
@@ -279,6 +280,75 @@ def populated_db_with_pathology(tmp_path):
     db.close()
 
 
+# --- Auto-discovery tests ---
+
+
+class TestAutoDiscovery:
+    """Tests for the auto-discovery helpers."""
+
+    def test_discover_tables_finds_all(self, populated_db):
+        """discover_tables should find all schema tables."""
+        tables = _discover_tables(populated_db)
+        # Should contain all the known clinical tables
+        for expected in [
+            "patients", "lab_results", "medications", "procedures",
+            "pathology_reports", "notes", "note_tags", "load_log",
+        ]:
+            assert expected in tables, f"Missing table: {expected}"
+
+    def test_discover_tables_excludes_sqlite_internals(self, populated_db):
+        """discover_tables should not include sqlite_ prefixed tables."""
+        tables = _discover_tables(populated_db)
+        for t in tables:
+            assert not t.startswith("sqlite_"), f"Should not include {t}"
+
+    def test_discover_fk_graph_finds_pathology_fk(self, populated_db):
+        """FK graph should find pathology_reports -> procedures FK."""
+        tables = _discover_tables(populated_db)
+        fk_graph = _discover_fk_graph(populated_db, tables)
+        assert "pathology_reports" in fk_graph
+        fks = fk_graph["pathology_reports"]
+        assert any(fk[0] == "procedure_id" and fk[1] == "procedures" for fk in fks)
+
+    def test_discover_fk_graph_finds_note_tags_fk(self, populated_db):
+        """FK graph should find note_tags -> notes FK."""
+        tables = _discover_tables(populated_db)
+        fk_graph = _discover_fk_graph(populated_db, tables)
+        assert "note_tags" in fk_graph
+        fks = fk_graph["note_tags"]
+        assert any(fk[0] == "note_id" and fk[1] == "notes" for fk in fks)
+
+    def test_topological_sort_parents_before_children(self, populated_db):
+        """Topological sort should place parent tables before their children."""
+        tables = _discover_tables(populated_db)
+        fk_graph = _discover_fk_graph(populated_db, tables)
+        ordered = _topological_sort(tables, fk_graph)
+
+        # procedures should come before pathology_reports
+        proc_idx = ordered.index("procedures")
+        path_idx = ordered.index("pathology_reports")
+        assert proc_idx < path_idx, "procedures should be imported before pathology_reports"
+
+        # notes should come before note_tags
+        notes_idx = ordered.index("notes")
+        tags_idx = ordered.index("note_tags")
+        assert notes_idx < tags_idx, "notes should be imported before note_tags"
+
+    def test_topological_sort_handles_no_fks(self):
+        """Topological sort works with tables that have no FK relationships."""
+        tables = ["a", "b", "c"]
+        result = _topological_sort(tables, {})
+        assert set(result) == {"a", "b", "c"}
+
+    def test_topological_sort_deterministic(self, populated_db):
+        """Topological sort produces the same order on repeated calls."""
+        tables = _discover_tables(populated_db)
+        fk_graph = _discover_fk_graph(populated_db, tables)
+        order1 = _topological_sort(tables, fk_graph)
+        order2 = _topological_sort(tables, fk_graph)
+        assert order1 == order2
+
+
 class TestExportFullJson:
     """Tests for JSON export functionality."""
 
@@ -318,8 +388,13 @@ class TestExportFullJson:
             data = json.load(f)
 
         tables = data["tables"]
-        for table in CLINICAL_TABLES:
-            assert table in tables, f"Missing table: {table}"
+        for expected in [
+            "patients", "documents", "encounters", "lab_results", "vitals",
+            "medications", "conditions", "procedures", "pathology_reports",
+            "imaging_reports", "clinical_notes", "immunizations", "allergies",
+            "social_history", "family_history", "mental_status", "source_assets",
+        ]:
+            assert expected in tables, f"Missing table: {expected}"
 
     def test_export_includes_notes_by_default(self, populated_db, tmp_path):
         """Export should include notes tables by default."""
@@ -383,69 +458,26 @@ class TestExportFullJson:
         assert cea["value_numeric"] == 5.8
         assert cea["interpretation"] == "H"
 
+    def test_export_auto_discovers_new_tables(self, tmp_path):
+        """Export should automatically pick up tables added to the schema."""
+        db_path = str(tmp_path / "test.db")
+        with ChartfoldDB(db_path) as db:
+            db.init_schema()
+            # Add a custom table that isn't in the original schema
+            db.conn.execute(
+                "CREATE TABLE IF NOT EXISTS custom_data (id INTEGER PRIMARY KEY, value TEXT)"
+            )
+            db.conn.execute("INSERT INTO custom_data (value) VALUES ('test')")
+            db.conn.commit()
 
-class TestExportFullMarkdown:
-    """Tests for markdown export functionality."""
-
-    def test_export_creates_file(self, populated_db, tmp_path):
-        """Export should create a valid markdown file."""
-        output_path = str(tmp_path / "export.md")
-        result = export_full_markdown(populated_db, output_path)
-
-        assert result == output_path
-        assert (tmp_path / "export.md").exists()
-
-    def test_export_includes_header(self, populated_db, tmp_path):
-        """Export should include header with timestamp."""
-        output_path = str(tmp_path / "export.md")
-        export_full_markdown(populated_db, output_path)
+            output_path = str(tmp_path / "export.json")
+            export_full_json(db, output_path)
 
         with open(output_path) as f:
-            content = f.read()
+            data = json.load(f)
 
-        assert "# Chartfold Full Data Export" in content
-        assert "*Exported:" in content
-
-    def test_export_includes_summary(self, populated_db, tmp_path):
-        """Export should include summary section."""
-        output_path = str(tmp_path / "export.md")
-        export_full_markdown(populated_db, output_path)
-
-        with open(output_path) as f:
-            content = f.read()
-
-        assert "## Summary" in content
-        assert "lab_results" in content
-
-    def test_export_includes_tables(self, populated_db, tmp_path):
-        """Export should include markdown tables for populated data."""
-        output_path = str(tmp_path / "export.md")
-        export_full_markdown(populated_db, output_path)
-
-        with open(output_path) as f:
-            content = f.read()
-
-        # Check for table headers
-        assert "## lab_results" in content
-        assert "## medications" in content
-        assert "| test_name |" in content or "| id |" in content
-
-    def test_export_truncates_long_values(self, populated_db, tmp_path):
-        """Export should truncate very long values in markdown."""
-        # Add a note with very long content
-        populated_db.save_note(
-            title="Long Note",
-            content="x" * 200,  # Very long content
-        )
-
-        output_path = str(tmp_path / "export.md")
-        export_full_markdown(populated_db, output_path)
-
-        with open(output_path) as f:
-            content = f.read()
-
-        # Long content should be truncated with "..."
-        assert "..." in content
+        assert "custom_data" in data["tables"]
+        assert len(data["tables"]["custom_data"]) == 1
 
 
 class TestValidateJsonExport:
@@ -479,7 +511,7 @@ class TestValidateJsonExport:
     def test_validate_missing_metadata(self, tmp_path):
         """Validation should fail for missing metadata."""
         bad_file = tmp_path / "bad.json"
-        bad_file.write_text('{"tables": {}}')
+        bad_file.write_text('{"tables": {"patients": []}}')
 
         result = validate_json_export(str(bad_file))
         assert result["valid"] is False
@@ -488,7 +520,7 @@ class TestValidateJsonExport:
     def test_validate_missing_version(self, tmp_path):
         """Validation should fail for missing version in metadata."""
         bad_file = tmp_path / "bad.json"
-        bad_file.write_text('{"chartfold_export": {"schema_version": 1}, "tables": {}}')
+        bad_file.write_text('{"chartfold_export": {"schema_version": 1}, "tables": {"a": []}}')
 
         result = validate_json_export(str(bad_file))
         assert result["valid"] is False
@@ -497,7 +529,7 @@ class TestValidateJsonExport:
     def test_validate_missing_schema_version(self, tmp_path):
         """Validation should fail for missing schema_version in metadata."""
         bad_file = tmp_path / "bad.json"
-        bad_file.write_text('{"chartfold_export": {"version": "1.0"}, "tables": {}}')
+        bad_file.write_text('{"chartfold_export": {"version": "1.0"}, "tables": {"a": []}}')
 
         result = validate_json_export(str(bad_file))
         assert result["valid"] is False
@@ -518,23 +550,7 @@ class TestValidateJsonExport:
         data = {
             "chartfold_export": {"version": "1.0", "schema_version": 1},
             "tables": {
-                "patients": "not a list",  # Should be a list
-                "documents": [],
-                "encounters": [],
-                "lab_results": [],
-                "vitals": [],
-                "medications": [],
-                "conditions": [],
-                "procedures": [],
-                "pathology_reports": [],
-                "imaging_reports": [],
-                "clinical_notes": [],
-                "immunizations": [],
-                "allergies": [],
-                "social_history": [],
-                "family_history": [],
-                "mental_status": [],
-                "source_assets": [],
+                "patients": "not a list",
             },
         }
         bad_file.write_text(json.dumps(data))
@@ -542,6 +558,19 @@ class TestValidateJsonExport:
         result = validate_json_export(str(bad_file))
         assert result["valid"] is False
         assert any("not a list" in e for e in result["errors"])
+
+    def test_validate_empty_tables(self, tmp_path):
+        """Validation should fail if tables block is empty."""
+        bad_file = tmp_path / "bad.json"
+        data = {
+            "chartfold_export": {"version": "1.0", "schema_version": 1},
+            "tables": {},
+        }
+        bad_file.write_text(json.dumps(data))
+
+        result = validate_json_export(str(bad_file))
+        assert result["valid"] is False
+        assert any("no tables" in e.lower() for e in result["errors"])
 
 
 class TestImportJson:
@@ -573,8 +602,8 @@ class TestImportJson:
         with ChartfoldDB(import_db_path) as imported_db:
             imported_summary = imported_db.summary()
 
-        for table in CLINICAL_TABLES:
-            assert original_summary.get(table, 0) == imported_summary.get(table, 0), (
+        for table in original_summary:
+            assert original_summary[table] == imported_summary.get(table, 0), (
                 f"Count mismatch for {table}"
             )
 
@@ -676,6 +705,41 @@ class TestImportJson:
             patients = imported_db.query("SELECT * FROM patients")
             assert len(patients) == 1
             assert patients[0]["name"] == "John Doe"
+
+    def test_import_auto_remaps_fks_for_new_tables(self, tmp_path):
+        """Import should auto-discover and remap FKs for any table with FKs."""
+        # Create a DB with a custom FK relationship
+        db_path = str(tmp_path / "custom.db")
+        with ChartfoldDB(db_path) as db:
+            db.init_schema()
+            db.conn.execute(
+                "INSERT INTO procedures (source, name, procedure_date) VALUES (?, ?, ?)",
+                ("test", "Surgery", "2025-01-01"),
+            )
+            db.conn.execute(
+                "INSERT INTO pathology_reports (source, procedure_id, diagnosis) VALUES (?, ?, ?)",
+                ("test", 1, "Benign"),
+            )
+            db.conn.commit()
+
+            export_path = str(tmp_path / "export.json")
+            export_full_json(db, export_path)
+
+        # Import and verify FK is correctly remapped
+        import_db_path = str(tmp_path / "imported.db")
+        result = import_json(export_path, import_db_path)
+        assert result["success"] is True
+
+        with ChartfoldDB(import_db_path) as imported_db:
+            # The FK join should work
+            rows = imported_db.query("""
+                SELECT p.name, pr.diagnosis
+                FROM pathology_reports pr
+                JOIN procedures p ON pr.procedure_id = p.id
+            """)
+            assert len(rows) == 1
+            assert rows[0]["name"] == "Surgery"
+            assert rows[0]["diagnosis"] == "Benign"
 
 
 class TestRoundTrip:

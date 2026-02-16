@@ -1,11 +1,10 @@
 """Full-fidelity export and import for chartfold databases.
 
-Supports two export formats:
-- Markdown: Human-readable dump of all tables
-- JSON: Round-trip capable export that can recreate the SQLite database
+JSON round-trip capable export that can recreate the SQLite database.
+Exports the complete database contents for backup and portability.
 
-Unlike export.py (which is visit-focused with filtering), this module
-exports the complete database contents for backup and portability.
+Tables, foreign keys, and import ordering are auto-discovered from the
+SQLite schema — adding new tables to schema.sql requires zero changes here.
 """
 
 from __future__ import annotations
@@ -15,63 +14,80 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from chartfold.db import ChartfoldDB
-from chartfold.formatters.markdown import MarkdownWriter
 
 EXPORT_VERSION = "1.0"
 SCHEMA_VERSION = 1
 
-# Tables to export by default (clinical data + personal notes)
-CLINICAL_TABLES = [
-    "patients",
-    "documents",
-    "encounters",
-    "lab_results",
-    "vitals",
-    "medications",
-    "conditions",
-    "procedures",
-    "pathology_reports",
-    "imaging_reports",
-    "clinical_notes",
-    "immunizations",
-    "allergies",
-    "social_history",
-    "family_history",
-    "mental_status",
-    "source_assets",
-]
+# Tables excluded from default export (opt-in only)
+_EXCLUDE_BY_DEFAULT = {"load_log"}
 
-NOTE_TABLES = ["notes", "note_tags"]
+# Tables excluded when --exclude-notes is used
+_NOTE_TABLES = {"notes", "note_tags"}
 
-AUDIT_TABLES = ["load_log"]
 
-# Import order matters due to foreign keys:
-# - pathology_reports.procedure_id -> procedures.id
-# - note_tags.note_id -> notes.id
-IMPORT_PHASE_1 = [
-    "patients",
-    "documents",
-    "encounters",
-    "lab_results",
-    "vitals",
-    "medications",
-    "conditions",
-    "procedures",
-    "imaging_reports",
-    "clinical_notes",
-    "immunizations",
-    "allergies",
-    "social_history",
-    "family_history",
-    "mental_status",
-    "source_assets",
-]
+def _discover_tables(db: ChartfoldDB) -> list[str]:
+    """All user tables from sqlite_master, excluding sqlite_ internals."""
+    rows = db.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+        "ORDER BY name"
+    )
+    return [r["name"] for r in rows]
 
-IMPORT_PHASE_2_FK = [
-    ("pathology_reports", "procedure_id", "procedures"),
-]
 
-IMPORT_PHASE_3_NOTES = ["notes", "note_tags"]
+def _discover_fk_graph(db: ChartfoldDB, tables: list[str]) -> dict[str, list[tuple[str, str, str]]]:
+    """FK graph via PRAGMA foreign_key_list().
+
+    Returns {child_table: [(fk_col, parent_table, parent_col), ...]}.
+    Only includes relationships where both tables are in the provided list.
+    """
+    table_set = set(tables)
+    graph: dict[str, list[tuple[str, str, str]]] = {}
+    for table in tables:
+        fks = db.query(f"PRAGMA foreign_key_list({table})")
+        for fk in fks:
+            parent = fk["table"]
+            if parent in table_set:
+                graph.setdefault(table, []).append((fk["from"], parent, fk["to"]))
+    return graph
+
+
+def _topological_sort(tables: list[str], fk_graph: dict[str, list[tuple[str, str, str]]]) -> list[str]:
+    """Sort tables so parents come before children.
+
+    Uses Kahn's algorithm. Handles cycles gracefully by appending remaining
+    tables at the end (cycle shouldn't happen in a well-formed schema).
+    """
+    # Build adjacency: parent -> set of children
+    in_degree: dict[str, int] = {t: 0 for t in tables}
+    children: dict[str, list[str]] = {t: [] for t in tables}
+
+    for child, fk_list in fk_graph.items():
+        parents = {fk[1] for fk in fk_list}  # unique parent tables
+        for parent in parents:
+            if parent != child and parent in in_degree:  # skip self-references
+                in_degree[child] = in_degree.get(child, 0) + 1
+                children.setdefault(parent, []).append(child)
+
+    # Start with nodes that have no dependencies
+    queue = [t for t in tables if in_degree[t] == 0]
+    result = []
+
+    while queue:
+        # Sort for deterministic ordering
+        queue.sort()
+        node = queue.pop(0)
+        result.append(node)
+        for child in children.get(node, []):
+            in_degree[child] -= 1
+            if in_degree[child] == 0:
+                queue.append(child)
+
+    # Append any remaining (cycle) tables
+    remaining = [t for t in tables if t not in set(result)]
+    remaining.sort()
+    result.extend(remaining)
+
+    return result
 
 
 def export_full_json(
@@ -90,11 +106,16 @@ def export_full_json(
 
     Returns the output file path.
     """
-    tables_to_export = CLINICAL_TABLES.copy()
-    if include_notes:
-        tables_to_export.extend(NOTE_TABLES)
-    if include_load_log:
-        tables_to_export.extend(AUDIT_TABLES)
+    all_tables = _discover_tables(db)
+
+    # Apply exclusions
+    exclude = set()
+    if not include_notes:
+        exclude |= _NOTE_TABLES
+    if not include_load_log:
+        exclude |= _EXCLUDE_BY_DEFAULT
+
+    tables_to_export = [t for t in all_tables if t not in exclude]
 
     export_data = {
         "chartfold_export": {
@@ -112,67 +133,6 @@ def export_full_json(
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(export_data, f, indent=2, ensure_ascii=False)
 
-    return output_path
-
-
-def export_full_markdown(db: ChartfoldDB, output_path: str) -> str:
-    """Export entire database as markdown tables.
-
-    Args:
-        db: Database connection.
-        output_path: Where to write the markdown file.
-
-    Returns the output file path.
-    """
-    md = MarkdownWriter()
-    now = datetime.now(timezone.utc).isoformat()
-
-    md.heading("Chartfold Full Data Export", level=1)
-    md.w(f"*Exported: {now}*")
-    md.w()
-
-    # Summary
-    summary = db.summary()
-    md.heading("Summary", level=2)
-    for table, count in summary.items():
-        if count > 0:
-            md.w(f"- **{table}**: {count} records")
-    md.w()
-
-    # All tables
-    all_tables = CLINICAL_TABLES + NOTE_TABLES
-    for table in all_tables:
-        rows = db.query(f"SELECT * FROM {table}")
-        if not rows:
-            continue
-
-        md.separator()
-        md.heading(f"{table} ({len(rows)} records)", level=2)
-
-        # Get column headers from first row
-        headers = list(rows[0].keys())
-
-        # Build table rows, truncating long values
-        table_rows = []
-        for row in rows:
-            table_row = []
-            for h in headers:
-                val = row[h]
-                if val is None:
-                    val = ""
-                else:
-                    val = str(val)
-                    # Truncate long values for readability
-                    if len(val) > 80:
-                        val = val[:77] + "..."
-                    # Escape pipe characters for markdown tables
-                    val = val.replace("|", "\\|").replace("\n", " ")
-                table_row.append(val)
-            table_rows.append(table_row)
-
-        md.table(headers, table_rows)
-
-    md.write_to_file(output_path)
     return output_path
 
 
@@ -214,10 +174,8 @@ def validate_json_export(input_path: str) -> dict:
 
     tables = data["tables"]
 
-    # Check for required clinical tables
-    missing_clinical = [t for t in CLINICAL_TABLES if t not in tables]
-    if missing_clinical:
-        errors.append(f"Missing clinical tables: {', '.join(missing_clinical)}")
+    if not tables:
+        errors.append("No tables found in export")
 
     # Build summary
     for table, rows in tables.items():
@@ -240,6 +198,9 @@ def import_json(
     overwrite: bool = False,
 ) -> dict:
     """Import JSON export to recreate database.
+
+    Uses auto-discovery to determine import order from the target schema's
+    foreign key graph. FK columns are automatically remapped during import.
 
     Args:
         input_path: Path to the JSON export file.
@@ -282,7 +243,7 @@ def import_json(
     with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    tables = data["tables"]
+    tables_in_json = data["tables"]
     counts: dict[str, int] = {}
     errors: list[str] = []
 
@@ -290,56 +251,40 @@ def import_json(
     if db_exists and overwrite:
         Path(db_path).unlink()
 
-    # Create fresh database
+    # Create fresh database and discover its schema
     with ChartfoldDB(db_path) as db:
         db.init_schema()
+
+        # Auto-discover table order from the fresh schema
+        schema_tables = _discover_tables(db)
+        fk_graph = _discover_fk_graph(db, schema_tables)
+        import_order = _topological_sort(schema_tables, fk_graph)
 
         # Track ID remappings for FK resolution
         id_map: dict[str, dict[int, int]] = {}  # table -> {old_id: new_id}
 
-        # Phase 1: Tables without FK dependencies
-        for table in IMPORT_PHASE_1:
-            if table not in tables or not tables[table]:
+        # Import tables in topological order
+        for table in import_order:
+            if table not in tables_in_json or not tables_in_json[table]:
                 counts[table] = 0
                 continue
 
-            rows = tables[table]
+            rows = tables_in_json[table]
             id_map[table] = {}
 
-            for row in rows:
-                old_id = row.pop("id", None)
-                cols = list(row.keys())
-                placeholders = ", ".join("?" for _ in cols)
-                col_names = ", ".join(cols)
-
-                cursor = db.conn.execute(
-                    f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
-                    list(row.values()),
-                )
-
-                if old_id is not None:
-                    id_map[table][old_id] = cursor.lastrowid
-
-            db.conn.commit()
-            counts[table] = len(rows)
-
-        # Phase 2: Tables with FK dependencies
-        for table, fk_col, parent_table in IMPORT_PHASE_2_FK:
-            if table not in tables or not tables[table]:
-                counts[table] = 0
-                continue
-
-            rows = tables[table]
-            parent_map = id_map.get(parent_table, {})
-            id_map[table] = {}
+            # Get FK columns for this table so we can remap them
+            table_fks = fk_graph.get(table, [])
 
             for row in rows:
                 old_id = row.pop("id", None)
 
-                # Remap FK
-                old_fk = row.get(fk_col)
-                if old_fk is not None and parent_map:
-                    row[fk_col] = parent_map.get(old_fk)
+                # Remap any FK columns
+                for fk_col, parent_table, _parent_col in table_fks:
+                    old_fk = row.get(fk_col)
+                    if old_fk is not None:
+                        parent_map = id_map.get(parent_table, {})
+                        if parent_map:
+                            row[fk_col] = parent_map.get(old_fk, old_fk)
 
                 cols = list(row.keys())
                 placeholders = ", ".join("?" for _ in cols)
@@ -355,67 +300,6 @@ def import_json(
 
             db.conn.commit()
             counts[table] = len(rows)
-
-        # Phase 3: Notes tables
-        if tables.get("notes"):
-            rows = tables["notes"]
-            id_map["notes"] = {}
-
-            for row in rows:
-                old_id = row.pop("id", None)
-                cols = list(row.keys())
-                placeholders = ", ".join("?" for _ in cols)
-                col_names = ", ".join(cols)
-
-                cursor = db.conn.execute(
-                    f"INSERT INTO notes ({col_names}) VALUES ({placeholders})",
-                    list(row.values()),
-                )
-
-                if old_id is not None:
-                    id_map["notes"][old_id] = cursor.lastrowid
-
-            db.conn.commit()
-            counts["notes"] = len(rows)
-
-        if tables.get("note_tags"):
-            rows = tables["note_tags"]
-            notes_map = id_map.get("notes", {})
-
-            for row in rows:
-                # note_tags has no auto-increment id, just note_id FK
-                old_note_id = row.get("note_id")
-                if old_note_id is not None and notes_map:
-                    row["note_id"] = notes_map.get(old_note_id, old_note_id)
-
-                cols = list(row.keys())
-                placeholders = ", ".join("?" for _ in cols)
-                col_names = ", ".join(cols)
-
-                db.conn.execute(
-                    f"INSERT INTO note_tags ({col_names}) VALUES ({placeholders})",
-                    list(row.values()),
-                )
-
-            db.conn.commit()
-            counts["note_tags"] = len(rows)
-
-        # Phase 4: load_log (optional, included if present)
-        if tables.get("load_log"):
-            rows = tables["load_log"]
-            for row in rows:
-                row.pop("id", None)  # Remove auto-increment id
-                cols = list(row.keys())
-                placeholders = ", ".join("?" for _ in cols)
-                col_names = ", ".join(cols)
-
-                db.conn.execute(
-                    f"INSERT INTO load_log ({col_names}) VALUES ({placeholders})",
-                    list(row.values()),
-                )
-
-            db.conn.commit()
-            counts["load_log"] = len(rows)
 
     return {
         "success": True,

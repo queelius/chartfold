@@ -472,7 +472,7 @@ class TestSectionsJs:
         assert "const Sections" in exported_html
 
     def test_all_section_ids_present(self, exported_html):
-        """All 15 section IDs have renderers in Sections."""
+        """All 20 section IDs have renderers in Sections."""
         expected_sections = [
             "overview",
             "conditions",
@@ -486,6 +486,11 @@ class TestSectionsJs:
             "procedures",
             "vitals",
             "immunizations",
+            "patients",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "personal_notes",
             "sources",
             "analysis",
             "sql_console",
@@ -513,7 +518,7 @@ class TestSectionsJs:
         assert "card-grid" in exported_html
 
     def test_overview_card_grid_tables(self, exported_html):
-        """Overview queries counts for 11 clinical tables."""
+        """Overview queries counts for 14 clinical tables."""
         overview_tables = [
             "conditions",
             "medications",
@@ -526,6 +531,9 @@ class TestSectionsJs:
             "vitals",
             "immunizations",
             "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
         ]
         for table in overview_tables:
             assert table in exported_html, (
@@ -1418,3 +1426,140 @@ class TestSecurityHardening:
         assert "&#39;" in exported_html, (
             "markdown.js esc() must escape single quotes"
         )
+
+
+class TestNewSections:
+    """Tests for the 5 new section renderers: patients, social_history,
+    family_history, mental_status, personal_notes."""
+
+    def test_patients_section_exists(self, exported_html):
+        """patients section renderer defined in Sections object."""
+        assert "patients(el, db)" in exported_html
+
+    def test_patients_queries_table(self, exported_html):
+        """patients section queries the patients table."""
+        assert "FROM patients" in exported_html
+
+    def test_patients_displays_demographics_fields(self, exported_html):
+        """patients section shows DOB, Gender, MRN, Address, Phone."""
+        for field in ["Date of Birth", "Gender", "MRN", "Address", "Phone"]:
+            assert field in exported_html
+
+    def test_social_history_section_exists(self, exported_html):
+        """social_history section renderer defined."""
+        assert "social_history(el, db)" in exported_html
+
+    def test_social_history_queries_table(self, exported_html):
+        """social_history section queries the social_history table."""
+        assert "FROM social_history" in exported_html
+
+    def test_social_history_columns(self, exported_html):
+        """social_history section shows category, value, date, source columns."""
+        # Verify column headers are present in the JS
+        for col in ["Category", "Value", "Date", "Source"]:
+            # These appear as table column label strings
+            assert col in exported_html
+
+    def test_family_history_section_exists(self, exported_html):
+        """family_history section renderer defined."""
+        assert "family_history(el, db)" in exported_html
+
+    def test_family_history_queries_table(self, exported_html):
+        """family_history section queries the family_history table."""
+        assert "FROM family_history" in exported_html
+
+    def test_family_history_groups_by_relation(self, exported_html):
+        """family_history section groups conditions by relation."""
+        assert "relation" in exported_html
+
+    def test_family_history_shows_deceased_badge(self, exported_html):
+        """family_history section badges for deceased relatives."""
+        assert "deceased" in exported_html
+
+    def test_mental_status_section_exists(self, exported_html):
+        """mental_status section renderer defined."""
+        assert "mental_status(el, db)" in exported_html
+
+    def test_mental_status_queries_table(self, exported_html):
+        """mental_status section queries the mental_status table."""
+        assert "FROM mental_status" in exported_html
+
+    def test_mental_status_groups_by_instrument(self, exported_html):
+        """mental_status section groups by instrument and date."""
+        assert "instrument" in exported_html
+
+    def test_mental_status_shows_total_score(self, exported_html):
+        """mental_status section shows total_score as badge."""
+        assert "total_score" in exported_html
+
+    def test_personal_notes_section_exists(self, exported_html):
+        """personal_notes section renderer defined."""
+        assert "personal_notes(el, db)" in exported_html
+
+    def test_personal_notes_queries_table(self, exported_html):
+        """personal_notes section queries the notes table."""
+        assert "FROM notes" in exported_html
+
+    def test_personal_notes_fetches_tags(self, exported_html):
+        """personal_notes section fetches tags from note_tags."""
+        assert "FROM note_tags" in exported_html
+
+    def test_personal_notes_shows_ref_link(self, exported_html):
+        """personal_notes section shows linked ref_table info."""
+        assert "ref_table" in exported_html
+
+    def test_sidebar_has_new_groups(self, exported_html):
+        """Sidebar defines History and Admin groups for new sections."""
+        assert "History" in exported_html
+        assert "Admin" in exported_html
+
+    def test_sidebar_has_all_new_sections(self, exported_html):
+        """Sidebar includes all 5 new section entries."""
+        for sid in ["social_history", "family_history", "mental_status", "patients", "personal_notes"]:
+            assert f'"id": "{sid}"' in exported_html or f"id: \"{sid}\"" in exported_html or f"'{sid}'" in exported_html
+
+    def test_new_sections_with_data(self, tmp_path):
+        """Integration: new sections render when data is present in DB."""
+        db_path = tmp_path / "full.db"
+        db = ChartfoldDB(str(db_path))
+        db.init_schema()
+        db.conn.execute(
+            "INSERT INTO patients (source, name, date_of_birth, gender, mrn) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test", "Jane Doe", "1980-01-01", "female", "12345"),
+        )
+        db.conn.execute(
+            "INSERT INTO social_history (source, category, value, recorded_date) "
+            "VALUES (?, ?, ?, ?)",
+            ("test", "Smoking Status", "Never smoker", "2025-01-15"),
+        )
+        db.conn.execute(
+            "INSERT INTO family_history (source, relation, condition) "
+            "VALUES (?, ?, ?)",
+            ("test", "Father", "Hypertension"),
+        )
+        db.conn.execute(
+            "INSERT INTO mental_status (source, instrument, question, answer, score, total_score, recorded_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("test", "PHQ-9", "Little interest?", "Several days", 1, 5, "2025-01-15"),
+        )
+        db.conn.execute(
+            "INSERT INTO notes (title, content, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            ("My Note", "Test content", "2025-01-15T12:00:00", "2025-01-15T12:00:00"),
+        )
+        db.conn.commit()
+        db.close()
+
+        out = str(tmp_path / "out.html")
+        export_spa(str(db_path), out)
+        html = Path(out).read_text(encoding="utf-8")
+
+        # The database embeds these records — verify the DB was embedded
+        assert 'id="chartfold-db"' in html
+        # The section code is present
+        assert "patients(el, db)" in html
+        assert "social_history(el, db)" in html
+        assert "family_history(el, db)" in html
+        assert "mental_status(el, db)" in html
+        assert "personal_notes(el, db)" in html

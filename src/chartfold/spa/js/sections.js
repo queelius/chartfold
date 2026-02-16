@@ -70,6 +70,9 @@ const Sections = {
       { label: 'Vitals', table: 'vitals', section: 'vitals' },
       { label: 'Immunizations', table: 'immunizations', section: 'immunizations' },
       { label: 'Allergies', table: 'allergies', section: 'allergies' },
+      { label: 'Social History', table: 'social_history', section: 'social_history' },
+      { label: 'Family History', table: 'family_history', section: 'family_history' },
+      { label: 'Mental Status', table: 'mental_status', section: 'mental_status' },
     ];
 
     var cardGrid = UI.el('div', { className: 'card-grid' });
@@ -860,6 +863,175 @@ const Sections = {
     ], rows));
   },
 
+  patients(el, db) {
+    var n = _sectionPreamble(el, db, 'patients', 'Patient Demographics', 'No patient demographics recorded.', 'patients');
+    if (n === -1) return;
+
+    var rows = db.query('SELECT * FROM patients');
+    for (var i = 0; i < rows.length; i++) {
+      var p = rows[i];
+      var fields = [];
+      if (p.date_of_birth) fields.push(UI.el('div', {}, [
+        UI.el('strong', { textContent: 'Date of Birth: ' }),
+        UI.el('span', { textContent: p.date_of_birth })
+      ]));
+      if (p.gender) fields.push(UI.el('div', {}, [
+        UI.el('strong', { textContent: 'Gender: ' }),
+        UI.el('span', { textContent: p.gender })
+      ]));
+      if (p.mrn) fields.push(UI.el('div', {}, [
+        UI.el('strong', { textContent: 'MRN: ' }),
+        UI.badge(p.mrn, 'gray')
+      ]));
+      if (p.address) fields.push(UI.el('div', {}, [
+        UI.el('strong', { textContent: 'Address: ' }),
+        UI.el('span', { textContent: p.address })
+      ]));
+      if (p.phone) fields.push(UI.el('div', {}, [
+        UI.el('strong', { textContent: 'Phone: ' }),
+        UI.el('span', { textContent: p.phone })
+      ]));
+      var fieldList = UI.el('div', { style: 'display: flex; flex-direction: column; gap: 8px; padding: 4px 0;' }, fields);
+      var meta = 'Source: ' + (p.source || 'Unknown');
+      el.appendChild(UI.clinicalCard(p.name || 'Unknown Patient', meta, fieldList));
+    }
+  },
+
+  social_history(el, db) {
+    var n = _sectionPreamble(el, db, 'social_history', 'Social History', 'No social history recorded.');
+    if (n === -1) return;
+
+    var rows = db.query('SELECT * FROM social_history ORDER BY category, recorded_date DESC');
+    el.appendChild(UI.table([
+      { label: 'Category', key: 'category', format: function(v) {
+        return v ? UI.badge(v, 'blue') : '';
+      }},
+      { label: 'Value', key: 'value' },
+      { label: 'Date', key: 'recorded_date' },
+      { label: 'Source', key: 'source' }
+    ], rows));
+  },
+
+  family_history(el, db) {
+    var n = _sectionPreamble(el, db, 'family_history', 'Family History', 'No family history recorded.');
+    if (n === -1) return;
+
+    var rows = db.query('SELECT * FROM family_history ORDER BY relation, condition');
+
+    // Group by relation
+    var groups = {};
+    var groupOrder = [];
+    for (var i = 0; i < rows.length; i++) {
+      var rel = rows[i].relation || 'Unknown';
+      if (!groups[rel]) { groups[rel] = []; groupOrder.push(rel); }
+      groups[rel].push(rows[i]);
+    }
+
+    for (var gi = 0; gi < groupOrder.length; gi++) {
+      var rel = groupOrder[gi];
+      var members = groups[rel];
+      var items = [];
+      for (var mi = 0; mi < members.length; mi++) {
+        var m = members[mi];
+        var parts = [];
+        parts.push(UI.el('span', { textContent: m.condition || 'Unknown condition' }));
+        if (m.age_at_onset) { parts.push(document.createTextNode(' ')); parts.push(UI.badge('onset: ' + m.age_at_onset, 'gray')); }
+        if (m.deceased) { parts.push(document.createTextNode(' ')); parts.push(UI.badge('deceased', 'red')); }
+        items.push(UI.el('div', { style: 'padding: 4px 0;' }, parts));
+      }
+      var body = UI.el('div', {}, items);
+      el.appendChild(UI.clinicalCard(rel, members.length + ' condition' + (members.length !== 1 ? 's' : ''), body));
+    }
+  },
+
+  mental_status(el, db) {
+    var n = _sectionPreamble(el, db, 'mental_status', 'Mental Status', 'No mental status assessments recorded.', 'assessments');
+    if (n === -1) return;
+
+    var rows = db.query('SELECT * FROM mental_status ORDER BY recorded_date DESC, instrument, question');
+
+    // Group by instrument + date
+    var groups = {};
+    var groupOrder = [];
+    for (var i = 0; i < rows.length; i++) {
+      var key = (rows[i].instrument || 'Unknown') + '|' + (rows[i].recorded_date || '');
+      if (!groups[key]) { groups[key] = { instrument: rows[i].instrument, date: rows[i].recorded_date, items: [] }; groupOrder.push(key); }
+      groups[key].items.push(rows[i]);
+    }
+
+    for (var gi = 0; gi < groupOrder.length; gi++) {
+      var g = groups[groupOrder[gi]];
+      var totalScore = null;
+      var qaParts = [];
+      for (var qi = 0; qi < g.items.length; qi++) {
+        var item = g.items[qi];
+        if (item.total_score != null) totalScore = item.total_score;
+        if (item.question) {
+          var qRow = UI.el('div', { style: 'padding: 2px 0; font-size: 13px;' }, [
+            UI.el('span', { textContent: item.question + ': ', style: 'color: var(--text-secondary);' }),
+            UI.el('span', { textContent: item.answer || '' }),
+            item.score != null ? (function() { var s = UI.el('span', {}); s.appendChild(document.createTextNode(' ')); s.appendChild(UI.badge(String(item.score), 'gray')); return s; })() : document.createTextNode('')
+          ]);
+          qaParts.push(qRow);
+        }
+      }
+      var body = UI.el('div', {}, qaParts);
+      var meta = (g.date || 'No date') + (g.items[0].source ? ' \u2022 ' + g.items[0].source : '');
+      var cardOpts = {};
+      if (totalScore != null) cardOpts.badge = { text: 'Score: ' + totalScore, variant: 'orange' };
+      el.appendChild(UI.clinicalCard(g.instrument || 'Assessment', meta, body, cardOpts));
+    }
+  },
+
+  personal_notes(el, db) {
+    // Check if notes table exists and has data
+    var row;
+    try { row = db.queryOne('SELECT COUNT(*) AS n FROM notes'); } catch (e) { row = null; }
+    var n = row ? row.n : 0;
+    el.appendChild(UI.sectionHeader('Personal Notes', n + ' notes'));
+    if (n === 0) { el.appendChild(UI.empty('No personal notes recorded. Use the CLI or MCP server to create notes.')); return; }
+
+    var notes = db.query('SELECT * FROM notes ORDER BY updated_at DESC');
+    for (var i = 0; i < notes.length; i++) {
+      var note = notes[i];
+      // Fetch tags for this note
+      var tags = [];
+      try { tags = db.query('SELECT tag FROM note_tags WHERE note_id = ?', [note.id]); } catch (e) { /* ignore */ }
+
+      var meta = 'Updated: ' + (note.updated_at || note.created_at || '');
+      if (note.ref_table) meta += ' \u2022 Linked to: ' + note.ref_table + (note.ref_id ? ' #' + note.ref_id : '');
+
+      var contentEl;
+      var content = note.content || '';
+      if (content.length > 300) {
+        contentEl = UI.el('details');
+        contentEl.appendChild(UI.el('summary', {
+          textContent: content.substring(0, 300) + '... (Show full)',
+          style: 'cursor: pointer;'
+        }));
+        contentEl.appendChild(UI.el('pre', {
+          textContent: content,
+          style: 'white-space: pre-wrap; font-size: 13px; margin: 8px 0; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);'
+        }));
+      } else {
+        contentEl = UI.el('div', { textContent: content });
+      }
+
+      var card = UI.clinicalCard(note.title || 'Untitled', meta, contentEl);
+
+      // Render tags
+      if (tags.length > 0) {
+        var tagRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
+        for (var ti = 0; ti < tags.length; ti++) {
+          tagRow.appendChild(UI.badge(tags[ti].tag, 'blue'));
+        }
+        card.appendChild(tagRow);
+      }
+
+      el.appendChild(card);
+    }
+  },
+
   sources(el, db) {
     var n = _sectionPreamble(el, db, 'source_assets', 'Sources', 'No source assets recorded.', 'source assets');
     if (n === -1) return;
@@ -919,32 +1091,53 @@ const Sections = {
   },
 
   analysis(el, db) {
+    // Try DB table first, fall back to embedded JSON (--external-data)
     var data = [];
+    var fromDB = false;
     try {
-      var raw = JSON.parse(document.getElementById('chartfold-analysis').textContent);
-      if (Array.isArray(raw)) data = raw;
-    } catch (e) { /* ignore */ }
+      var dbRows = DB.query("SELECT slug, title, category, summary, content, source FROM analyses ORDER BY updated_at DESC");
+      if (dbRows.length > 0) {
+        data = dbRows.map(function(r) {
+          return { slug: r.slug, title: r.title, body: r.content, filename: r.slug + '.md', category: r.category, summary: r.summary };
+        });
+        fromDB = true;
+      }
+    } catch (e) { /* analyses table may not exist */ }
+
+    if (!fromDB) {
+      try {
+        var raw = JSON.parse(document.getElementById('chartfold-analysis').textContent);
+        if (Array.isArray(raw)) data = raw;
+      } catch (e) { /* ignore */ }
+    }
 
     el.appendChild(UI.sectionHeader('Analysis', data.length + ' analyses'));
 
     if (data.length === 0) {
-      el.appendChild(UI.empty('No analysis files found. Use --analysis-dir to include markdown analysis files in your export.'));
+      el.appendChild(UI.empty('No analyses found. Use "chartfold load analyses <dir>" to load analysis files, or --external-data with HTML export.'));
       return;
     }
 
     // Build filename -> anchor-id map for cross-linking between analysis files
     var filenameMap = {};
     for (var j = 0; j < data.length; j++) {
-      var fn = data[j].filename || '';
+      var fn = data[j].filename || data[j].slug || '';
       if (fn) filenameMap[fn] = 'analysis-' + fn.replace(/\.md$/i, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     }
 
     for (var i = 0; i < data.length; i++) {
       var entry = data[i];
-      var anchorId = filenameMap[entry.filename] || ('analysis-' + i);
+      var anchorId = filenameMap[entry.filename || entry.slug] || ('analysis-' + i);
       var contentDiv = UI.el('div', { className: 'analysis-content' });
-      // Markdown.render returns sanitized HTML from our own embedded markdown parser
-      contentDiv.innerHTML = Markdown.render(entry.body);  // trusted internal content
+
+      // Build subtitle with category badge if present
+      var subtitle = entry.filename || '';
+      if (entry.category) {
+        subtitle = '[' + entry.category + '] ' + subtitle;
+      }
+
+      // Markdown.render returns sanitized HTML from our own embedded markdown parser (trusted internal content)
+      contentDiv.innerHTML = Markdown.render(entry.body);
 
       // Rewrite .md file links to scroll to the corresponding inline section
       var links = contentDiv.querySelectorAll('a[href]');
@@ -962,7 +1155,7 @@ const Sections = {
 
       if (i === 0) {
         // First entry expanded by default
-        var card = UI.clinicalCard(entry.title, entry.filename || '', contentDiv);
+        var card = UI.clinicalCard(entry.title, subtitle, contentDiv);
         card.id = anchorId;
         el.appendChild(card);
       } else {
@@ -972,7 +1165,7 @@ const Sections = {
           textContent: entry.title,
           style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
         }));
-        var cardInner = UI.clinicalCard(entry.title, entry.filename || '', contentDiv);
+        var cardInner = UI.clinicalCard(entry.title, subtitle, contentDiv);
         details.appendChild(cardInner);
         el.appendChild(details);
       }
