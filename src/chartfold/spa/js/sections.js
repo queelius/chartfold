@@ -932,16 +932,42 @@ const Sections = {
       return;
     }
 
+    // Build filename -> anchor-id map for cross-linking between analysis files
+    var filenameMap = {};
+    for (var j = 0; j < data.length; j++) {
+      var fn = data[j].filename || '';
+      if (fn) filenameMap[fn] = 'analysis-' + fn.replace(/\.md$/i, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+    }
+
     for (var i = 0; i < data.length; i++) {
       var entry = data[i];
+      var anchorId = filenameMap[entry.filename] || ('analysis-' + i);
       var contentDiv = UI.el('div', { className: 'analysis-content' });
-      contentDiv.innerHTML = Markdown.render(entry.body);
+      // Markdown.render returns sanitized HTML from our own embedded markdown parser
+      contentDiv.innerHTML = Markdown.render(entry.body);  // trusted internal content
+
+      // Rewrite .md file links to scroll to the corresponding inline section
+      var links = contentDiv.querySelectorAll('a[href]');
+      for (var li = 0; li < links.length; li++) {
+        var href = links[li].getAttribute('href');
+        if (href && /\.md$/i.test(href)) {
+          var targetFn = href.replace(/^.*\//, ''); // strip path prefix, keep filename
+          var targetId = filenameMap[targetFn];
+          if (targetId) {
+            links[li].setAttribute('href', '#' + targetId);
+            links[li].setAttribute('data-analysis-target', targetId);
+          }
+        }
+      }
 
       if (i === 0) {
         // First entry expanded by default
-        el.appendChild(UI.clinicalCard(entry.title, entry.filename || '', contentDiv));
+        var card = UI.clinicalCard(entry.title, entry.filename || '', contentDiv);
+        card.id = anchorId;
+        el.appendChild(card);
       } else {
         var details = UI.el('details', { style: 'margin-bottom: 8px;' });
+        details.id = anchorId;
         details.appendChild(UI.el('summary', {
           textContent: entry.title,
           style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
@@ -951,6 +977,19 @@ const Sections = {
         el.appendChild(details);
       }
     }
+
+    // Handle clicks on .md links: expand the target <details> and scroll to it
+    el.addEventListener('click', function(e) {
+      var link = e.target.closest('a[data-analysis-target]');
+      if (!link) return;
+      e.preventDefault();
+      var targetId = link.getAttribute('data-analysis-target');
+      var targetEl = document.getElementById(targetId);
+      if (targetEl) {
+        if (targetEl.tagName === 'DETAILS') targetEl.open = true;
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
   },
 
   sql_console(el, db) {

@@ -1164,6 +1164,37 @@ class TestExportSpaAdditional:
         assert data[0]["filename"] == "cea-analysis.md"
         assert "CEA values are stable." in data[0]["body"]
 
+    def test_analysis_md_links_get_anchor_ids(self, spa_db, tmp_path):
+        """Analysis entries get anchor IDs so cross-file .md links can scroll to them."""
+        analysis_dir = tmp_path / "analysis"
+        analysis_dir.mkdir()
+        # First file links to the second
+        (analysis_dir / "index.md").write_text(
+            "See [details.md](details.md) for more.\n"
+        )
+        (analysis_dir / "details.md").write_text("The detailed analysis.\n")
+        out_path = str(tmp_path / "cross_link.html")
+        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
+        with open(out_path, encoding="utf-8") as f:
+            html = f.read()
+        # The JS builds anchor IDs like "analysis-details" from "details.md"
+        # and the sections.js code assigns id attributes and rewrites href to #analysis-details
+        # Verify both files are embedded
+        match = re.search(
+            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        assert match is not None
+        data = json.loads(match.group(1))
+        assert len(data) == 2
+        filenames = [d["filename"] for d in data]
+        assert "details.md" in filenames
+        assert "index.md" in filenames
+        # The link text in the first file's body should reference details.md
+        index_entry = next(d for d in data if d["filename"] == "index.md")
+        assert "details.md" in index_entry["body"]
+
     def test_embed_images_flag(self, spa_db, tmp_path):
         """embed_images=True triggers image asset loading from database."""
         # Create a small image file
