@@ -687,6 +687,46 @@ class TestSurgicalTimeline:
         if imgs:
             assert "source" in imgs[0]
 
+    def test_limit(self, surgical_db):
+        """Limit restricts number of procedures returned."""
+        timeline = build_surgical_timeline(surgical_db, limit=1)
+        assert len(timeline) == 1
+        assert timeline[0]["procedure"]["name"] == "Right hemicolectomy"
+
+    def test_offset(self, surgical_db):
+        """Offset skips procedures."""
+        timeline = build_surgical_timeline(surgical_db, offset=1)
+        assert len(timeline) == 1
+        assert timeline[0]["procedure"]["name"] == "Liver resection"
+
+    def test_limit_and_offset(self, surgical_db):
+        """Limit + offset work together."""
+        timeline = build_surgical_timeline(surgical_db, limit=1, offset=1)
+        assert len(timeline) == 1
+        assert timeline[0]["procedure"]["name"] == "Liver resection"
+
+    def test_offset_beyond_end(self, surgical_db):
+        """Offset past all procedures returns empty."""
+        timeline = build_surgical_timeline(surgical_db, offset=100)
+        assert timeline == []
+
+    def test_include_full_text_false(self, surgical_db):
+        """include_full_text=False omits pathology full_text."""
+        timeline = build_surgical_timeline(surgical_db, include_full_text=False)
+        path0 = timeline[0]["pathology"]
+        assert path0 is not None
+        assert "full_text" not in path0
+        # Structured fields still present
+        assert "diagnosis" in path0
+        assert "staging" in path0
+
+    def test_include_full_text_true(self, surgical_db):
+        """include_full_text=True includes pathology full_text."""
+        timeline = build_surgical_timeline(surgical_db, include_full_text=True)
+        path0 = timeline[0]["pathology"]
+        assert path0 is not None
+        assert "full_text" in path0
+
 
 @pytest.fixture
 def cross_source_encounter_db(tmp_path):

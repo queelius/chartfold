@@ -13,7 +13,6 @@ import pytest
 
 from chartfold.db import ChartfoldDB
 from chartfold.spa.export import (
-    _load_analysis_json,
     _load_config_json,
     _load_images_json,
     export_spa,
@@ -110,10 +109,6 @@ class TestSpaExport:
         """HTML contains the config script tag."""
         assert 'id="chartfold-config"' in exported_html
 
-    def test_contains_analysis_script(self, exported_html):
-        """HTML contains the analysis script tag."""
-        assert 'id="chartfold-analysis"' in exported_html
-
     def test_contains_images_script(self, exported_html):
         """HTML contains the images script tag."""
         assert 'id="chartfold-images"' in exported_html
@@ -137,16 +132,6 @@ class TestSpaExport:
         )
         assert match is not None
         assert json.loads(match.group(1)) == {}
-
-    def test_default_empty_analysis(self, exported_html):
-        """Without an analysis dir, the analysis JSON is empty array."""
-        match = re.search(
-            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
-            exported_html,
-            re.DOTALL,
-        )
-        assert match is not None
-        assert json.loads(match.group(1)) == []
 
     def test_default_empty_images(self, exported_html):
         """Without embed_images, the images JSON is empty object."""
@@ -201,77 +186,6 @@ class TestLoadConfigJson:
 
 # --- Analysis loading tests ---
 
-
-class TestLoadAnalysisJson:
-    """Tests for _load_analysis_json helper."""
-
-    def test_missing_dir(self):
-        """Returns '[]' for non-existent directory."""
-        assert _load_analysis_json("/nonexistent/dir") == "[]"
-
-    def test_empty_path(self):
-        """Returns '[]' for empty string."""
-        assert _load_analysis_json("") == "[]"
-
-    def test_empty_dir(self, tmp_path):
-        """Returns '[]' for empty directory."""
-        result = _load_analysis_json(str(tmp_path))
-        assert json.loads(result) == []
-
-    def test_loads_markdown_files(self, tmp_path):
-        """Loads .md files with title derived from filename."""
-        (tmp_path / "cea-trends.md").write_text("CEA is trending down.")
-        (tmp_path / "medication_review.md").write_text("Meds are stable.")
-        result = json.loads(_load_analysis_json(str(tmp_path)))
-        assert len(result) == 2
-        # Sorted by name
-        assert result[0]["title"] == "Cea Trends"
-        assert result[0]["body"] == "CEA is trending down."
-        assert result[0]["filename"] == "cea-trends.md"
-        assert result[1]["title"] == "Medication Review"
-
-    def test_strips_frontmatter(self, tmp_path):
-        """YAML frontmatter delimited by --- is stripped."""
-        content = "---\ntitle: My Analysis\ndate: 2025-01-15\n---\nActual content here."
-        (tmp_path / "analysis.md").write_text(content)
-        result = json.loads(_load_analysis_json(str(tmp_path)))
-        assert len(result) == 1
-        assert result[0]["body"] == "Actual content here."
-
-    def test_no_frontmatter_preserved(self, tmp_path):
-        """Files without frontmatter are preserved as-is."""
-        content = "No frontmatter here.\n\nJust plain text."
-        (tmp_path / "plain.md").write_text(content)
-        result = json.loads(_load_analysis_json(str(tmp_path)))
-        assert result[0]["body"] == content
-
-    def test_ignores_non_md_files(self, tmp_path):
-        """Only .md files are loaded, not .txt or others."""
-        (tmp_path / "notes.md").write_text("Markdown.")
-        (tmp_path / "notes.txt").write_text("Text.")
-        (tmp_path / "data.json").write_text("{}")
-        result = json.loads(_load_analysis_json(str(tmp_path)))
-        assert len(result) == 1
-        assert result[0]["filename"] == "notes.md"
-
-    def test_export_with_analysis(self, spa_db, tmp_path):
-        """Export with analysis dir embeds the analysis JSON."""
-        analysis_dir = tmp_path / "analysis"
-        analysis_dir.mkdir()
-        (analysis_dir / "test.md").write_text("Test content.")
-        out_path = str(tmp_path / "out.html")
-        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
-        with open(out_path, encoding="utf-8") as f:
-            html = f.read()
-        match = re.search(
-            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
-            html,
-            re.DOTALL,
-        )
-        assert match is not None
-        data = json.loads(match.group(1))
-        assert len(data) == 1
-        assert data[0]["body"] == "Test content."
 
 
 # --- Image loading tests ---
@@ -1116,21 +1030,6 @@ class TestExportSpaAdditional:
         assert match is not None
         assert json.loads(match.group(1)) == {}
 
-    def test_missing_analysis_dir_no_error(self, spa_db, tmp_path):
-        """Export with a non-existent analysis dir succeeds gracefully."""
-        out_path = str(tmp_path / "no_analysis.html")
-        result = export_spa(spa_db, out_path, analysis_dir="/nonexistent/analysis")
-        assert result == out_path
-        with open(out_path, encoding="utf-8") as f:
-            html = f.read()
-        match = re.search(
-            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
-            html,
-            re.DOTALL,
-        )
-        assert match is not None
-        assert json.loads(match.group(1)) == []
-
     def test_config_embedded_as_json(self, spa_db, tmp_path):
         """A TOML config file is embedded as JSON in the output."""
         toml_path = tmp_path / "test_config.toml"
@@ -1150,58 +1049,6 @@ class TestExportSpaAdditional:
         data = json.loads(match.group(1))
         assert data["dashboard"]["title"] == "Health Dashboard"
         assert data["key_tests"]["tests"] == ["CEA", "WBC"]
-
-    def test_analysis_markdown_embedded(self, spa_db, tmp_path):
-        """Markdown files from analysis dir appear as JSON array in output."""
-        analysis_dir = tmp_path / "analysis"
-        analysis_dir.mkdir()
-        (analysis_dir / "cea-analysis.md").write_text("CEA values are stable.\n\nNo concerns.")
-        out_path = str(tmp_path / "with_analysis.html")
-        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
-        with open(out_path, encoding="utf-8") as f:
-            html = f.read()
-        match = re.search(
-            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
-            html,
-            re.DOTALL,
-        )
-        assert match is not None
-        data = json.loads(match.group(1))
-        assert len(data) == 1
-        assert data[0]["title"] == "Cea Analysis"
-        assert data[0]["filename"] == "cea-analysis.md"
-        assert "CEA values are stable." in data[0]["body"]
-
-    def test_analysis_md_links_get_anchor_ids(self, spa_db, tmp_path):
-        """Analysis entries get anchor IDs so cross-file .md links can scroll to them."""
-        analysis_dir = tmp_path / "analysis"
-        analysis_dir.mkdir()
-        # First file links to the second
-        (analysis_dir / "index.md").write_text(
-            "See [details.md](details.md) for more.\n"
-        )
-        (analysis_dir / "details.md").write_text("The detailed analysis.\n")
-        out_path = str(tmp_path / "cross_link.html")
-        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
-        with open(out_path, encoding="utf-8") as f:
-            html = f.read()
-        # The JS builds anchor IDs like "analysis-details" from "details.md"
-        # and the sections.js code assigns id attributes and rewrites href to #analysis-details
-        # Verify both files are embedded
-        match = re.search(
-            r'<script id="chartfold-analysis" type="application/json">(.*?)</script>',
-            html,
-            re.DOTALL,
-        )
-        assert match is not None
-        data = json.loads(match.group(1))
-        assert len(data) == 2
-        filenames = [d["filename"] for d in data]
-        assert "details.md" in filenames
-        assert "index.md" in filenames
-        # The link text in the first file's body should reference details.md
-        index_entry = next(d for d in data if d["filename"] == "index.md")
-        assert "details.md" in index_entry["body"]
 
     def test_embed_images_flag(self, spa_db, tmp_path):
         """embed_images=True triggers image asset loading from database."""
@@ -1371,23 +1218,6 @@ class TestSecurityHardening:
             result = _load_images_json(str(db_path))
         assert json.loads(result) == {}
         mock_conn.close.assert_called_once()
-
-    def test_script_injection_escaped_in_analysis(self, spa_db, tmp_path):
-        """Analysis content with </script> must not break the HTML structure."""
-        analysis_dir = tmp_path / "analysis"
-        analysis_dir.mkdir()
-        (analysis_dir / "evil.md").write_text(
-            'Normal text </script><script>alert("xss")</script> more text'
-        )
-        out_path = str(tmp_path / "script_inject.html")
-        export_spa(spa_db, out_path, analysis_dir=str(analysis_dir))
-        with open(out_path, encoding="utf-8") as f:
-            html = f.read()
-        # The </script> in analysis content must be escaped so it doesn't
-        # prematurely close the <script> tag
-        assert '</script><script>alert' not in html, (
-            "Analysis JSON must escape </script> sequences to prevent injection"
-        )
 
     def test_script_injection_escaped_in_config(self, spa_db, tmp_path):
         """Config content with </script> must not break the HTML structure."""
@@ -1570,9 +1400,10 @@ class TestSpaUxImprovements:
 
     # --- Analysis Section Overhaul ---
 
-    def test_analysis_queries_frontmatter_status(self, exported_html):
-        """Analysis section queries json_extract for status field."""
-        assert "json_extract(frontmatter" in exported_html
+    def test_analysis_queries_frontmatter(self, exported_html):
+        """Analysis section queries frontmatter and parses it in JS."""
+        assert "frontmatter" in exported_html
+        assert "JSON.parse" in exported_html
 
     def test_analysis_splits_current_archived(self, exported_html):
         """Analysis section splits current vs archived analyses."""

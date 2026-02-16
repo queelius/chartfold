@@ -12,6 +12,9 @@ def build_surgical_timeline(
     db: ChartfoldDB,
     pre_op_imaging_days: int = 90,
     post_op_imaging_days: int = 30,
+    limit: int = 0,
+    offset: int = 0,
+    include_full_text: bool = True,
 ) -> list[dict]:
     """Build a unified surgical timeline with linked pathology reports.
 
@@ -25,8 +28,12 @@ def build_surgical_timeline(
         db: Database connection.
         pre_op_imaging_days: Days before procedure to look for pre-op imaging (default 90).
         post_op_imaging_days: Days after procedure to look for post-op imaging (default 30).
+        limit: Max procedures to return (0 = all).
+        offset: Number of procedures to skip.
+        include_full_text: Include full pathology report text (default True).
     """
-    procedures = db.query(
+    # Query all procedures for pathology linking, then paginate the result
+    all_procedures = db.query(
         "SELECT id, name, procedure_date, provider, facility, source, operative_note "
         "FROM procedures ORDER BY procedure_date"
     )
@@ -42,7 +49,7 @@ def build_surgical_timeline(
 
     # Link unlinked pathology reports to procedures
     unlinked = [p for p in pathology if not p.get("procedure_id")]
-    if unlinked and procedures:
+    if unlinked and all_procedures:
         links = link_pathology_to_procedures(
             [
                 {
@@ -55,7 +62,7 @@ def build_surgical_timeline(
             ],
             [
                 {"id": p["id"], "procedure_date": p["procedure_date"], "name": p["name"]}
-                for p in procedures
+                for p in all_procedures
             ],
         )
         # Apply links
@@ -72,6 +79,11 @@ def build_surgical_timeline(
             "lymph_nodes, full_text, source, procedure_id "
             "FROM pathology_reports ORDER BY report_date"
         )
+
+    # Paginate procedures
+    procedures = all_procedures[offset:] if offset else all_procedures
+    if limit > 0:
+        procedures = procedures[:limit]
 
     # Build timeline entries
     timeline: list[dict[str, Any]] = []
@@ -106,14 +118,16 @@ def build_surgical_timeline(
         linked_paths = path_by_proc.get(proc["id"], [])
         if linked_paths:
             p = linked_paths[0]  # Primary pathology report
-            entry["pathology"] = {
+            path_entry: dict[str, Any] = {
                 "id": p["id"],
                 "diagnosis": p.get("diagnosis", ""),
                 "staging": p.get("staging", ""),
                 "margins": p.get("margins", ""),
                 "lymph_nodes": p.get("lymph_nodes", ""),
-                "full_text": p.get("full_text", ""),
             }
+            if include_full_text:
+                path_entry["full_text"] = p.get("full_text", "")
+            entry["pathology"] = path_entry
 
         # Related imaging (asymmetric: pre_op_imaging_days before, post_op_imaging_days after)
         if proc_date:

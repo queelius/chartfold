@@ -1279,24 +1279,23 @@ const Sections = {
   },
 
   analysis(el, db) {
-    // Try DB table first, fall back to embedded JSON (--external-data)
     var data = [];
     var fromDB = false;
     try {
       var dbRows = db.query(
         "SELECT slug, title, category, summary, content, source, " +
-        "json_extract(frontmatter, '$.status') AS status, " +
-        "json_extract(frontmatter, '$.date') AS doc_date, " +
-        "updated_at FROM analyses ORDER BY updated_at DESC"
+        "frontmatter, updated_at FROM analyses ORDER BY updated_at DESC"
       );
       if (dbRows.length > 0) {
         data = dbRows.map(function(r) {
+          var fm = {};
+          try { fm = JSON.parse(r.frontmatter || '{}'); } catch (e) {}
           return {
             slug: r.slug, title: r.title, body: r.content,
             filename: r.slug + '.md', category: r.category,
             summary: r.summary, source: r.source,
-            status: r.status || 'current',
-            doc_date: r.doc_date || '',
+            status: fm.status || 'current',
+            doc_date: fm.date || '',
             updated_at: r.updated_at || ''
           };
         });
@@ -1306,35 +1305,17 @@ const Sections = {
 
     // Fetch tags from DB if available
     var tagMap = {};
-    if (fromDB) {
-      try {
-        var tagRows = db.query(
-          "SELECT at.analysis_id, at.tag, a.slug " +
-          "FROM analysis_tags at JOIN analyses a ON at.analysis_id = a.id"
-        );
-        for (var ti = 0; ti < tagRows.length; ti++) {
-          var slug = tagRows[ti].slug;
-          if (!tagMap[slug]) tagMap[slug] = [];
-          tagMap[slug].push(tagRows[ti].tag);
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    if (!fromDB) {
-      try {
-        var raw = JSON.parse(document.getElementById('chartfold-analysis').textContent);
-        if (Array.isArray(raw)) {
-          data = raw.map(function(r) {
-            return {
-              slug: r.slug || '', title: r.title || '', body: r.body || '',
-              filename: r.filename || '', category: r.category || '',
-              summary: r.summary || '', source: r.source || '',
-              status: 'current', doc_date: '', updated_at: ''
-            };
-          });
-        }
-      } catch (e) { /* ignore */ }
-    }
+    try {
+      var tagRows = db.query(
+        "SELECT at.analysis_id, at.tag, a.slug " +
+        "FROM analysis_tags at JOIN analyses a ON at.analysis_id = a.id"
+      );
+      for (var ti = 0; ti < tagRows.length; ti++) {
+        var slug = tagRows[ti].slug;
+        if (!tagMap[slug]) tagMap[slug] = [];
+        tagMap[slug].push(tagRows[ti].tag);
+      }
+    } catch (e) { /* ignore */ }
 
     el.appendChild(UI.sectionHeader('Analysis', data.length + ' analyses'));
 

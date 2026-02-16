@@ -55,42 +55,6 @@ def _load_config_json(path: str) -> str:
     return json.dumps(data)
 
 
-def _load_analysis_json(dir_path: str) -> str:
-    """Load markdown analysis files from a directory and return as JSON array.
-
-    Each entry has {title, body, filename}. Title is derived from the filename
-    stem with dashes and underscores replaced by spaces, then title-cased.
-    YAML frontmatter (delimited by --- lines) is stripped if present.
-
-    Returns '[]' if the directory does not exist or is empty.
-    """
-    if not dir_path:
-        return "[]"
-    analysis_dir = Path(dir_path)
-    if not analysis_dir.is_dir():
-        return "[]"
-
-    entries = []
-    for md_file in sorted(analysis_dir.glob("*.md")):
-        body = md_file.read_text(encoding="utf-8")
-
-        # Strip YAML frontmatter
-        if body.startswith("---\n"):
-            end_idx = body.find("\n---", 3)
-            if end_idx != -1:
-                body = body[end_idx + 4 :].lstrip("\n")
-
-        title = md_file.stem.replace("-", " ").replace("_", " ").title()
-        entries.append(
-            {
-                "title": title,
-                "body": body,
-                "filename": md_file.name,
-            }
-        )
-
-    return json.dumps(entries)
-
 
 def _load_images_json(db_path: str) -> str:
     """Load image assets from the database and return as JSON map.
@@ -138,7 +102,6 @@ def export_spa(
     db_path: str,
     output_path: str,
     config_path: str = "",
-    analysis_dir: str = "",
     embed_images: bool = False,
 ) -> str:
     """Export a chartfold database as a single-file SPA HTML.
@@ -147,7 +110,6 @@ def export_spa(
         db_path: Path to the SQLite database file.
         output_path: Path for the output HTML file.
         config_path: Optional path to a TOML config file.
-        analysis_dir: Optional path to a directory of markdown analysis files.
         embed_images: If True, embed image assets from the database.
 
     Returns:
@@ -182,7 +144,6 @@ def export_spa(
 
     # 6. Load optional data (escaped for safe embedding in <script> tags)
     config_json = _safe_json_for_script(_load_config_json(config_path))
-    analysis_json = _safe_json_for_script(_load_analysis_json(analysis_dir))
     images_json = _safe_json_for_script(
         _load_images_json(db_path) if embed_images else "{}"
     )
@@ -206,7 +167,6 @@ def export_spa(
     <script id="sqljs-wasm" type="application/base64">{wasm_b64}</script>
     <script id="chartfold-db" type="application/gzip+base64">{db_gzip_b64}</script>
     <script id="chartfold-config" type="application/json">{config_json}</script>
-    <script id="chartfold-analysis" type="application/json">{analysis_json}</script>
     <script id="chartfold-images" type="application/json">{images_json}</script>
     <script>{sqljs_loader_text}</script>
     <script id="app-js">{app_js}</script>

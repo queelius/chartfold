@@ -104,11 +104,6 @@ def main():
     html_parser.add_argument("--output", default="chartfold_export.html", help="Output file path")
     html_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
     html_parser.add_argument(
-        "--external-data",
-        default="",
-        help="Directory containing external data files (e.g. analysis markdown)",
-    )
-    html_parser.add_argument(
         "--embed-images",
         action="store_true",
         help="Embed image assets from source_assets in the HTML file",
@@ -432,7 +427,6 @@ def _handle_export(args):
                 db_path=args.db,
                 output_path=args.output,
                 config_path=args.config,
-                analysis_dir=args.external_data,
                 embed_images=args.embed_images,
             )
 
