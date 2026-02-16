@@ -293,3 +293,28 @@ CREATE INDEX IF NOT EXISTS idx_source_assets_source ON source_assets(source);
 CREATE INDEX IF NOT EXISTS idx_source_assets_type ON source_assets(asset_type);
 CREATE INDEX IF NOT EXISTS idx_source_assets_date ON source_assets(encounter_date);
 CREATE INDEX IF NOT EXISTS idx_source_assets_ref ON source_assets(ref_table, ref_id);
+
+-- Structured analyses (Claude-generated or user-authored medical analyses)
+CREATE TABLE IF NOT EXISTS analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,          -- derived from filename: "cancer-timeline"
+    title TEXT NOT NULL,
+    category TEXT,                       -- from frontmatter: "oncology", "timeline", etc.
+    summary TEXT,                        -- short description from frontmatter
+    content TEXT NOT NULL,               -- markdown body (after frontmatter)
+    frontmatter TEXT,                    -- full YAML frontmatter stored as JSON blob
+    source TEXT NOT NULL DEFAULT 'user', -- "user", "claude", etc.
+    created_at TEXT NOT NULL,            -- ISO datetime
+    updated_at TEXT NOT NULL             -- ISO datetime
+);
+
+CREATE TABLE IF NOT EXISTS analysis_tags (
+    analysis_id INTEGER NOT NULL,
+    tag TEXT NOT NULL,
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE,
+    UNIQUE(analysis_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_analyses_slug ON analyses(slug);
+CREATE INDEX IF NOT EXISTS idx_analyses_category ON analyses(category);
+CREATE INDEX IF NOT EXISTS idx_analysis_tags_tag ON analysis_tags(tag);

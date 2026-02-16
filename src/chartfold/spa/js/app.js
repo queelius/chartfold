@@ -24,8 +24,13 @@
       { id: "procedures",     label: "Procedures",       table: "procedures",        group: "Clinical" },
       { id: "vitals",         label: "Vitals",           table: "vitals",            group: "Clinical" },
       { id: "immunizations",  label: "Immunizations",    table: "immunizations",     group: "Clinical" },
+      { id: "social_history", label: "Social History",   table: "social_history",    group: "History" },
+      { id: "family_history", label: "Family History",   table: "family_history",    group: "History" },
+      { id: "mental_status",  label: "Mental Status",    table: "mental_status",     group: "History" },
+      { id: "patients",       label: "Demographics",     table: "patients",          group: "Admin" },
+      { id: "personal_notes", label: "Notes",            table: "notes",             group: "Admin" },
       { id: "sources",        label: "Sources",          table: "source_assets",     group: "Tools" },
-      { id: "analysis",       label: "Analysis",         table: null,                group: "Tools" },
+      { id: "analysis",       label: "Analysis",         table: "analyses",          group: "Tools" },
       { id: "sql_console",    label: "SQL Console",      table: null,                group: "Tools" },
     ];
 
@@ -42,16 +47,18 @@
       }
     }
 
-    // Analysis count from embedded data
-    try {
-      const analysisData = JSON.parse(
-        document.getElementById('chartfold-analysis').textContent
-      );
-      if (Array.isArray(analysisData)) {
-        counts["analysis"] = analysisData.length;
+    // Also check for analyses from embedded JSON (--external-data fallback)
+    if (!counts["analysis"]) {
+      try {
+        var analysisData = JSON.parse(
+          document.getElementById('chartfold-analysis').textContent
+        );
+        if (Array.isArray(analysisData)) {
+          counts["analysis"] = analysisData.length;
+        }
+      } catch (e) {
+        // ignore
       }
-    } catch (e) {
-      // ignore
     }
 
     // Clear #app

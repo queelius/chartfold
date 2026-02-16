@@ -48,7 +48,9 @@ mcp = FastMCP(
         "- search_notes / get_pathology_report: Full-text clinical note search and pathology lookup\n"
         "- get_source_files / get_asset_summary: Find source files (PDFs, images) linked to records\n\n"
         "- save_note / get_note / search_notes_personal / delete_note: "
-        "Persist and retrieve personal analyses, observations, and visit prep summaries\n\n"
+        "Persist and retrieve personal analyses, observations, and visit prep summaries\n"
+        "- save_analysis / get_analysis / search_analyses / list_analyses / delete_analysis: "
+        "Manage structured analysis documents with YAML frontmatter metadata\n\n"
         "Start with get_database_summary or get_schema to understand available data. "
         "Use get_data_quality_report before cross-source analysis to understand duplicates. "
         "Use save_note to persist important analyses or observations for future reference."
@@ -640,6 +642,136 @@ def delete_note(note_id: int) -> dict:
     try:
         deleted = db.delete_note(note_id)
         return {"deleted": deleted}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def save_analysis(
+    slug: str,
+    title: str,
+    content: str,
+    category: str = "",
+    summary: str = "",
+    tags: str = "",
+    source: str = "claude",
+    frontmatter_yaml: str = "",
+) -> dict:
+    """Save a structured analysis document (upsert by slug).
+
+    Analyses are long-form medical analysis documents with optional YAML frontmatter
+    metadata. If a slug already exists, it is updated. The frontmatter is stored as
+    a JSON blob for json_extract() queries.
+
+    Args:
+        slug: Unique identifier derived from filename (e.g., "cancer-timeline").
+        title: Display title for the analysis.
+        content: Full markdown content of the analysis.
+        category: Category for grouping (e.g., "oncology", "timeline").
+        summary: Short description/summary.
+        tags: Comma-separated tags, e.g. "cancer,CEA,surgery".
+        source: Author source, e.g. "claude", "user".
+        frontmatter_yaml: Optional YAML string with additional metadata fields.
+            Will be parsed and stored as JSON for json_extract() queries.
+    """
+    import json
+
+    db = _get_db()
+    try:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
+        frontmatter_json = None
+        if frontmatter_yaml:
+            try:
+                import yaml
+
+                parsed = yaml.safe_load(frontmatter_yaml)
+                frontmatter_json = json.dumps(parsed) if parsed else None
+            except Exception:
+                frontmatter_json = frontmatter_yaml  # Store as-is if not valid YAML
+
+        saved_id = db.save_analysis(
+            slug=slug,
+            title=title,
+            content=content,
+            frontmatter_json=frontmatter_json,
+            category=category or None,
+            summary=summary or None,
+            tags=tag_list,
+            source=source,
+        )
+
+        existing = db.get_analysis(slug)
+        is_update = existing and existing["id"] == saved_id
+        return {"id": saved_id, "slug": slug, "status": "updated" if is_update else "created"}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_analysis(slug: str) -> dict | str:
+    """Retrieve a structured analysis by slug, including full content and tags.
+
+    Args:
+        slug: The slug of the analysis to retrieve (e.g., "cancer-timeline").
+    """
+    db = _get_db()
+    try:
+        result = db.get_analysis(slug)
+        if result is None:
+            return f"Analysis '{slug}' not found."
+        return result
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def search_analyses(
+    query: str = "",
+    tag: str = "",
+    category: str = "",
+) -> list[dict]:
+    """Search structured analyses by text, tag, or category.
+
+    All parameters are optional and combined with AND when multiple are provided.
+
+    Args:
+        query: Text to search for in title, content, and frontmatter (case-insensitive).
+        tag: Filter by exact tag match.
+        category: Filter by category (e.g., "oncology", "timeline").
+    """
+    db = _get_db()
+    try:
+        return db.search_analyses(
+            query=query or None,
+            tag=tag or None,
+            category=category or None,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_analyses() -> list[dict]:
+    """List all structured analyses with slug, title, category, tags, and dates."""
+    db = _get_db()
+    try:
+        return db.list_analyses()
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def delete_analysis(slug: str) -> dict:
+    """Delete a structured analysis by slug.
+
+    Args:
+        slug: The slug of the analysis to delete (e.g., "cancer-timeline").
+    """
+    db = _get_db()
+    try:
+        deleted = db.delete_analysis(slug)
+        return {"deleted": deleted, "slug": slug}
     finally:
         db.close()
 

@@ -180,28 +180,16 @@ class ChartfoldDB:
         return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
     def summary(self) -> dict[str, int]:
-        """Return row counts for all main tables."""
-        tables = [
-            "patients",
-            "documents",
-            "encounters",
-            "lab_results",
-            "vitals",
-            "medications",
-            "conditions",
-            "procedures",
-            "pathology_reports",
-            "imaging_reports",
-            "clinical_notes",
-            "immunizations",
-            "allergies",
-            "social_history",
-            "family_history",
-            "mental_status",
-            "source_assets",
-        ]
+        """Return row counts for all main tables (auto-discovered from schema)."""
+        rows = self.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY name"
+        )
         result = {}
-        for table in tables:
+        for r in rows:
+            table = r["name"]
+            if table == "load_log":
+                continue  # Exclude audit log from summary display
             row = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
             result[table] = row[0]
         return result
@@ -359,6 +347,136 @@ class ChartfoldDB:
         """Delete a note by ID. Returns True if a row was deleted."""
         with self.conn:
             cursor = self.conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        return cursor.rowcount > 0
+
+    # --- Structured analyses CRUD ---
+
+    def save_analysis(
+        self,
+        slug: str,
+        title: str,
+        content: str,
+        frontmatter_json: str | None = None,
+        category: str | None = None,
+        summary: str | None = None,
+        tags: list[str] | None = None,
+        source: str = "user",
+    ) -> int:
+        """Create or update an analysis by slug (upsert). Returns the analysis ID."""
+        now = datetime.now(timezone.utc).isoformat()
+        tags = tags or []
+
+        with self.conn:
+            # Check if slug exists
+            existing = self.query(
+                "SELECT id FROM analyses WHERE slug = ?", (slug,)
+            )
+
+            if existing:
+                analysis_id = existing[0]["id"]
+                self.conn.execute(
+                    "UPDATE analyses SET title=?, content=?, frontmatter=?, "
+                    "category=?, summary=?, source=?, updated_at=? WHERE id=?",
+                    (title, content, frontmatter_json, category, summary, source, now, analysis_id),
+                )
+                self.conn.execute("DELETE FROM analysis_tags WHERE analysis_id=?", (analysis_id,))
+            else:
+                cursor = self.conn.execute(
+                    "INSERT INTO analyses (slug, title, content, frontmatter, "
+                    "category, summary, source, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (slug, title, content, frontmatter_json, category, summary, source, now, now),
+                )
+                analysis_id = cursor.lastrowid or 0
+
+            for tag in tags:
+                clean_tag = tag.strip()
+                if clean_tag:
+                    self.conn.execute(
+                        "INSERT OR IGNORE INTO analysis_tags (analysis_id, tag) VALUES (?, ?)",
+                        (analysis_id, clean_tag),
+                    )
+
+        return analysis_id
+
+    def get_analysis(self, slug_or_id: str | int) -> dict | None:
+        """Retrieve an analysis by slug (str) or id (int). Returns None if not found."""
+        if isinstance(slug_or_id, int):
+            rows = self.query("SELECT * FROM analyses WHERE id = ?", (slug_or_id,))
+        else:
+            rows = self.query("SELECT * FROM analyses WHERE slug = ?", (slug_or_id,))
+
+        if not rows:
+            return None
+        analysis = rows[0]
+        tag_rows = self.query(
+            "SELECT tag FROM analysis_tags WHERE analysis_id = ? ORDER BY tag",
+            (analysis["id"],),
+        )
+        analysis["tags"] = [r["tag"] for r in tag_rows]
+        return analysis
+
+    def search_analyses(
+        self,
+        query: str | None = None,
+        tag: str | None = None,
+        category: str | None = None,
+    ) -> list[dict]:
+        """Search analyses with optional filters (AND-combined).
+
+        Returns analyses ordered by updated_at DESC with a 300-char content preview.
+        """
+        conditions: list[str] = []
+        params: list = []
+        joins = ""
+
+        if tag:
+            joins = " JOIN analysis_tags at ON a.id = at.analysis_id"
+            conditions.append("at.tag = ?")
+            params.append(tag)
+
+        if query:
+            conditions.append(
+                "(LOWER(a.title) LIKE ? OR LOWER(a.content) LIKE ? "
+                "OR LOWER(a.frontmatter) LIKE ?)"
+            )
+            q = f"%{query.lower()}%"
+            params.extend([q, q, q])
+
+        if category:
+            conditions.append("a.category = ?")
+            params.append(category)
+
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+        rows = self.query(
+            f"SELECT DISTINCT a.id, a.slug, a.title, a.category, a.summary, "
+            f"a.source, a.created_at, a.updated_at, "
+            f"SUBSTR(a.content, 1, 300) as content_preview "
+            f"FROM analyses a{joins}{where} ORDER BY a.updated_at DESC",
+            tuple(params),
+        )
+
+        for row in rows:
+            tag_rows = self.query(
+                "SELECT tag FROM analysis_tags WHERE analysis_id = ? ORDER BY tag",
+                (row["id"],),
+            )
+            row["tags"] = [r["tag"] for r in tag_rows]
+
+        return rows
+
+    def list_analyses(self) -> list[dict]:
+        """List all analyses with tags, ordered by updated_at DESC."""
+        return self.search_analyses()
+
+    def delete_analysis(self, slug_or_id: str | int) -> bool:
+        """Delete an analysis by slug (str) or id (int). Returns True if deleted."""
+        with self.conn:
+            if isinstance(slug_or_id, int):
+                cursor = self.conn.execute("DELETE FROM analyses WHERE id = ?", (slug_or_id,))
+            else:
+                cursor = self.conn.execute("DELETE FROM analyses WHERE slug = ?", (slug_or_id,))
         return cursor.rowcount > 0
 
     def close(self) -> None:

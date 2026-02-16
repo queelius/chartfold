@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "lxml",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]

@@ -8,10 +8,8 @@ Usage:
     python -m chartfold load all --epic-dir <> --meditech-dir <> --athena-dir <> [--db ...]
     python -m chartfold query <sql> [--db chartfold.db]
     python -m chartfold summary [--db chartfold.db]
-    python -m chartfold export markdown [--output FILE] [--lookback N] [--full] [--pdf]
     python -m chartfold export html [--output FILE] [--embed-images] [--config FILE]
     python -m chartfold export json [--output FILE]
-    python -m chartfold export hugo [--output DIR] [--config FILE] [--linked-sources]
     python -m chartfold serve-mcp [--db chartfold.db]
 """
 
@@ -50,6 +48,12 @@ def main():
         "--source-name", default="", help="Source name override (default: derived from directory)"
     )
 
+    analyses_load_parser = load_sub.add_parser(
+        "analyses", help="Load analysis markdown files into the database"
+    )
+    analyses_load_parser.add_argument("input_dir", help="Directory containing analysis .md files")
+    analyses_load_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+
     all_parser = load_sub.add_parser("all", help="Load all sources at once")
     all_parser.add_argument("--epic-dir", help="Epic source directory")
     all_parser.add_argument("--meditech-dir", help="MEDITECH source directory")
@@ -85,18 +89,6 @@ def main():
     # Common db argument for all export subcommands
     db_help = "SQLite database path"
 
-    # export markdown
-    md_parser = export_sub.add_parser("markdown", help="Export as Markdown")
-    md_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
-    md_parser.add_argument("--output", default="chartfold_export.md", help="Output file path")
-    md_parser.add_argument(
-        "--lookback", type=int, default=6, help="Months of recent data to include"
-    )
-    md_parser.add_argument(
-        "--full", action="store_true", help="Export all data (full database dump)"
-    )
-    md_parser.add_argument("--pdf", action="store_true", help="Generate PDF via pandoc")
-
     # export json (for full exports)
     json_parser = export_sub.add_parser("json", help="Export as JSON (full database dump)")
     json_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
@@ -112,30 +104,14 @@ def main():
     html_parser.add_argument("--output", default="chartfold_export.html", help="Output file path")
     html_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
     html_parser.add_argument(
-        "--analysis-dir",
+        "--external-data",
         default="",
-        help="Directory containing analysis markdown files",
+        help="Directory containing external data files (e.g. analysis markdown)",
     )
     html_parser.add_argument(
         "--embed-images",
         action="store_true",
         help="Embed image assets from source_assets in the HTML file",
-    )
-
-    # export hugo (moved from generate-site)
-    hugo_parser = export_sub.add_parser("hugo", help="Generate Hugo static site")
-    hugo_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
-    hugo_parser.add_argument("--output", default="./site", help="Hugo output directory")
-    hugo_parser.add_argument("--config", default="", help="Path to chartfold.toml config file")
-    hugo_parser.add_argument(
-        "--linked-sources",
-        action="store_true",
-        help="Copy source EHR assets into Hugo static folder",
-    )
-    hugo_parser.add_argument(
-        "--analysis-dir",
-        default="",
-        help="Directory containing analysis markdown files",
     )
 
     # --- import ---
@@ -171,6 +147,28 @@ def main():
 
     notes_show_parser = notes_sub.add_parser("show", help="Show full note content")
     notes_show_parser.add_argument("id", type=int, help="Note ID to display")
+
+    # --- analyses ---
+    analyses_parser = sub.add_parser("analyses", help="Manage structured analyses")
+    analyses_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+    analyses_sub = analyses_parser.add_subparsers(dest="analyses_action")
+
+    analyses_list_parser = analyses_sub.add_parser("list", help="List all analyses")
+    analyses_list_parser.add_argument("--limit", type=int, default=20, help="Max analyses to show")
+
+    analyses_search_parser = analyses_sub.add_parser("search", help="Search analyses")
+    analyses_search_parser.add_argument("--tag", default="", help="Filter by tag")
+    analyses_search_parser.add_argument("--query", default="", help="Text search")
+    analyses_search_parser.add_argument("--category", default="", help="Filter by category")
+
+    analyses_show_parser = analyses_sub.add_parser("show", help="Show full analysis content")
+    analyses_show_parser.add_argument("slug", help="Analysis slug to display")
+
+    analyses_delete_parser = analyses_sub.add_parser("delete", help="Delete an analysis")
+    analyses_delete_parser.add_argument("slug", help="Analysis slug to delete")
+    analyses_delete_parser.add_argument(
+        "--yes", action="store_true", help="Skip confirmation prompt"
+    )
 
     # --- assets ---
     assets_parser = sub.add_parser("assets", help="View source assets (PDFs, images, etc.)")
@@ -220,6 +218,8 @@ def main():
         _handle_init_config(args)
     elif args.command == "notes":
         _handle_notes(args)
+    elif args.command == "analyses":
+        _handle_analyses(args)
     elif args.command == "assets":
         _handle_assets(args)
     elif args.command == "identify":
@@ -238,7 +238,10 @@ def _handle_load(args):
     with ChartfoldDB(args.db) as db:
         db.init_schema()
 
-        if args.source == "auto":
+        if args.source == "analyses":
+            _load_analyses(db, args.input_dir)
+            return
+        elif args.source == "auto":
             _load_auto(db, args.input_dir, getattr(args, "source_name", ""))
         elif args.source == "all":
             if args.epic_dir:
@@ -374,42 +377,45 @@ def _load_source(db, source_key: str, input_dir: str, source_name: str = ""):
     _print_stage_comparison(parser_counts, adapter_counts, db_counts)
 
 
+def _load_analyses(db, input_dir: str):
+    """Load analysis markdown files into the database."""
+    from chartfold.analysis_parser import parse_analysis_dir
+
+    input_dir = os.path.expanduser(input_dir)
+    if not os.path.isdir(input_dir):
+        print(f"Error: Directory not found: {input_dir}")
+        sys.exit(1)
+
+    analyses = parse_analysis_dir(input_dir)
+    if not analyses:
+        print(f"No .md files found in {input_dir}")
+        return
+
+    print(f"\nLoading {len(analyses)} analyses from {input_dir}...")
+    for a in analyses:
+        aid = db.save_analysis(**a)
+        tags = ", ".join(a["tags"]) if a["tags"] else ""
+        tag_str = f" [{tags}]" if tags else ""
+        print(f"  {a['slug']:<30} {a['title'][:40]}{tag_str}")
+
+    print(f"\n{len(analyses)} analyses loaded.")
+
+
 def _handle_export(args):
     from chartfold.db import ChartfoldDB
 
     if args.export_format is None:
-        print("Usage: chartfold export <markdown|html|json|hugo> [options]")
+        print("Usage: chartfold export <html|json> [options]")
         print("\nSubcommands:")
-        print("  markdown   Export as Markdown (default format)")
-        print("  html       Export as self-contained HTML with charts")
+        print("  html       Export as self-contained HTML SPA with embedded SQLite")
         print("  json       Export as JSON (full database dump)")
-        print("  hugo       Generate Hugo static site")
         print("\nRun 'chartfold export <subcommand> --help' for options.")
         sys.exit(1)
 
     with ChartfoldDB(args.db) as db:
         db.init_schema()
 
-        if args.export_format == "markdown":
-            if args.full:
-                from chartfold.export_full import export_full_markdown
-
-                path = export_full_markdown(db, output_path=args.output)
-            elif args.pdf:
-                from chartfold.export import export_pdf
-
-                output = (
-                    args.output
-                    if args.output.endswith(".pdf")
-                    else args.output.replace(".md", ".pdf")
-                )
-                path = export_pdf(db, output_path=output, lookback_months=args.lookback)
-            else:
-                from chartfold.export import export_markdown
-
-                path = export_markdown(db, output_path=args.output, lookback_months=args.lookback)
-
-        elif args.export_format == "json":
+        if args.export_format == "json":
             from chartfold.export_full import export_full_json
 
             path = export_full_json(
@@ -426,21 +432,9 @@ def _handle_export(args):
                 db_path=args.db,
                 output_path=args.output,
                 config_path=args.config,
-                analysis_dir=args.analysis_dir,
+                analysis_dir=args.external_data,
                 embed_images=args.embed_images,
             )
-
-        elif args.export_format == "hugo":
-            from chartfold.hugo.generate import generate_site
-
-            generate_site(
-                args.db,
-                args.output,
-                config_path=args.config,
-                linked_sources=args.linked_sources,
-                analysis_dir=args.analysis_dir,
-            )
-            return  # generate_site prints its own message
 
     print(f"Exported to {path}")
 
@@ -681,6 +675,95 @@ def _handle_notes_show(db, note_id: int):
     print(f"{'=' * 60}\n")
     print(note["content"])
     print()
+
+
+def _handle_analyses(args):
+    from chartfold.db import ChartfoldDB
+
+    with ChartfoldDB(args.db) as db:
+        db.init_schema()
+
+        if args.analyses_action == "show":
+            _handle_analyses_show(db, args.slug)
+        elif args.analyses_action == "search":
+            _handle_analyses_search(db, args)
+        elif args.analyses_action == "delete":
+            _handle_analyses_delete(db, args.slug, getattr(args, "yes", False))
+        else:
+            # Default: list
+            _handle_analyses_list(db, getattr(args, "limit", 20))
+
+
+def _print_analyses_table(rows: list, empty_msg: str = "No analyses found.") -> None:
+    """Print a formatted table of analyses."""
+    if not rows:
+        print(empty_msg)
+        return
+
+    print(f"\n{'Slug':<30} {'Title':<35} {'Category':<12} {'Tags':<25} {'Updated':<20}")
+    print(f"{'─' * 30} {'─' * 35} {'─' * 12} {'─' * 25} {'─' * 20}")
+    for r in rows:
+        tags = ", ".join(r.get("tags", []))[:25]
+        updated = (r.get("updated_at") or "")[:19]
+        title = (r.get("title") or "")[:35]
+        slug = (r.get("slug") or "")[:30]
+        category = (r.get("category") or "")[:12]
+        print(f"{slug:<30} {title:<35} {category:<12} {tags:<25} {updated:<20}")
+
+    print(f"\n({len(rows)} analyses)")
+
+
+def _handle_analyses_list(db, limit: int = 20):
+    rows = db.list_analyses()
+    _print_analyses_table(rows[:limit])
+
+
+def _handle_analyses_search(db, args):
+    rows = db.search_analyses(
+        query=args.query or None,
+        tag=args.tag or None,
+        category=args.category or None,
+    )
+    _print_analyses_table(rows, empty_msg="No analyses match the search criteria.")
+
+
+def _handle_analyses_show(db, slug: str):
+    analysis = db.get_analysis(slug)
+    if not analysis:
+        print(f"Analysis '{slug}' not found.")
+        sys.exit(1)
+
+    tags = ", ".join(analysis.get("tags", []))
+    print(f"\n{'=' * 60}")
+    print(f"{analysis['title']}")
+    print(f"Slug: {analysis['slug']}")
+    if analysis.get("category"):
+        print(f"Category: {analysis['category']}")
+    if tags:
+        print(f"Tags: {tags}")
+    if analysis.get("summary"):
+        print(f"Summary: {analysis['summary']}")
+    print(f"Source: {analysis['source']}")
+    print(f"Created: {analysis['created_at'][:19]}  Updated: {analysis['updated_at'][:19]}")
+    print(f"{'=' * 60}\n")
+    print(analysis["content"])
+    print()
+
+
+def _handle_analyses_delete(db, slug: str, skip_confirm: bool = False):
+    analysis = db.get_analysis(slug)
+    if not analysis:
+        print(f"Analysis '{slug}' not found.")
+        sys.exit(1)
+
+    if not skip_confirm:
+        confirm = input(f"Delete analysis '{slug}' ({analysis['title']})? [y/N] ")
+        if confirm.lower() != "y":
+            print("Cancelled.")
+            return
+
+    db.delete_analysis(slug)
+    print(f"Deleted analysis '{slug}'.")
 
 
 def _handle_assets(args):
