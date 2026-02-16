@@ -6,6 +6,7 @@ Configure env: CHARTFOLD_DB=/path/to/chartfold.db
 
 from __future__ import annotations
 
+import json
 import os
 import re
 
@@ -674,8 +675,6 @@ def save_analysis(
         frontmatter_yaml: Optional YAML string with additional metadata fields.
             Will be parsed and stored as JSON for json_extract() queries.
     """
-    import json
-
     db = _get_db()
     try:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
@@ -690,6 +689,7 @@ def save_analysis(
             except Exception:
                 frontmatter_json = frontmatter_yaml  # Store as-is if not valid YAML
 
+        existing_before = db.get_analysis(slug)
         saved_id = db.save_analysis(
             slug=slug,
             title=title,
@@ -701,9 +701,7 @@ def save_analysis(
             source=source,
         )
 
-        existing = db.get_analysis(slug)
-        is_update = existing and existing["id"] == saved_id
-        return {"id": saved_id, "slug": slug, "status": "updated" if is_update else "created"}
+        return {"id": saved_id, "slug": slug, "status": "updated" if existing_before else "created"}
     finally:
         db.close()
 

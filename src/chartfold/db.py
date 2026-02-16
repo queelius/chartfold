@@ -231,6 +231,27 @@ class ChartfoldDB:
             "source_assets": row.get("source_assets_count", 0),
         }
 
+    # --- Tag helpers (shared by notes and analyses) ---
+
+    def _save_tags(self, table: str, fk_col: str, fk_id: int, tags: list[str]) -> None:
+        """Replace all tags for a record: delete existing, insert new."""
+        self.conn.execute(f"DELETE FROM {table} WHERE {fk_col}=?", (fk_id,))
+        for tag in tags:
+            clean = tag.strip()
+            if clean:
+                self.conn.execute(
+                    f"INSERT OR IGNORE INTO {table} ({fk_col}, tag) VALUES (?, ?)",
+                    (fk_id, clean),
+                )
+
+    def _fetch_tags(self, table: str, fk_col: str, fk_id: int) -> list[str]:
+        """Fetch sorted tags for a record."""
+        rows = self.query(
+            f"SELECT tag FROM {table} WHERE {fk_col} = ? ORDER BY tag",
+            (fk_id,),
+        )
+        return [r["tag"] for r in rows]
+
     # --- Personal notes CRUD ---
 
     def save_note(
@@ -254,7 +275,6 @@ class ChartfoldDB:
                     "WHERE id=?",
                     (title, content, now, ref_table, ref_id, note_id),
                 )
-                self.conn.execute("DELETE FROM note_tags WHERE note_id=?", (note_id,))
             else:
                 # Create new note
                 cursor = self.conn.execute(
@@ -265,13 +285,7 @@ class ChartfoldDB:
                 # lastrowid is always int after INSERT
                 note_id = cursor.lastrowid or 0
 
-            for tag in tags:
-                clean_tag = tag.strip()
-                if clean_tag:
-                    self.conn.execute(
-                        "INSERT OR IGNORE INTO note_tags (note_id, tag) VALUES (?, ?)",
-                        (note_id, clean_tag),
-                    )
+            self._save_tags("note_tags", "note_id", note_id, tags)
 
         return note_id
 
@@ -285,11 +299,7 @@ class ChartfoldDB:
         if not rows:
             return None
         note = rows[0]
-        tag_rows = self.query(
-            "SELECT tag FROM note_tags WHERE note_id = ? ORDER BY tag",
-            (note_id,),
-        )
-        note["tags"] = [r["tag"] for r in tag_rows]
+        note["tags"] = self._fetch_tags("note_tags", "note_id", note_id)
         return note
 
     def search_notes_personal(
@@ -333,13 +343,8 @@ class ChartfoldDB:
             tuple(params),
         )
 
-        # Attach tags to each result
         for row in rows:
-            tag_rows = self.query(
-                "SELECT tag FROM note_tags WHERE note_id = ? ORDER BY tag",
-                (row["id"],),
-            )
-            row["tags"] = [r["tag"] for r in tag_rows]
+            row["tags"] = self._fetch_tags("note_tags", "note_id", row["id"])
 
         return rows
 
@@ -379,7 +384,6 @@ class ChartfoldDB:
                     "category=?, summary=?, source=?, updated_at=? WHERE id=?",
                     (title, content, frontmatter_json, category, summary, source, now, analysis_id),
                 )
-                self.conn.execute("DELETE FROM analysis_tags WHERE analysis_id=?", (analysis_id,))
             else:
                 cursor = self.conn.execute(
                     "INSERT INTO analyses (slug, title, content, frontmatter, "
@@ -389,13 +393,7 @@ class ChartfoldDB:
                 )
                 analysis_id = cursor.lastrowid or 0
 
-            for tag in tags:
-                clean_tag = tag.strip()
-                if clean_tag:
-                    self.conn.execute(
-                        "INSERT OR IGNORE INTO analysis_tags (analysis_id, tag) VALUES (?, ?)",
-                        (analysis_id, clean_tag),
-                    )
+            self._save_tags("analysis_tags", "analysis_id", analysis_id, tags)
 
         return analysis_id
 
@@ -409,11 +407,7 @@ class ChartfoldDB:
         if not rows:
             return None
         analysis = rows[0]
-        tag_rows = self.query(
-            "SELECT tag FROM analysis_tags WHERE analysis_id = ? ORDER BY tag",
-            (analysis["id"],),
-        )
-        analysis["tags"] = [r["tag"] for r in tag_rows]
+        analysis["tags"] = self._fetch_tags("analysis_tags", "analysis_id", analysis["id"])
         return analysis
 
     def search_analyses(
@@ -458,11 +452,7 @@ class ChartfoldDB:
         )
 
         for row in rows:
-            tag_rows = self.query(
-                "SELECT tag FROM analysis_tags WHERE analysis_id = ? ORDER BY tag",
-                (row["id"],),
-            )
-            row["tags"] = [r["tag"] for r in tag_rows]
+            row["tags"] = self._fetch_tags("analysis_tags", "analysis_id", row["id"])
 
         return rows
 

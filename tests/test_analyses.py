@@ -4,8 +4,6 @@ Covers: analysis_parser, DB CRUD methods, CLI commands, and JSON round-trip.
 """
 
 import json
-import os
-import tempfile
 
 import pytest
 
@@ -19,26 +17,16 @@ from chartfold.db import ChartfoldDB
 
 
 @pytest.fixture
-def tmp_dir():
-    """Temporary directory for analysis markdown files."""
-    with tempfile.TemporaryDirectory() as d:
-        yield d
-
-
-@pytest.fixture
-def analysis_db():
+def analysis_db(tmp_path):
     """Fresh database with schema initialized."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-    db = ChartfoldDB(db_path)
+    db = ChartfoldDB(str(tmp_path / "test.db"))
     db.init_schema()
     yield db
     db.close()
-    os.unlink(db_path)
 
 
 @pytest.fixture
-def sample_md_with_frontmatter(tmp_dir):
+def sample_md_with_frontmatter(tmp_path):
     """Create a sample analysis file with YAML frontmatter."""
     content = """\
 ---
@@ -61,14 +49,13 @@ The patient was diagnosed in 2024.
 ## Treatment Phase
 Surgery followed by chemotherapy.
 """
-    path = os.path.join(tmp_dir, "cancer-timeline.md")
-    with open(path, "w") as f:
-        f.write(content)
+    path = tmp_path / "cancer-timeline.md"
+    path.write_text(content)
     return path
 
 
 @pytest.fixture
-def sample_md_without_frontmatter(tmp_dir):
+def sample_md_without_frontmatter(tmp_path):
     """Create a sample analysis file without YAML frontmatter."""
     content = """\
 # Deep Clinical Analysis
@@ -79,19 +66,17 @@ A comprehensive review of the patient's clinical data.
 ## Findings
 Multiple significant findings were identified.
 """
-    path = os.path.join(tmp_dir, "deep-analysis.md")
-    with open(path, "w") as f:
-        f.write(content)
+    path = tmp_path / "deep-analysis.md"
+    path.write_text(content)
     return path
 
 
 @pytest.fixture
-def sample_md_no_heading(tmp_dir):
+def sample_md_no_heading(tmp_path):
     """Create a sample file with no heading (title from filename)."""
     content = "Just some plain text analysis without any headings.\n"
-    path = os.path.join(tmp_dir, "medication-review.md")
-    with open(path, "w") as f:
-        f.write(content)
+    path = tmp_path / "medication-review.md"
+    path.write_text(content)
     return path
 
 
@@ -137,42 +122,71 @@ class TestAnalysisParser:
         assert result["title"] == "Medication Review"  # derived from filename
         assert result["content"].startswith("Just some plain text")
 
-    def test_parse_directory(self, tmp_dir, sample_md_with_frontmatter, sample_md_without_frontmatter):
-        results = parse_analysis_dir(tmp_dir)
+    def test_parse_directory(self, tmp_path, sample_md_with_frontmatter, sample_md_without_frontmatter):
+        results = parse_analysis_dir(tmp_path)
 
         assert len(results) == 2
         slugs = [r["slug"] for r in results]
         assert "cancer-timeline" in slugs
         assert "deep-analysis" in slugs
 
-    def test_parse_directory_skips_readme(self, tmp_dir):
+    def test_parse_directory_skips_readme(self, tmp_path):
         """README.md should be skipped."""
-        with open(os.path.join(tmp_dir, "README.md"), "w") as f:
-            f.write("# README\nThis is not an analysis.\n")
-        with open(os.path.join(tmp_dir, "actual-analysis.md"), "w") as f:
-            f.write("# Real Analysis\nContent here.\n")
+        (tmp_path / "README.md").write_text("# README\nThis is not an analysis.\n")
+        (tmp_path / "actual-analysis.md").write_text("# Real Analysis\nContent here.\n")
 
-        results = parse_analysis_dir(tmp_dir)
+        results = parse_analysis_dir(tmp_path)
         assert len(results) == 1
         assert results[0]["slug"] == "actual-analysis"
 
-    def test_parse_empty_directory(self, tmp_dir):
-        results = parse_analysis_dir(tmp_dir)
+    def test_parse_empty_directory(self, tmp_path):
+        results = parse_analysis_dir(tmp_path)
         assert results == []
 
     def test_parse_nonexistent_directory(self):
         with pytest.raises(FileNotFoundError):
             parse_analysis_dir("/nonexistent/path")
 
-    def test_frontmatter_tags_as_string(self, tmp_dir):
+    def test_frontmatter_tags_as_string(self, tmp_path):
         """Tags specified as a single string should be wrapped in a list."""
-        content = "---\ntags: single-tag\n---\n\n# Title\nBody.\n"
-        path = os.path.join(tmp_dir, "single-tag.md")
-        with open(path, "w") as f:
-            f.write(content)
+        path = tmp_path / "single-tag.md"
+        path.write_text("---\ntags: single-tag\n---\n\n# Title\nBody.\n")
 
         result = parse_analysis_file(path)
         assert result["tags"] == ["single-tag"]
+
+    def test_unclosed_frontmatter(self, tmp_path):
+        """Unclosed frontmatter (no closing ---) should be treated as plain content."""
+        path = tmp_path / "unclosed.md"
+        path.write_text("---\ntitle: Never Closed\n\n# Actual Content\nBody here.\n")
+
+        result = parse_analysis_file(path)
+        assert result["slug"] == "unclosed"
+        # No closing ---, so entire text is content, title from heading
+        assert result["title"] == "Actual Content"
+        assert result["frontmatter_json"] is None
+
+    def test_non_dict_yaml_frontmatter(self, tmp_path):
+        """Non-dict YAML (e.g., a list) should be treated as empty frontmatter."""
+        path = tmp_path / "list-yaml.md"
+        path.write_text("---\n- item1\n- item2\n---\n\n# Title\nBody.\n")
+
+        result = parse_analysis_file(path)
+        assert result["slug"] == "list-yaml"
+        assert result["title"] == "Title"
+        assert result["category"] is None
+        assert result["tags"] == []
+        assert result["frontmatter_json"] is None
+
+    def test_empty_content_after_frontmatter(self, tmp_path):
+        """Frontmatter with no body should parse correctly."""
+        path = tmp_path / "empty-body.md"
+        path.write_text("---\ntitle: Just Metadata\ncategory: test\n---\n")
+
+        result = parse_analysis_file(path)
+        assert result["title"] == "Just Metadata"
+        assert result["category"] == "test"
+        assert result["content"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -331,18 +345,19 @@ class TestAnalysisCRUD:
 
 
 class TestAnalysesCLI:
-    def test_load_analyses(self, tmp_dir, analysis_db):
+    def test_load_analyses(self, tmp_path, analysis_db):
         """Test the CLI load analyses command logic."""
-        # Create test files
-        with open(os.path.join(tmp_dir, "test-one.md"), "w") as f:
-            f.write("---\ntitle: Test One\ncategory: testing\ntags: [test]\n---\n\nBody one.\n")
-        with open(os.path.join(tmp_dir, "test-two.md"), "w") as f:
-            f.write("# Test Two\n\nBody two.\n")
+        md_dir = tmp_path / "analyses"
+        md_dir.mkdir()
+        (md_dir / "test-one.md").write_text(
+            "---\ntitle: Test One\ncategory: testing\ntags: [test]\n---\n\nBody one.\n"
+        )
+        (md_dir / "test-two.md").write_text("# Test Two\n\nBody two.\n")
 
         # Simulate what _load_analyses does
         from chartfold.analysis_parser import parse_analysis_dir
 
-        analyses = parse_analysis_dir(tmp_dir)
+        analyses = parse_analysis_dir(md_dir)
         for a in analyses:
             analysis_db.save_analysis(**a)
 
@@ -396,7 +411,7 @@ class TestAnalysesCLI:
 
 
 class TestAnalysesRoundTrip:
-    def test_analyses_in_export(self, analysis_db):
+    def test_analyses_in_export(self, analysis_db, tmp_path):
         """Analyses should auto-appear in JSON export via auto-discovery."""
         analysis_db.save_analysis(
             slug="test-analysis",
@@ -407,24 +422,19 @@ class TestAnalysesRoundTrip:
 
         from chartfold.export_full import export_full_json
 
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
-            output_path = f.name
+        output_path = str(tmp_path / "export.json")
+        export_full_json(analysis_db, output_path)
 
-        try:
-            export_full_json(analysis_db, output_path)
-            with open(output_path) as f:
-                data = json.load(f)
+        with open(output_path) as f:
+            data = json.load(f)
 
-            # analyses and analysis_tags should be auto-discovered
-            assert "analyses" in data["tables"]
-            assert "analysis_tags" in data["tables"]
-            assert len(data["tables"]["analyses"]) == 1
-            assert data["tables"]["analyses"][0]["slug"] == "test-analysis"
-            assert len(data["tables"]["analysis_tags"]) == 1
-        finally:
-            os.unlink(output_path)
+        assert "analyses" in data["tables"]
+        assert "analysis_tags" in data["tables"]
+        assert len(data["tables"]["analyses"]) == 1
+        assert data["tables"]["analyses"][0]["slug"] == "test-analysis"
+        assert len(data["tables"]["analysis_tags"]) == 1
 
-    def test_analyses_round_trip(self, analysis_db):
+    def test_analyses_round_trip(self, analysis_db, tmp_path):
         """Analyses should survive export -> import round-trip with FK remapping."""
         analysis_db.save_analysis(
             slug="cancer",
@@ -437,40 +447,31 @@ class TestAnalysesRoundTrip:
 
         from chartfold.export_full import export_full_json, import_json
 
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
-            json_path = f.name
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            import_db_path = f.name
+        json_path = str(tmp_path / "export.json")
+        import_db_path = str(tmp_path / "imported.db")
 
-        try:
-            export_full_json(analysis_db, json_path)
-            os.unlink(import_db_path)  # import_json needs the file to not exist
+        export_full_json(analysis_db, json_path)
 
-            result = import_json(json_path, import_db_path)
-            assert result["success"] is True
-            assert result["counts"]["analyses"] == 1
-            assert result["counts"]["analysis_tags"] == 2
+        result = import_json(json_path, import_db_path)
+        assert result["success"] is True
+        assert result["counts"]["analyses"] == 1
+        assert result["counts"]["analysis_tags"] == 2
 
-            # Verify data integrity
-            with ChartfoldDB(import_db_path) as imported_db:
-                imported_db.init_schema()
-                analysis = imported_db.get_analysis("cancer")
-                assert analysis is not None
-                assert analysis["title"] == "Cancer Timeline"
-                assert analysis["category"] == "oncology"
-                assert sorted(analysis["tags"]) == ["CEA", "cancer"]
+        with ChartfoldDB(import_db_path) as imported_db:
+            imported_db.init_schema()
+            analysis = imported_db.get_analysis("cancer")
+            assert analysis is not None
+            assert analysis["title"] == "Cancer Timeline"
+            assert analysis["category"] == "oncology"
+            assert sorted(analysis["tags"]) == ["CEA", "cancer"]
 
-                # Verify FK integrity (analysis_tags point to valid analysis)
-                tags = imported_db.query(
-                    "SELECT at.tag FROM analysis_tags at "
-                    "JOIN analyses a ON at.analysis_id = a.id "
-                    "WHERE a.slug = 'cancer' ORDER BY at.tag"
-                )
-                assert [t["tag"] for t in tags] == ["CEA", "cancer"]
-        finally:
-            os.unlink(json_path)
-            if os.path.exists(import_db_path):
-                os.unlink(import_db_path)
+            # Verify FK integrity (analysis_tags point to valid analysis)
+            tags = imported_db.query(
+                "SELECT at.tag FROM analysis_tags at "
+                "JOIN analyses a ON at.analysis_id = a.id "
+                "WHERE a.slug = 'cancer' ORDER BY at.tag"
+            )
+            assert [t["tag"] for t in tags] == ["CEA", "cancer"]
 
     def test_analyses_in_summary(self, analysis_db):
         """Analyses should appear in auto-discovered summary."""

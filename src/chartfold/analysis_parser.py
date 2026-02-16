@@ -46,7 +46,8 @@ def parse_analysis_file(path: str | Path) -> dict:
         if len(parts) >= 3:
             yaml_text = parts[1]
             content = parts[2].lstrip("\n")
-            frontmatter = yaml.safe_load(yaml_text) or {}
+            parsed_yaml = yaml.safe_load(yaml_text)
+            frontmatter = parsed_yaml if isinstance(parsed_yaml, dict) else {}
 
     title = frontmatter.pop("title", None)
     if not title:

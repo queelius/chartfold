@@ -1095,7 +1095,7 @@ const Sections = {
     var data = [];
     var fromDB = false;
     try {
-      var dbRows = DB.query("SELECT slug, title, category, summary, content, source FROM analyses ORDER BY updated_at DESC");
+      var dbRows = db.query("SELECT slug, title, category, summary, content, source FROM analyses ORDER BY updated_at DESC");
       if (dbRows.length > 0) {
         data = dbRows.map(function(r) {
           return { slug: r.slug, title: r.title, body: r.content, filename: r.slug + '.md', category: r.category, summary: r.summary };
