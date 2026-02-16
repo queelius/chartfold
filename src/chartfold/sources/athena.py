@@ -52,6 +52,7 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
         "medications": [],
         "conditions": [],
         "procedures": [],
+        "imaging_reports": [],
         "immunizations": [],
         "allergies": [],
         "social_history": [],
@@ -119,9 +120,11 @@ def process_athena_export(input_dir: str, config: SourceConfig | None = None) ->
         if "Problems" in sections:
             data["conditions"].extend(_extract_problems(sections["Problems"]))
 
-        # Procedures
+        # Procedures (section contains both procedures and imaging sub-tables)
         if "Procedures" in sections:
-            data["procedures"].extend(_extract_procedures(sections["Procedures"]))
+            procs, imaging = _extract_procedures(sections["Procedures"])
+            data["procedures"].extend(procs)
+            data["imaging_reports"].extend(imaging)
 
         # Allergies
         if "Allergies" in sections:
@@ -556,17 +559,26 @@ def _extract_problems(section) -> list[dict]:
     return conditions
 
 
-def _extract_procedures(section) -> list[dict]:
-    """Extract procedures from athena Procedures section."""
+def _extract_procedures(section) -> tuple[list[dict], list[dict]]:
+    """Extract procedures and imaging from athena Procedures section.
+
+    The CDA Procedures section contains two sub-tables: one for actual
+    procedures (header "Date") and one for imaging studies (header
+    "Imaging Date"). Returns (procedures, imaging_reports).
+    """
     text_el = section.find(f"{{{NS}}}text")
     if text_el is None:
-        return []
+        return [], []
 
     procedures = []
+    imaging = []
     for table in text_el.findall(f".//{{{NS}}}table"):
         headers = _get_headers(table)
         if not headers:
             continue
+
+        # Detect imaging sub-table by first header
+        is_imaging_table = headers[0].lower().startswith("imaging")
 
         col_map = {}
         for i, h in enumerate(headers):
@@ -577,7 +589,7 @@ def _extract_procedures(section) -> list[dict]:
                 col_map["date"] = i
             elif "snomed" in hl:
                 col_map["snomed"] = i
-            elif "status" in hl:
+            elif hl == "status":
                 col_map["status"] = i
 
         for row in _iter_rows(table):
@@ -590,19 +602,26 @@ def _extract_procedures(section) -> list[dict]:
             if not name:
                 continue
 
-            procedures.append(
-                {
-                    "name": name,
-                    "date": cells[col_map["date"]].strip()
-                    if "date" in col_map and col_map["date"] < len(cells)
-                    else "",
-                    "snomed": cells[col_map["snomed"]].strip()
-                    if "snomed" in col_map and col_map["snomed"] < len(cells)
-                    else "",
-                }
+            date = (
+                cells[col_map["date"]].strip()
+                if "date" in col_map and col_map["date"] < len(cells)
+                else ""
             )
 
-    return procedures
+            if is_imaging_table:
+                imaging.append({"name": name, "date": date})
+            else:
+                procedures.append(
+                    {
+                        "name": name,
+                        "date": date,
+                        "snomed": cells[col_map["snomed"]].strip()
+                        if "snomed" in col_map and col_map["snomed"] < len(cells)
+                        else "",
+                    }
+                )
+
+    return procedures, imaging
 
 
 def _extract_allergies(section) -> list[dict]:

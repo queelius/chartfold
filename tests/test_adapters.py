@@ -1,6 +1,6 @@
 """Tests for chartfold.adapters — source-to-UnifiedRecords bridges."""
 
-from chartfold.adapters.athena_adapter import athena_to_unified
+from chartfold.adapters.athena_adapter import athena_to_unified, _guess_modality as athena_guess_modality
 from chartfold.adapters.epic_adapter import epic_to_unified, _guess_modality
 from chartfold.adapters.meditech_adapter import meditech_to_unified, _is_imaging_report_name
 
@@ -516,6 +516,49 @@ class TestAthenaAdapter:
         assert records.source == "athena"  # Fallback without input_dir
         assert records.patient is None
         assert len(records.lab_results) == 0
+
+
+class TestAthenaImagingAdapter:
+    """Tests for athena imaging report conversion and modality guessing."""
+
+    def test_imaging_reports_converted(self, sample_athena_data):
+        """Imaging reports from parser become ImagingReport records."""
+        records = athena_to_unified(sample_athena_data)
+        assert len(records.imaging_reports) == 2
+        ct = next(r for r in records.imaging_reports if "CT" in r.study_name)
+        assert ct.study_date == "2021-12-08"
+        assert ct.modality == "CT"
+
+    def test_imaging_not_in_procedures(self, sample_athena_data):
+        """Imaging reports should not appear in procedures list."""
+        records = athena_to_unified(sample_athena_data)
+        proc_names = [p.name for p in records.procedures]
+        assert not any("CT," in n for n in proc_names)
+        assert not any("XR," in n for n in proc_names)
+
+    def test_modality_ct(self):
+        assert athena_guess_modality("CT, abdomen + pelvis") == "CT"
+
+    def test_modality_mri(self):
+        assert athena_guess_modality("MRI procedure (PROC)") == "MRI"
+
+    def test_modality_us(self):
+        assert athena_guess_modality("US, chest wall") == "US"
+
+    def test_modality_xr(self):
+        assert athena_guess_modality("XR, chest") == "XR"
+
+    def test_modality_pet(self):
+        assert athena_guess_modality("PET, limited") == "PET"
+
+    def test_modality_ecg(self):
+        assert athena_guess_modality("electrocardiogram") == "ECG"
+
+    def test_modality_nuclear(self):
+        assert athena_guess_modality("NM, bone scan, whole body") == "NM"
+
+    def test_modality_unknown(self):
+        assert athena_guess_modality("some unknown study") == ""
 
 
 class TestMeditechAdapterCCDAMerge:

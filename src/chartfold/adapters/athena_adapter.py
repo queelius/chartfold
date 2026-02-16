@@ -10,6 +10,7 @@ from chartfold.models import (
     DocumentRecord,
     EncounterRecord,
     FamilyHistoryRecord,
+    ImagingReport,
     ImmunizationRecord,
     LabResult,
     MedicationRecord,
@@ -40,6 +41,7 @@ def _parser_counts(data: dict) -> dict[str, int]:
         "mental_status": len(data.get("mental_status", [])),
         "clinical_notes": len(data.get("clinical_notes", [])),
         "procedures": len(data.get("procedures", [])),
+        "imaging_reports": len(data.get("imaging_reports", [])),
     }
 
 
@@ -225,6 +227,43 @@ def _convert_procedure(proc: dict, source: str) -> ProcedureRecord:
     )
 
 
+def _guess_modality(name: str) -> str:
+    """Infer imaging modality from study name."""
+    nl = name.lower()
+    if "ct," in nl or "ct " in nl or nl.startswith("ct"):
+        return "CT"
+    if "mri" in nl or "magnetic resonance" in nl:
+        return "MRI"
+    if nl.startswith("us,") or nl.startswith("us ") or "ultrasound" in nl:
+        return "US"
+    if "x-ray" in nl or "xr " in nl or nl.startswith("xr,"):
+        return "XR"
+    if "pet" in nl or "positron" in nl:
+        return "PET"
+    if "mammogra" in nl:
+        return "MG"
+    if "fluoroscop" in nl:
+        return "FL"
+    if "nuclear" in nl or "bone scan" in nl:
+        return "NM"
+    if "echocardiogra" in nl or "echo " in nl:
+        return "US"
+    if "electrocardiogram" in nl or "ekg" in nl or "ecg" in nl:
+        return "ECG"
+    return ""
+
+
+def _convert_imaging(img: dict, source: str) -> ImagingReport:
+    """Convert imaging dict to ImagingReport."""
+    name = img.get("name", "")
+    return ImagingReport(
+        source=source,
+        study_name=name,
+        study_date=normalize_date_to_iso(img.get("date", "")),
+        modality=_guess_modality(name),
+    )
+
+
 def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecords:
     """Transform athenahealth extraction output into UnifiedRecords.
 
@@ -264,6 +303,9 @@ def athena_to_unified(data: dict, source_name: str | None = None) -> UnifiedReco
         _convert_clinical_note(n, source) for n in data.get("clinical_notes", [])
     ]
     records.procedures = [_convert_procedure(p, source) for p in data.get("procedures", [])]
+    records.imaging_reports = [
+        _convert_imaging(img, source) for img in data.get("imaging_reports", [])
+    ]
 
     # Source assets (non-parsed files)
     input_dir = data.get("input_dir", "")

@@ -11,6 +11,7 @@ from chartfold.sources.athena import (
     _extract_mental_status,
     _extract_patient,
     _extract_problems,
+    _extract_procedures,
     _extract_results,
     _extract_vitals,
     _parse_vital_value,
@@ -750,3 +751,80 @@ class TestClinicalNotesExtraction:
         )
         notes = _extract_clinical_notes(section, "Plan of Treatment")
         assert notes == []
+
+
+class TestProcedureImagingSplit:
+    """Tests for splitting procedures from imaging in the Procedures section."""
+
+    def test_procedures_and_imaging_split(self):
+        """Tables with 'Imaging Date' header produce imaging, others produce procedures."""
+        section = _make_section(
+            "Procedures",
+            """
+            <table>
+                <thead><tr><th>Date</th><th>Name</th><th>Status</th></tr></thead>
+                <tbody>
+                    <tr><td>05/29/2024</td><td>colonoscopy</td><td>completed</td></tr>
+                    <tr><td>10/20/2022</td><td>lobectomy of thyroid</td><td>completed</td></tr>
+                </tbody>
+            </table>
+            <table>
+                <thead><tr><th>Imaging Date</th><th>Name</th><th>Status</th></tr></thead>
+                <tbody>
+                    <tr><td>12/08/2021</td><td>CT, abdomen + pelvis</td><td>completed</td></tr>
+                    <tr><td>02/08/2022</td><td>XR, chest</td><td>completed</td></tr>
+                    <tr><td>03/09/2022</td><td>US, thyroid</td><td>completed</td></tr>
+                </tbody>
+            </table>
+        """,
+        )
+        procs, imaging = _extract_procedures(section)
+        assert len(procs) == 2
+        assert len(imaging) == 3
+        assert procs[0]["name"] == "colonoscopy"
+        assert procs[1]["name"] == "lobectomy of thyroid"
+        assert imaging[0]["name"] == "CT, abdomen + pelvis"
+        assert imaging[1]["name"] == "XR, chest"
+        assert imaging[2]["name"] == "US, thyroid"
+
+    def test_no_imaging_table(self):
+        """Section with only a procedure table returns empty imaging list."""
+        section = _make_section(
+            "Procedures",
+            """
+            <table>
+                <thead><tr><th>Date</th><th>Name</th></tr></thead>
+                <tbody>
+                    <tr><td>05/29/2024</td><td>colonoscopy</td></tr>
+                </tbody>
+            </table>
+        """,
+        )
+        procs, imaging = _extract_procedures(section)
+        assert len(procs) == 1
+        assert len(imaging) == 0
+
+    def test_only_imaging_table(self):
+        """Section with only an imaging table returns empty procedures list."""
+        section = _make_section(
+            "Procedures",
+            """
+            <table>
+                <thead><tr><th>Imaging Date</th><th>Name</th></tr></thead>
+                <tbody>
+                    <tr><td>12/08/2021</td><td>CT, abdomen</td></tr>
+                </tbody>
+            </table>
+        """,
+        )
+        procs, imaging = _extract_procedures(section)
+        assert len(procs) == 0
+        assert len(imaging) == 1
+        assert imaging[0]["name"] == "CT, abdomen"
+
+    def test_empty_section(self):
+        """Empty section returns two empty lists."""
+        section = _make_section("Procedures", "")
+        procs, imaging = _extract_procedures(section)
+        assert procs == []
+        assert imaging == []

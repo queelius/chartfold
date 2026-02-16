@@ -637,6 +637,10 @@ def sample_athena_data():
                 "facility": "Anderson",
             },
         ],
+        "imaging_reports": [
+            {"name": "CT, abdomen + pelvis, w/ contrast", "date": "12/08/2021"},
+            {"name": "XR, chest", "date": "02/08/2022"},
+        ],
     }
 
 
