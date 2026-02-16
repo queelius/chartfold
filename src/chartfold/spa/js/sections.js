@@ -59,20 +59,20 @@ const Sections = {
 
     // --- 1. Summary Cards ---
     var tables = [
-      { label: 'Conditions', table: 'conditions', section: 'conditions' },
-      { label: 'Medications', table: 'medications', section: 'medications' },
-      { label: 'Lab Results', table: 'lab_results', section: 'lab_results' },
-      { label: 'Encounters', table: 'encounters', section: 'encounters' },
-      { label: 'Imaging', table: 'imaging_reports', section: 'imaging' },
-      { label: 'Pathology', table: 'pathology_reports', section: 'pathology' },
-      { label: 'Clinical Notes', table: 'clinical_notes', section: 'clinical_notes' },
-      { label: 'Procedures', table: 'procedures', section: 'procedures' },
-      { label: 'Vitals', table: 'vitals', section: 'vitals' },
-      { label: 'Immunizations', table: 'immunizations', section: 'immunizations' },
-      { label: 'Allergies', table: 'allergies', section: 'allergies' },
-      { label: 'Social History', table: 'social_history', section: 'social_history' },
-      { label: 'Family History', table: 'family_history', section: 'family_history' },
-      { label: 'Mental Status', table: 'mental_status', section: 'mental_status' },
+      { label: 'Conditions', table: 'conditions', section: 'conditions', dateCol: 'onset_date' },
+      { label: 'Medications', table: 'medications', section: 'medications', dateCol: 'start_date' },
+      { label: 'Lab Results', table: 'lab_results', section: 'lab_results', dateCol: 'result_date' },
+      { label: 'Encounters', table: 'encounters', section: 'encounters', dateCol: 'encounter_date' },
+      { label: 'Imaging', table: 'imaging_reports', section: 'imaging', dateCol: 'study_date' },
+      { label: 'Pathology', table: 'pathology_reports', section: 'pathology', dateCol: 'report_date' },
+      { label: 'Clinical Notes', table: 'clinical_notes', section: 'clinical_notes', dateCol: 'note_date' },
+      { label: 'Procedures', table: 'procedures', section: 'procedures', dateCol: 'procedure_date' },
+      { label: 'Vitals', table: 'vitals', section: 'vitals', dateCol: 'recorded_date' },
+      { label: 'Immunizations', table: 'immunizations', section: 'immunizations', dateCol: 'admin_date' },
+      { label: 'Allergies', table: 'allergies', section: 'allergies', dateCol: 'onset_date' },
+      { label: 'Social History', table: 'social_history', section: 'social_history', dateCol: 'recorded_date' },
+      { label: 'Family History', table: 'family_history', section: 'family_history', dateCol: null },
+      { label: 'Mental Status', table: 'mental_status', section: 'mental_status', dateCol: 'recorded_date' },
     ];
 
     var cardGrid = UI.el('div', { className: 'card-grid' });
@@ -83,9 +83,19 @@ const Sections = {
         var count = row ? row.n : 0;
         if (count > 0) {
           var section = t.section;
-          cardGrid.appendChild(UI.card(t.label, count, {
+          // Query latest date for this table
+          var latestDate = null;
+          if (t.dateCol) {
+            try {
+              var dateRow = db.queryOne('SELECT MAX("' + t.dateCol + '") AS latest FROM "' + t.table + '"');
+              if (dateRow && dateRow.latest) latestDate = dateRow.latest;
+            } catch (e2) { /* ignore */ }
+          }
+          var cardOpts = {
             onClick: (function(sec) { return function() { Router.navigate(sec); }; })(section)
-          }));
+          };
+          if (latestDate) cardOpts.subtitle = 'Latest: ' + latestDate;
+          cardGrid.appendChild(UI.card(t.label, count, cardOpts));
         }
       } catch (e) {
         // table may not exist, skip
@@ -203,6 +213,52 @@ const Sections = {
     } catch (e) {
       // lab_results table may not exist, skip alerts
     }
+
+    // --- 4. Recent Activity ---
+    try {
+      var activityQueries = [
+        { sql: "SELECT result_date AS event_date, test_name AS description, source, 'Lab' AS event_type FROM lab_results ORDER BY result_date DESC LIMIT 3", section: 'lab_results' },
+        { sql: "SELECT study_date AS event_date, study_name AS description, source, 'Imaging' AS event_type FROM imaging_reports ORDER BY study_date DESC LIMIT 3", section: 'imaging' },
+        { sql: "SELECT procedure_date AS event_date, name AS description, source, 'Procedure' AS event_type FROM procedures ORDER BY procedure_date DESC LIMIT 3", section: 'procedures' },
+        { sql: "SELECT encounter_date AS event_date, COALESCE(encounter_type, '') || ' - ' || COALESCE(facility, '') AS description, source, 'Encounter' AS event_type FROM encounters ORDER BY encounter_date DESC LIMIT 3", section: 'encounters' }
+      ];
+      var activityRows = [];
+      for (var aqi = 0; aqi < activityQueries.length; aqi++) {
+        try {
+          var aqRows = db.query(activityQueries[aqi].sql);
+          for (var ari = 0; ari < aqRows.length; ari++) {
+            aqRows[ari]._section = activityQueries[aqi].section;
+            activityRows.push(aqRows[ari]);
+          }
+        } catch (e2) { /* table may not exist */ }
+      }
+      // Sort by date descending, take top 10
+      activityRows.sort(function(a, b) {
+        return (b.event_date || '').localeCompare(a.event_date || '');
+      });
+      activityRows = activityRows.slice(0, 10);
+
+      if (activityRows.length > 0) {
+        var activityCard = UI.el('div', { className: 'card mt-16', style: 'padding: 20px;' });
+        activityCard.appendChild(UI.el('h3', { textContent: 'Recent Activity', style: 'margin: 0 0 12px 0;' }));
+        var typeBadgeColors = { Lab: 'blue', Imaging: 'green', Procedure: 'orange', Encounter: 'gray' };
+        activityCard.appendChild(UI.table(
+          [
+            { label: 'Date', key: 'event_date' },
+            { label: 'Type', key: 'event_type', format: function(v) {
+              return UI.badge(v, typeBadgeColors[v] || 'gray');
+            }},
+            { label: 'Description', key: 'description' },
+            { label: 'Source', key: 'source' }
+          ],
+          activityRows,
+          { sortable: false }
+        ));
+        el.appendChild(activityCard);
+      }
+    } catch (e) {
+      // ignore activity errors
+    }
   },
 
   conditions(el, db) {
@@ -210,7 +266,17 @@ const Sections = {
     if (n === -1) return;
 
     var cols = [
-      { label: 'Condition', key: 'condition_name' },
+      { label: 'Condition', key: 'condition_name', format: function(v, row) {
+        if (v) return v;
+        if (row.icd10_code) {
+          var container = UI.el('span');
+          container.appendChild(UI.el('span', { textContent: row.icd10_code }));
+          container.appendChild(document.createTextNode(' '));
+          container.appendChild(UI.badge('code only', 'gray'));
+          return container;
+        }
+        return UI.el('span', { textContent: '\u2014', style: 'color: var(--text-secondary);' });
+      }},
       { label: 'Status', key: 'clinical_status', format: function(v) {
         if (!v) return UI.badge('Unknown', 'orange');
         var lv = v.toLowerCase();
@@ -250,15 +316,56 @@ const Sections = {
 
     var allMeds = db.query('SELECT * FROM medications ORDER BY status, name');
 
-    // Build cross-source map: lowercase name -> Set of sources
+    // Build cross-source map: lowercase name -> { source: status }
     var sourceMap = {};
     for (var i = 0; i < allMeds.length; i++) {
-      var key = (allMeds[i].name || '').toLowerCase();
+      var key = (allMeds[i].name || '').toLowerCase().trim();
       if (!sourceMap[key]) sourceMap[key] = {};
-      if (allMeds[i].source) sourceMap[key][allMeds[i].source] = true;
+      if (allMeds[i].source) sourceMap[key][allMeds[i].source] = allMeds[i].status || 'Unknown';
     }
 
-    // Split into active vs other status groups
+    // --- Tab bar ---
+    var activeTab = 'active';
+    var tabBar = UI.el('div', { style: 'display: flex; gap: 4px; margin-bottom: 16px;' });
+    var tabs = [
+      { key: 'active', label: 'Active Medications' },
+      { key: 'all', label: 'All Medications' },
+      { key: 'reconciliation', label: 'Reconciliation' }
+    ];
+    var tabBtns = {};
+    for (var tbi = 0; tbi < tabs.length; tbi++) {
+      (function(tab) {
+        var btn = UI.el('button', {
+          textContent: tab.label,
+          style: 'padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 600; border: 1px solid var(--border); cursor: pointer;'
+        });
+        btn.addEventListener('click', function() { setMedTab(tab.key); });
+        tabBtns[tab.key] = btn;
+        tabBar.appendChild(btn);
+      })(tabs[tbi]);
+    }
+    el.appendChild(tabBar);
+
+    var activeView = UI.el('div');
+    var allView = UI.el('div', { style: 'display: none;' });
+    var reconView = UI.el('div', { style: 'display: none;' });
+    el.appendChild(activeView);
+    el.appendChild(allView);
+    el.appendChild(reconView);
+
+    function setMedTab(tab) {
+      activeTab = tab;
+      var views = { active: activeView, all: allView, reconciliation: reconView };
+      for (var vk in views) {
+        views[vk].style.display = vk === tab ? '' : 'none';
+        tabBtns[vk].style.background = vk === tab ? 'var(--accent)' : 'var(--surface)';
+        tabBtns[vk].style.color = vk === tab ? '#fff' : 'var(--text)';
+        tabBtns[vk].style.borderColor = vk === tab ? 'var(--accent)' : 'var(--border)';
+      }
+    }
+    setMedTab('active');
+
+    // === ACTIVE VIEW ===
     var activeMeds = [];
     var otherGroups = {};
     for (var j = 0; j < allMeds.length; j++) {
@@ -273,38 +380,119 @@ const Sections = {
       }
     }
 
-    // Active medications as clinical cards
     if (activeMeds.length > 0) {
-      el.appendChild(UI.el('h3', { textContent: 'Active Medications (' + activeMeds.length + ')', style: 'margin: 16px 0 8px;' }));
+      activeView.appendChild(UI.el('h3', { textContent: 'Active Medications (' + activeMeds.length + ')', style: 'margin: 16px 0 8px;' }));
       for (var a = 0; a < activeMeds.length; a++) {
         var m = activeMeds[a];
         var parts = [];
         if (m.route) parts.push('Route: ' + m.route);
         if (m.start_date) parts.push('Started: ' + m.start_date);
         if (m.prescriber) parts.push('Prescriber: ' + m.prescriber);
-        var multiSource = Object.keys(sourceMap[(m.name || '').toLowerCase()] || {}).length > 1;
+        var multiSource = Object.keys(sourceMap[(m.name || '').toLowerCase().trim()] || {}).length > 1;
         var badgeOpt = multiSource ? { text: 'Multi-source', variant: 'blue' } : null;
         var cardOpts = {};
         if (badgeOpt) cardOpts.badge = badgeOpt;
-        el.appendChild(UI.clinicalCard(m.name || 'Unknown', m.sig || '', parts.join(' | '), cardOpts));
+        activeView.appendChild(UI.clinicalCard(m.name || 'Unknown', m.sig || '', parts.join(' | '), cardOpts));
       }
+    } else {
+      activeView.appendChild(UI.empty('No active medications.'));
     }
 
-    // Other status groups as tables
+    // === ALL VIEW ===
     var tableCols = [
       { label: 'Name', key: 'name' },
       { label: 'Sig', key: 'sig' },
       { label: 'Route', key: 'route' },
+      { label: 'Status', key: 'status', format: function(v) {
+        if (!v) return UI.badge('Unknown', 'gray');
+        var lv = v.toLowerCase();
+        if (lv === 'active') return UI.badge(v, 'green');
+        if (lv === 'completed' || lv === 'stopped') return UI.badge(v, 'gray');
+        return UI.badge(v, 'orange');
+      }},
       { label: 'Start Date', key: 'start_date' },
       { label: 'Stop Date', key: 'stop_date' },
       { label: 'Source', key: 'source' }
     ];
-    var groupNames = Object.keys(otherGroups).sort();
-    for (var g = 0; g < groupNames.length; g++) {
-      var gName = groupNames[g];
-      var gMeds = otherGroups[gName];
-      el.appendChild(UI.el('h3', { textContent: gName + ' (' + gMeds.length + ')', style: 'margin: 24px 0 8px;' }));
-      el.appendChild(UI.table(tableCols, gMeds));
+    allView.appendChild(UI.table(tableCols, allMeds));
+
+    // === RECONCILIATION VIEW ===
+    // Group by normalized name, show per-source status
+    var reconGroups = {};
+    var reconOrder = [];
+    for (var ri = 0; ri < allMeds.length; ri++) {
+      var rKey = (allMeds[ri].name || '').toLowerCase().trim();
+      if (!reconGroups[rKey]) {
+        reconGroups[rKey] = { name: allMeds[ri].name || rKey, entries: [] };
+        reconOrder.push(rKey);
+      }
+      reconGroups[rKey].entries.push(allMeds[ri]);
+    }
+
+    // Multi-source groups with discrepancies first
+    var multiSourceGroups = [];
+    var singleSourceGroups = [];
+    for (var rgi = 0; rgi < reconOrder.length; rgi++) {
+      var rg = reconGroups[reconOrder[rgi]];
+      var sources = {};
+      for (var rei = 0; rei < rg.entries.length; rei++) {
+        var src = rg.entries[rei].source || 'Unknown';
+        sources[src] = rg.entries[rei].status || 'Unknown';
+      }
+      rg.sources = sources;
+      var srcKeys = Object.keys(sources);
+      if (srcKeys.length > 1) {
+        // Check for status discrepancy
+        var statuses = {};
+        for (var sk = 0; sk < srcKeys.length; sk++) statuses[sources[srcKeys[sk]].toLowerCase()] = true;
+        rg.hasDiscrepancy = Object.keys(statuses).length > 1;
+        multiSourceGroups.push(rg);
+      } else {
+        singleSourceGroups.push(rg);
+      }
+    }
+
+    if (multiSourceGroups.length > 0) {
+      reconView.appendChild(UI.el('h3', { textContent: 'Cross-Source Medications (' + multiSourceGroups.length + ')', style: 'margin: 16px 0 8px;' }));
+      for (var mg = 0; mg < multiSourceGroups.length; mg++) {
+        var group = multiSourceGroups[mg];
+        var badgeRow = UI.el('div', { style: 'display: flex; gap: 6px; flex-wrap: wrap; align-items: center;' });
+        var srcList = Object.keys(group.sources);
+        for (var si = 0; si < srcList.length; si++) {
+          var srcStatus = group.sources[srcList[si]];
+          var srcVariant = srcStatus.toLowerCase() === 'active' ? 'green' : 'gray';
+          badgeRow.appendChild(UI.badge(srcList[si] + ': ' + srcStatus, srcVariant));
+        }
+        if (group.hasDiscrepancy) {
+          badgeRow.appendChild(UI.badge('Status differs', 'orange'));
+        }
+        var cardOpts2 = {};
+        if (group.hasDiscrepancy) cardOpts2.badge = { text: 'Discrepancy', variant: 'orange' };
+        reconView.appendChild(UI.clinicalCard(group.name, badgeRow, ''));
+      }
+    } else {
+      reconView.appendChild(UI.el('p', { textContent: 'No medications appear in multiple sources.', style: 'color: var(--text-secondary); margin: 16px 0;' }));
+    }
+
+    if (singleSourceGroups.length > 0) {
+      var singleDetails = UI.el('details', { style: 'margin-top: 16px;' });
+      singleDetails.appendChild(UI.el('summary', {
+        textContent: 'Single-Source Medications (' + singleSourceGroups.length + ')',
+        style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
+      }));
+      var singleList = UI.el('div', { style: 'padding: 4px 0;' });
+      for (var sg = 0; sg < singleSourceGroups.length; sg++) {
+        var sGroup = singleSourceGroups[sg];
+        var srcName = Object.keys(sGroup.sources)[0] || '';
+        var srcStat = sGroup.sources[srcName] || '';
+        var sRow = UI.el('div', { style: 'display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border);' });
+        sRow.appendChild(UI.el('span', { textContent: sGroup.name, style: 'flex: 1;' }));
+        sRow.appendChild(UI.badge(srcStat, srcStat.toLowerCase() === 'active' ? 'green' : 'gray'));
+        sRow.appendChild(UI.el('span', { textContent: srcName, style: 'font-size: 12px; color: var(--text-secondary);' }));
+        singleList.appendChild(sRow);
+      }
+      singleDetails.appendChild(singleList);
+      reconView.appendChild(singleDetails);
     }
   },
 
@@ -1095,19 +1283,56 @@ const Sections = {
     var data = [];
     var fromDB = false;
     try {
-      var dbRows = db.query("SELECT slug, title, category, summary, content, source FROM analyses ORDER BY updated_at DESC");
+      var dbRows = db.query(
+        "SELECT slug, title, category, summary, content, source, " +
+        "json_extract(frontmatter, '$.status') AS status, " +
+        "json_extract(frontmatter, '$.date') AS doc_date, " +
+        "updated_at FROM analyses ORDER BY updated_at DESC"
+      );
       if (dbRows.length > 0) {
         data = dbRows.map(function(r) {
-          return { slug: r.slug, title: r.title, body: r.content, filename: r.slug + '.md', category: r.category, summary: r.summary };
+          return {
+            slug: r.slug, title: r.title, body: r.content,
+            filename: r.slug + '.md', category: r.category,
+            summary: r.summary, source: r.source,
+            status: r.status || 'current',
+            doc_date: r.doc_date || '',
+            updated_at: r.updated_at || ''
+          };
         });
         fromDB = true;
       }
     } catch (e) { /* analyses table may not exist */ }
 
+    // Fetch tags from DB if available
+    var tagMap = {};
+    if (fromDB) {
+      try {
+        var tagRows = db.query(
+          "SELECT at.analysis_id, at.tag, a.slug " +
+          "FROM analysis_tags at JOIN analyses a ON at.analysis_id = a.id"
+        );
+        for (var ti = 0; ti < tagRows.length; ti++) {
+          var slug = tagRows[ti].slug;
+          if (!tagMap[slug]) tagMap[slug] = [];
+          tagMap[slug].push(tagRows[ti].tag);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     if (!fromDB) {
       try {
         var raw = JSON.parse(document.getElementById('chartfold-analysis').textContent);
-        if (Array.isArray(raw)) data = raw;
+        if (Array.isArray(raw)) {
+          data = raw.map(function(r) {
+            return {
+              slug: r.slug || '', title: r.title || '', body: r.body || '',
+              filename: r.filename || '', category: r.category || '',
+              summary: r.summary || '', source: r.source || '',
+              status: 'current', doc_date: '', updated_at: ''
+            };
+          });
+        }
       } catch (e) { /* ignore */ }
     }
 
@@ -1118,6 +1343,17 @@ const Sections = {
       return;
     }
 
+    // Split into current vs archived
+    var currentAnalyses = [];
+    var archivedAnalyses = [];
+    for (var si = 0; si < data.length; si++) {
+      if ((data[si].status || '').toLowerCase() === 'archived') {
+        archivedAnalyses.push(data[si]);
+      } else {
+        currentAnalyses.push(data[si]);
+      }
+    }
+
     // Build filename -> anchor-id map for cross-linking between analysis files
     var filenameMap = {};
     for (var j = 0; j < data.length; j++) {
@@ -1125,18 +1361,50 @@ const Sections = {
       if (fn) filenameMap[fn] = 'analysis-' + fn.replace(/\.md$/i, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     }
 
-    for (var i = 0; i < data.length; i++) {
-      var entry = data[i];
-      var anchorId = filenameMap[entry.filename || entry.slug] || ('analysis-' + i);
-      var contentDiv = UI.el('div', { className: 'analysis-content' });
+    function renderAnalysisCard(entry, container) {
+      var anchorId = filenameMap[entry.filename || entry.slug] || ('analysis-' + entry.slug);
 
-      // Build subtitle with category badge if present
-      var subtitle = entry.filename || '';
-      if (entry.category) {
-        subtitle = '[' + entry.category + '] ' + subtitle;
+      // Build summary card content (always visible)
+      var summaryParts = [];
+
+      // Title line with badges
+      var titleLine = UI.el('div', { style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;' });
+      titleLine.appendChild(UI.el('strong', { textContent: entry.title, style: 'font-size: 15px;' }));
+      if (entry.category) titleLine.appendChild(UI.badge(entry.category, 'blue'));
+      var statusVariant = (entry.status || '').toLowerCase() === 'archived' ? 'gray' : 'green';
+      titleLine.appendChild(UI.badge(entry.status || 'current', statusVariant));
+      summaryParts.push(titleLine);
+
+      // Date and source line
+      var metaLine = UI.el('div', { style: 'font-size: 13px; color: var(--text-secondary); margin-top: 4px;' });
+      var metaParts = [];
+      if (entry.doc_date) metaParts.push(entry.doc_date);
+      if (entry.source) metaParts.push('by ' + entry.source);
+      metaLine.textContent = metaParts.join(' \u2022 ');
+      if (metaParts.length > 0) summaryParts.push(metaLine);
+
+      // Summary text
+      if (entry.summary) {
+        summaryParts.push(UI.el('p', {
+          textContent: entry.summary,
+          style: 'margin: 8px 0 0 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;'
+        }));
       }
 
-      // Markdown.render returns sanitized HTML from our own embedded markdown parser (trusted internal content)
+      // Tag chips
+      var tags = tagMap[entry.slug] || [];
+      if (tags.length > 0) {
+        var tagRow = UI.el('div', { style: 'margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;' });
+        for (var tgi = 0; tgi < tags.length; tgi++) {
+          tagRow.appendChild(UI.badge(tags[tgi], 'gray'));
+        }
+        summaryParts.push(tagRow);
+      }
+
+      var summaryEl = UI.el('div', { style: 'padding: 4px 0;' }, summaryParts);
+
+      // Full content (hidden by default)
+      var contentDiv = UI.el('div', { className: 'analysis-content', style: 'margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);' });
       contentDiv.innerHTML = Markdown.render(entry.body);
 
       // Rewrite .md file links to scroll to the corresponding inline section
@@ -1144,7 +1412,7 @@ const Sections = {
       for (var li = 0; li < links.length; li++) {
         var href = links[li].getAttribute('href');
         if (href && /\.md$/i.test(href)) {
-          var targetFn = href.replace(/^.*\//, ''); // strip path prefix, keep filename
+          var targetFn = href.replace(/^.*\//, '');
           var targetId = filenameMap[targetFn];
           if (targetId) {
             links[li].setAttribute('href', '#' + targetId);
@@ -1153,22 +1421,34 @@ const Sections = {
         }
       }
 
-      if (i === 0) {
-        // First entry expanded by default
-        var card = UI.clinicalCard(entry.title, subtitle, contentDiv);
-        card.id = anchorId;
-        el.appendChild(card);
-      } else {
-        var details = UI.el('details', { style: 'margin-bottom: 8px;' });
-        details.id = anchorId;
-        details.appendChild(UI.el('summary', {
-          textContent: entry.title,
-          style: 'cursor: pointer; font-weight: 600; padding: 8px 0;'
-        }));
-        var cardInner = UI.clinicalCard(entry.title, subtitle, contentDiv);
-        details.appendChild(cardInner);
-        el.appendChild(details);
+      // Wrap in collapsible details
+      var details = UI.el('details', { className: 'card', style: 'margin-bottom: 12px; padding: 16px;' });
+      details.id = anchorId;
+      var summaryTag = UI.el('summary', { style: 'cursor: pointer; list-style: none;' });
+      summaryTag.appendChild(summaryEl);
+      details.appendChild(summaryTag);
+      details.appendChild(contentDiv);
+      container.appendChild(details);
+    }
+
+    // Render current analyses
+    if (currentAnalyses.length > 0) {
+      for (var ci = 0; ci < currentAnalyses.length; ci++) {
+        renderAnalysisCard(currentAnalyses[ci], el);
       }
+    }
+
+    // Render archived analyses in a collapsed group
+    if (archivedAnalyses.length > 0) {
+      var archivedGroup = UI.el('details', { style: 'margin-top: 16px;' });
+      archivedGroup.appendChild(UI.el('summary', {
+        textContent: 'Archived (' + archivedAnalyses.length + ')',
+        style: 'cursor: pointer; font-weight: 600; padding: 8px 0; color: var(--text-secondary);'
+      }));
+      for (var ai = 0; ai < archivedAnalyses.length; ai++) {
+        renderAnalysisCard(archivedAnalyses[ai], archivedGroup);
+      }
+      el.appendChild(archivedGroup);
     }
 
     // Handle clicks on .md links: expand the target <details> and scroll to it
@@ -1189,6 +1469,49 @@ const Sections = {
     el.appendChild(UI.sectionHeader('SQL Console', 'Query your data directly'));
 
     var wrapper = UI.el('div', { className: 'sql-console' });
+
+    // Schema reference (lazy-loaded on first open)
+    var schemaDetails = UI.el('details', { style: 'margin-bottom: 12px;' });
+    schemaDetails.appendChild(UI.el('summary', {
+      textContent: 'Schema Reference',
+      style: 'cursor: pointer; font-weight: 600; font-size: 14px; padding: 6px 0; color: var(--text-secondary);'
+    }));
+    var schemaLoaded = false;
+    var runRaw = db['exec'].bind(db);
+    schemaDetails.addEventListener('toggle', function() {
+      if (schemaDetails.open && !schemaLoaded) {
+        schemaLoaded = true;
+        var schemaContent = UI.el('div', { style: 'padding: 8px 0; font-family: monospace; font-size: 13px; line-height: 1.8;' });
+        try {
+          var tables = runRaw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+          if (tables && tables[0] && tables[0].values) {
+            for (var sti = 0; sti < tables[0].values.length; sti++) {
+              var tableName = tables[0].values[sti][0];
+              var cols = runRaw("PRAGMA table_info('" + tableName.replace(/'/g, "''") + "')");
+              var colNames = [];
+              if (cols && cols[0] && cols[0].values) {
+                for (var ci = 0; ci < cols[0].values.length; ci++) {
+                  var colName = cols[0].values[ci][1];
+                  var colType = cols[0].values[ci][2] || '';
+                  colNames.push(colName + (colType ? ' ' + colType : ''));
+                }
+              }
+              var line = UI.el('div', { style: 'padding: 2px 0;' });
+              line.appendChild(UI.el('strong', { textContent: tableName }));
+              line.appendChild(UI.el('span', {
+                textContent: ' (' + colNames.join(', ') + ')',
+                style: 'color: var(--text-secondary);'
+              }));
+              schemaContent.appendChild(line);
+            }
+          }
+        } catch (e) {
+          schemaContent.appendChild(UI.el('div', { textContent: 'Error loading schema: ' + e.message, style: 'color: #ff3b30;' }));
+        }
+        schemaDetails.appendChild(schemaContent);
+      }
+    });
+    wrapper.appendChild(schemaDetails);
 
     // Example query chips
     var chips = [

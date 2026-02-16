@@ -668,8 +668,8 @@ class TestSectionsJs:
         assert "otherGroups" in exported_html
 
     def test_medications_table_for_non_active(self, exported_html):
-        """Medications non-active groups rendered as sortable tables."""
-        assert "UI.table(tableCols, gMeds)" in exported_html
+        """Medications all-view renders a sortable table with all meds."""
+        assert "UI.table(tableCols, allMeds)" in exported_html
 
     def test_medications_empty_state(self, exported_html):
         """Medications section shows empty state when no medications."""
@@ -1563,3 +1563,143 @@ class TestNewSections:
         assert "family_history(el, db)" in html
         assert "mental_status(el, db)" in html
         assert "personal_notes(el, db)" in html
+
+
+class TestSpaUxImprovements:
+    """Tests for the SPA UX improvements (Feb 2026)."""
+
+    # --- Analysis Section Overhaul ---
+
+    def test_analysis_queries_frontmatter_status(self, exported_html):
+        """Analysis section queries json_extract for status field."""
+        assert "json_extract(frontmatter" in exported_html
+
+    def test_analysis_splits_current_archived(self, exported_html):
+        """Analysis section splits current vs archived analyses."""
+        assert "currentAnalyses" in exported_html
+        assert "archivedAnalyses" in exported_html
+
+    def test_analysis_status_badge(self, exported_html):
+        """Analysis cards show status badges."""
+        assert "statusVariant" in exported_html
+
+    def test_analysis_category_badge(self, exported_html):
+        """Analysis cards show category badge."""
+        assert "entry.category" in exported_html
+        assert "UI.badge(entry.category" in exported_html
+
+    def test_analysis_tag_chips(self, exported_html):
+        """Analysis cards show tag chips from analysis_tags."""
+        assert "tagMap" in exported_html
+        assert "analysis_tags" in exported_html
+
+    def test_analysis_all_collapsed(self, exported_html):
+        """All analysis cards render as collapsed details elements."""
+        # No more first-entry-expanded pattern
+        assert "renderAnalysisCard" in exported_html
+
+    def test_analysis_summary_text(self, exported_html):
+        """Analysis cards show summary text from DB."""
+        assert "entry.summary" in exported_html
+
+    def test_analysis_archived_group(self, exported_html):
+        """Archived analyses grouped under a collapsible heading."""
+        assert "'Archived ('" in exported_html
+
+    # --- Overview Dashboard Enhancement ---
+
+    def test_overview_date_formatting(self, exported_html):
+        """Topbar date is formatted as human-readable."""
+        assert "toLocaleDateString" in exported_html
+        assert "'Updated: '" in exported_html
+
+    def test_overview_cards_have_latest_date(self, exported_html):
+        """Overview cards query MAX date for each table."""
+        assert "MAX(" in exported_html
+        assert "Latest:" in exported_html
+
+    def test_overview_recent_activity(self, exported_html):
+        """Overview section includes Recent Activity card."""
+        assert "'Recent Activity'" in exported_html
+        assert "activityRows" in exported_html
+
+    def test_overview_activity_type_badges(self, exported_html):
+        """Recent Activity uses color-coded type badges."""
+        assert "Lab: 'blue'" in exported_html
+        assert "Procedure: 'orange'" in exported_html
+
+    # --- Conditions: Fill Empty Names ---
+
+    def test_conditions_empty_name_shows_icd10(self, exported_html):
+        """When condition_name is empty, ICD-10 code is shown."""
+        assert "row.icd10_code" in exported_html
+
+    def test_conditions_code_only_badge(self, exported_html):
+        """Empty condition names get a 'code only' badge."""
+        assert "'code only'" in exported_html
+
+    # --- Medications: Reconciliation Tab ---
+
+    def test_medications_has_three_tabs(self, exported_html):
+        """Medications section has Active, All, and Reconciliation tabs."""
+        assert "'Active Medications'" in exported_html
+        assert "'All Medications'" in exported_html
+        assert "'Reconciliation'" in exported_html
+
+    def test_medications_reconciliation_groups(self, exported_html):
+        """Reconciliation groups medications by normalized name."""
+        assert "reconGroups" in exported_html
+        assert "toLowerCase().trim()" in exported_html
+
+    def test_medications_discrepancy_badge(self, exported_html):
+        """Reconciliation flags status discrepancies with orange badge."""
+        assert "'Status differs'" in exported_html
+        assert "hasDiscrepancy" in exported_html
+
+    def test_medications_all_view_table(self, exported_html):
+        """All view shows a complete table with status badges."""
+        assert "UI.table(tableCols, allMeds)" in exported_html
+
+    # --- SQL Console: Schema Reference ---
+
+    def test_sql_console_schema_reference(self, exported_html):
+        """SQL Console has a collapsible Schema Reference."""
+        assert "'Schema Reference'" in exported_html
+
+    def test_sql_console_schema_lazy_load(self, exported_html):
+        """Schema Reference is lazy-loaded on first open."""
+        assert "schemaLoaded" in exported_html
+
+    def test_sql_console_schema_pragma(self, exported_html):
+        """Schema Reference queries PRAGMA table_info."""
+        assert "PRAGMA table_info" in exported_html
+
+    def test_sql_console_schema_sqlite_master(self, exported_html):
+        """Schema Reference queries sqlite_master for table names."""
+        assert "sqlite_master" in exported_html
+
+    # --- Dark Mode ---
+
+    def test_dark_mode_media_query(self, exported_html):
+        """CSS includes prefers-color-scheme: dark media query."""
+        assert "prefers-color-scheme: dark" in exported_html
+
+    def test_dark_mode_overrides_bg(self, exported_html):
+        """Dark mode overrides --bg custom property."""
+        assert "--bg: #1c1c1e" in exported_html
+
+    def test_dark_mode_overrides_surface(self, exported_html):
+        """Dark mode overrides --surface custom property."""
+        assert "--surface: #2c2c2e" in exported_html
+
+    def test_dark_mode_overrides_text(self, exported_html):
+        """Dark mode overrides --text custom property."""
+        assert "--text: #f5f5f7" in exported_html
+
+    def test_dark_mode_overrides_accent(self, exported_html):
+        """Dark mode uses iOS dark blue accent."""
+        assert "--accent: #0a84ff" in exported_html
+
+    def test_dark_mode_chart_tooltip(self, exported_html):
+        """Dark mode styles chart tooltips."""
+        assert ".chart-tooltip" in exported_html

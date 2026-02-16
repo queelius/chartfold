@@ -126,8 +126,16 @@
       );
     }
     if (genDate) {
+      // Format ISO timestamp to human-readable
+      var formattedDate = genDate;
+      try {
+        var d = new Date(genDate);
+        if (!isNaN(d.getTime())) {
+          formattedDate = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+      } catch (e) { /* keep raw */ }
       topbarRightChildren.push(
-        UI.el('span', { className: 'topbar-date', textContent: genDate })
+        UI.el('span', { className: 'topbar-date', textContent: 'Updated: ' + formattedDate })
       );
     }
     topbarRightChildren.push(

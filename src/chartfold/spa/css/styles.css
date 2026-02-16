@@ -636,3 +636,51 @@ table tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Dark mode --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --text: #f5f5f7;
+    --text-secondary: #98989d;
+    --border: #38383a;
+    --accent: #0a84ff;
+    --red: #ff453a;
+    --green: #30d158;
+    --orange: #ff9f0a;
+  }
+
+  table td {
+    border-bottom-color: #38383a;
+  }
+
+  table tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .chart-tooltip {
+    background: #2c2c2e !important;
+    color: #f5f5f7 !important;
+    border-color: #48484a !important;
+  }
+
+  input, textarea, select {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  code, pre {
+    background: #38383a;
+  }
+
+  .sidebar {
+    background: #1c1c1e;
+  }
+
+  .topbar {
+    background: #1c1c1e;
+    border-bottom-color: #38383a;
+  }
+}
