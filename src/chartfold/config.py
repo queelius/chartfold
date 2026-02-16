@@ -1,7 +1,7 @@
 """Configuration management for chartfold.
 
 Handles loading and generating TOML config files for personalized settings
-like which lab tests get chart pages on the Hugo site.
+like which lab tests to chart in the SPA export.
 """
 
 from __future__ import annotations
@@ -37,10 +37,6 @@ DEFAULT_CONFIG_TEMPLATE = """\
 #   match = Exact test names to match in the database (case-insensitive)
 
 {lab_tests_stanzas}
-
-[hugo]
-# Number of recent lab results to show on the dashboard
-dashboard_recent_labs = 10
 """
 
 
@@ -57,7 +53,6 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict:
 
     Returns a dict with at least:
     - lab_tests: list of LabTestConfig instances
-    - hugo: dict with Hugo-specific settings
 
     Falls back to defaults if the config file doesn't exist.
     """
@@ -100,9 +95,6 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict:
                         match.append(alias)
             config["lab_tests"].append(LabTestConfig(name=t, match=match))
 
-    if "hugo" in raw:
-        config["hugo"].update(raw["hugo"])
-
     return config
 
 
@@ -124,9 +116,6 @@ def _default_config() -> dict:
         lab_tests.append(LabTestConfig(name=t, match=match))
     return {
         "lab_tests": lab_tests,
-        "hugo": {
-            "dashboard_recent_labs": 10,
-        },
     }
 
 

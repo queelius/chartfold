@@ -182,7 +182,6 @@ class TestLoadConfig:
         assert len(lab_tests) == len(FALLBACK_KEY_TESTS)
         assert lab_tests[0].name == "CEA"
         assert "CEA" in lab_tests[0].match
-        assert config["hugo"]["dashboard_recent_labs"] == 10
 
     def test_loads_lab_tests_format(self, tmp_path):
         toml_path = tmp_path / "test.toml"
@@ -194,9 +193,6 @@ match = ["CEA", "Carcinoembryonic Antigen"]
 [[lab_tests]]
 name = "Hemoglobin"
 match = ["Hemoglobin", "Hgb", "HGB"]
-
-[hugo]
-dashboard_recent_labs = 20
 """)
         config = load_config(str(toml_path))
         lab_tests = get_lab_test_configs(config)
@@ -205,7 +201,6 @@ dashboard_recent_labs = 20
         assert lab_tests[0].match == ["CEA", "Carcinoembryonic Antigen"]
         assert lab_tests[1].name == "Hemoglobin"
         assert lab_tests[1].match == ["Hemoglobin", "Hgb", "HGB"]
-        assert config["hugo"]["dashboard_recent_labs"] == 20
 
     def test_empty_config_uses_defaults(self, tmp_path):
         toml_path = tmp_path / "empty.toml"
@@ -231,15 +226,6 @@ match = ["Missing Name Field"]
         lab_tests = get_lab_test_configs(config)
         assert len(lab_tests) == 1
         assert lab_tests[0].name == "CEA"
-
-    def test_hugo_settings_override(self, tmp_path):
-        toml_path = tmp_path / "hugo.toml"
-        toml_path.write_text("""
-[hugo]
-dashboard_recent_labs = 25
-""")
-        config = load_config(str(toml_path))
-        assert config["hugo"]["dashboard_recent_labs"] == 25
 
     def test_legacy_key_tests_format(self, tmp_path):
         """Legacy [key_tests] format is loaded with KNOWN_ABBREVIATIONS."""
