@@ -129,16 +129,15 @@ SQLite with WAL mode and foreign keys enabled. 16 clinical tables + `load_log` a
 
 ### MCP Server (mcp/server.py)
 
-FastMCP server exposes 22 tools. Config in `mcp/config.json`.
+FastMCP server exposes 12 tools. Config in `mcp/config.json`.
 
-- **SQL & schema**: `run_sql` (SELECT/WITH/PRAGMA only), `get_schema`
-- **Labs**: `query_labs`, `get_lab_series_tool`, `get_available_tests_tool`, `get_abnormal_labs_tool`
-- **Medications**: `get_medications`, `reconcile_medications_tool`
-- **Clinical data**: `get_timeline`, `search_notes`, `get_pathology_report`
-- **Visit & timeline analysis**: `get_visit_diff`, `get_visit_prep`, `get_surgical_timeline`
-- **Cross-source**: `match_cross_source_encounters`, `get_data_quality_report`
-- **Summary**: `get_database_summary`
+- **Read-only SQL**: `run_sql` (SQLite connection opened with `?mode=ro` — engine-level read-only enforcement, no regex needed). Also blocks ATTACH/DETACH to prevent opening writable databases.
+- **Schema**: `get_schema` (raw CREATE TABLE DDL from sqlite_master)
+- **Summary**: `get_database_summary` (table counts + load history — start here)
 - **Personal notes (CRUD)**: `save_note`, `get_note`, `search_notes_personal`, `delete_note`
+- **Structured analyses (CRUD)**: `save_analysis`, `get_analysis`, `search_analyses`, `list_analyses`, `delete_analysis`
+
+Design principle: the LLM writes its own SQL for all reads. Specialized query tools were removed in favor of `run_sql` + `get_schema`. Write operations go through dedicated tools with controlled parameters.
 
 ### Data Access Modules (analysis/)
 
