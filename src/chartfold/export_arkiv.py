@@ -3,9 +3,6 @@
 Each clinical table is exported as a separate .jsonl file, with one arkiv record
 per database row. Tags from note_tags and analysis_tags are folded into the
 parent record's metadata.
-
-This module provides the building blocks (Tasks 1-5); the main export_arkiv()
-entry point is not included here and will be added later.
 """
 
 from __future__ import annotations
@@ -13,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from collections import defaultdict
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -49,6 +47,18 @@ _FK_FIELDS: dict[str, tuple[str, str]] = {
 _STRIP_COLS: set[str] = {"id"}
 
 _MAX_ENUM_VALUES: int = 20
+
+_NOTE_TABLES = {"notes", "analyses"}
+
+_EXCLUDED_TABLES = {
+    "load_log", "source_assets", "documents",
+    "note_tags", "analysis_tags", "sqlite_sequence",
+}
+
+_TAG_CONFIG = {
+    "notes": ("note_tags", "note_id"),
+    "analyses": ("analysis_tags", "analysis_id"),
+}
 
 _COLLECTION_DESCRIPTIONS: dict[str, str] = {
     "patients": "Patient demographics",
@@ -337,3 +347,66 @@ def _sort_values(values: list[Any]) -> list[Any]:
     except TypeError:
         # Mixed types that can't be compared - sort by string representation
         return sorted(values, key=str)
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+
+def export_arkiv(
+    db: ChartfoldDB,
+    output_dir: str,
+    include_notes: bool = True,
+) -> str:
+    """Export database to arkiv format (JSONL + manifest).
+
+    Args:
+        db: Database connection.
+        output_dir: Directory to write output files.
+        include_notes: Include personal notes and analyses.
+
+    Returns the output directory path.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    tables_to_export = [
+        t for t in _TIMESTAMP_FIELDS
+        if t not in _EXCLUDED_TABLES
+        and (include_notes or t not in _NOTE_TABLES)
+    ]
+
+    collections = []
+    for table in tables_to_export:
+        ts_field = _TIMESTAMP_FIELDS[table]
+
+        if table in _TAG_CONFIG:
+            tag_table, tag_fk = _TAG_CONFIG[table]
+            records = _export_table_with_tags(
+                db, table, tag_table, tag_fk, ts_field, output_dir
+            )
+        else:
+            records = _export_table(db, table, ts_field, output_dir)
+
+        if records is None:
+            continue
+
+        schema = _build_schema(records)
+        collections.append({
+            "file": f"{table}.jsonl",
+            "description": _COLLECTION_DESCRIPTIONS.get(table, table),
+            "record_count": len(records),
+            "schema": schema,
+        })
+
+    manifest = {
+        "description": "Chartfold clinical data export",
+        "created": date.today().isoformat(),
+        "metadata": {"source_tool": "chartfold"},
+        "collections": collections,
+    }
+    manifest_path = os.path.join(output_dir, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    return output_dir

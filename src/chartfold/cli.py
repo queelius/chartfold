@@ -16,6 +16,7 @@ Usage:
 import argparse
 import os
 import sys
+from pathlib import Path
 
 DEFAULT_DB = "chartfold.db"
 
@@ -53,6 +54,18 @@ def main():
     )
     analyses_load_parser.add_argument("input_dir", help="Directory containing analysis .md files")
     analyses_load_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+
+    mychart_parser = load_sub.add_parser(
+        "mychart-visit", help="Load images/data from MyChart MHTML visit page"
+    )
+    mychart_parser.add_argument("input_file", help="Path to .mhtml file")
+    mychart_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+    mychart_parser.add_argument(
+        "--image-dir", default="", help="Directory to save extracted images (default: next to .mhtml)"
+    )
+    mychart_parser.add_argument(
+        "--source-name", default="mychart", help="Source identifier (default: mychart)"
+    )
 
     all_parser = load_sub.add_parser("all", help="Load all sources at once")
     all_parser.add_argument("--epic-dir", help="Epic source directory")
@@ -107,6 +120,18 @@ def main():
         "--embed-images",
         action="store_true",
         help="Embed image assets from source_assets in the HTML file",
+    )
+
+    # export arkiv
+    arkiv_parser = export_sub.add_parser(
+        "arkiv", help="Export as arkiv universal record format (JSONL + manifest)"
+    )
+    arkiv_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
+    arkiv_parser.add_argument(
+        "--output", default="chartfold_arkiv", help="Output directory path"
+    )
+    arkiv_parser.add_argument(
+        "--exclude-notes", action="store_true", help="Exclude personal notes and analyses"
     )
 
     # --- import ---
@@ -227,7 +252,7 @@ def _handle_load(args):
     from chartfold.db import ChartfoldDB
 
     if args.source is None:
-        print("Usage: chartfold load <auto|epic|meditech|athena|all> ...")
+        print("Usage: chartfold load <auto|epic|meditech|athena|mychart-visit|analyses|all> ...")
         sys.exit(1)
 
     with ChartfoldDB(args.db) as db:
@@ -235,6 +260,10 @@ def _handle_load(args):
 
         if args.source == "analyses":
             _load_analyses(db, args.input_dir)
+            return
+        elif args.source == "mychart-visit":
+            _load_mychart_visit(db, args)
+            _print_db_summary(db)
             return
         elif args.source == "auto":
             _load_auto(db, args.input_dir, getattr(args, "source_name", ""))
@@ -252,51 +281,104 @@ def _handle_load(args):
         _print_db_summary(db)
 
 
-def _print_stage_comparison(
-    parser_counts: dict[str, int], adapter_counts: dict[str, int], db_counts: dict[str, int]
+def _print_load_result(
+    result: dict,
+    parser_counts: dict[str, int],
+    adapter_counts: dict[str, int],
 ) -> None:
-    """Print a comparison table of parser vs adapter vs DB record counts."""
-    # Collect all table names that have at least one non-zero count
+    """Print pipeline comparison + diff summary from load result."""
+    table_stats = result["tables"]
+
+    # Collect all table names from all sources
     all_keys = sorted(
-        {k for d in (parser_counts, adapter_counts, db_counts) for k in d},
+        {k for d in (parser_counts, adapter_counts, table_stats) for k in d},
     )
     rows = []
+    total_new = 0
+    total_existing = 0
+    total_removed = 0
     for key in all_keys:
         p = parser_counts.get(key, "")
         a = adapter_counts.get(key, "")
-        d = db_counts.get(key, "")
-        if p == 0 and a == 0 and d == 0:
+        stats = table_stats.get(key)
+        total = stats["total"] if stats else 0
+        new = stats["new"] if stats else 0
+        existing = stats["existing"] if stats else 0
+        removed = stats["removed"] if stats else 0
+
+        if p == 0 and a == 0 and total == 0 and removed == 0:
             continue
+
+        total_new += new
+        total_existing += existing
+        total_removed += removed
+
+        # Build diff annotation
+        parts = []
+        if new:
+            parts.append(f"+{new}")
+        if existing:
+            parts.append(f"={existing}")
+        if removed:
+            parts.append(f"-{removed}")
+        diff = " ".join(parts) if parts else ""
+
+        # Pipeline flags
         flags = []
         if isinstance(p, int) and isinstance(a, int):
             if p > a:
                 flags.append("dedup")
             elif p < a:
                 flags.append("expand")
-        if isinstance(a, int) and isinstance(d, int) and a != d:
-            flags.append("LOSS!" if d < a else "extra!")
         flag = f" ({', '.join(flags)})" if flags else ""
-        rows.append((key, p, a, d, flag))
+
+        rows.append((key, p, a, total, diff, flag))
 
     if not rows:
         return
 
-    print("\n  Stage Comparison:")
-    print(f"    {'Table':<25} {'Parser':>7}  {'Adapter':>7}  {'DB':>7}")
-    print(f"    {'-' * 25} {'-' * 7}  {'-' * 7}  {'-' * 7}")
-    for key, p, a, d, flag in rows:
+    print(f"\n  Stage Comparison:")
+    print(f"    {'Table':<22} {'Parser':>7}  {'Adapt':>7}  {'Load':>7}  {'Diff'}")
+    print(f"    {'-' * 22} {'-' * 7}  {'-' * 7}  {'-' * 7}  {'-' * 14}")
+    for key, p, a, total, diff, flag in rows:
         p_str = str(p) if p != "" else "-"
         a_str = str(a) if a != "" else "-"
-        d_str = str(d) if d != "" else "-"
-        print(f"    {key:<25} {p_str:>7}  {a_str:>7}  {d_str:>7}{flag}")
+        print(f"    {key:<22} {p_str:>7}  {a_str:>7}  {total:>7}  {diff}{flag}")
+
+    # Summary line
+    parts = []
+    if total_new:
+        parts.append(f"{total_new} new")
+    if total_existing:
+        parts.append(f"{total_existing} existing")
+    if total_removed:
+        parts.append(f"{total_removed} removed")
+    if parts:
+        print(f"\n  Summary: {', '.join(parts)}")
+    elif not total_new and not total_removed:
+        print(f"\n  No changes")
 
 
 def _load_auto(db, input_dir: str, source_name: str = ""):
     from chartfold.sources.base import detect_source, resolve_epic_dir
 
     input_dir = os.path.expanduser(input_dir)
+
+    # Handle MHTML files directly (MyChart visit pages)
+    if os.path.isfile(input_dir) and input_dir.lower().endswith(".mhtml"):
+        # Build a minimal args-like object for _load_mychart_visit
+        class _Args:
+            pass
+        args = _Args()
+        args.input_file = input_dir
+        args.source_name = source_name or "mychart"
+        args.image_dir = ""
+        print("Detected source: mychart-visit (MHTML file)")
+        _load_mychart_visit(db, args)
+        return
+
     if not os.path.isdir(input_dir):
-        print(f"Error: Directory not found: {input_dir}")
+        print(f"Error: Not a directory or .mhtml file: {input_dir}")
         return
 
     source = detect_source(input_dir)
@@ -306,6 +388,7 @@ def _load_auto(db, input_dir: str, source_name: str = ""):
         print("  Epic:     DOC####.XML files (or IHE_XDM/ subdirectory)")
         print("  MEDITECH: US Core FHIR Resources.json + CCDA/ directory")
         print("  athena:   Document_XML/*AmbulatorySummary*.xml")
+        print("  MyChart:  .mhtml file (Past Visit Details page)")
         return
 
     print(f"Detected source: {source}")
@@ -367,9 +450,12 @@ def _load_source(db, source_key: str, input_dir: str, source_name: str = ""):
     parser_counts = counts_fn(data)
     records = adapt_fn(data, source_name=source_name or None)
     adapter_counts = records.counts()
-    db_counts = db.load_source(records)
+    result = db.load_source(records, replace=True)
     print(f"Source: {records.source}")
-    _print_stage_comparison(parser_counts, adapter_counts, db_counts)
+    if result["skipped"]:
+        print("  Skipped: data identical to last load")
+        return
+    _print_load_result(result, parser_counts, adapter_counts)
 
 
 def _load_analyses(db, input_dir: str):
@@ -396,12 +482,105 @@ def _load_analyses(db, input_dir: str):
     print(f"\n{len(analyses)} analyses loaded.")
 
 
+def _load_mychart_visit(db, args):
+    """Load clinical images and data from an Epic MyChart MHTML visit page."""
+    from chartfold.adapters.mychart_adapter import (
+        _parser_counts,
+        mychart_to_unified,
+        save_images,
+    )
+    from chartfold.sources.mychart_mhtml import parse_mhtml
+
+    input_file = os.path.expanduser(args.input_file)
+    if not os.path.isfile(input_file):
+        print(f"Error: MHTML file not found: {input_file}")
+        sys.exit(1)
+
+    # Determine image output directory
+    image_dir = args.image_dir
+    if not image_dir:
+        image_dir = str(Path(input_file).parent / "mychart_images")
+
+    print(f"\n--- Loading MyChart visit from {input_file} ---")
+    data = parse_mhtml(input_file)
+
+    if not data.visit_date and not data.images:
+        print("Error: No visit data or images found in MHTML file.")
+        return
+
+    # Print visit info
+    if data.visit_date:
+        print(f"  Visit: {data.visit_type} - {data.visit_date}")
+    if data.provider:
+        print(f"  Provider: {data.provider}")
+    if data.facility:
+        print(f"  Facility: {data.facility}")
+    print(f"  Images: {len(data.images)}")
+    print(f"  Study references: {len(data.study_refs)}")
+
+    # Save images to disk
+    if data.images:
+        saved = save_images(data, image_dir)
+        print(f"  Saved {len(saved)} images to {image_dir}")
+
+    # Convert to unified records
+    parser_counts = _parser_counts(data)
+    records = mychart_to_unified(data, source=args.source_name, image_dir=image_dir)
+    adapter_counts = records.counts()
+
+    # Use replace=False for granular import (don't delete existing data)
+    result = db.load_source(records, replace=False)
+    print(f"  Source: {records.source}")
+    if result["skipped"]:
+        print("  Skipped: data identical to last load")
+        return
+    _print_load_result(result, parser_counts, adapter_counts)
+
+    # Post-load: link source_assets to imaging_reports by study metadata
+    linked = _link_assets_to_imaging(db, records.source)
+    if linked:
+        print(f"  Linked {linked} image(s) to imaging reports")
+
+
+def _link_assets_to_imaging(db, source: str) -> int:
+    """Link source_assets to imaging_reports using study metadata.
+
+    After mychart import, source_assets have study_name/study_date in their
+    metadata JSON but no ref_table/ref_id (since imaging_report IDs didn't
+    exist at adapter time). This matches them up post-load.
+    """
+    rows = db.query(
+        """
+        SELECT sa.id AS asset_id, ir.id AS report_id
+        FROM source_assets sa
+        JOIN imaging_reports ir
+          ON json_extract(sa.metadata, '$.study_name') = ir.study_name
+         AND json_extract(sa.metadata, '$.study_date') = ir.study_date
+        WHERE sa.source = ?
+          AND (sa.ref_table IS NULL OR sa.ref_table = '')
+          AND sa.metadata IS NOT NULL
+          AND sa.metadata != ''
+        """,
+        (source,),
+    )
+    if not rows:
+        return 0
+    with db.conn:
+        for row in rows:
+            db.conn.execute(
+                "UPDATE source_assets SET ref_table = 'imaging_reports', ref_id = ? WHERE id = ?",
+                (row["report_id"], row["asset_id"]),
+            )
+    return len(rows)
+
+
 def _handle_export(args):
     from chartfold.db import ChartfoldDB
 
     if args.export_format is None:
-        print("Usage: chartfold export <html|json> [options]")
+        print("Usage: chartfold export <arkiv|html|json> [options]")
         print("\nSubcommands:")
+        print("  arkiv      Export as arkiv universal record format (JSONL + manifest)")
         print("  html       Export as self-contained HTML SPA with embedded SQLite")
         print("  json       Export as JSON (full database dump)")
         print("\nRun 'chartfold export <subcommand> --help' for options.")
@@ -428,6 +607,15 @@ def _handle_export(args):
                 output_path=args.output,
                 config_path=args.config,
                 embed_images=args.embed_images,
+            )
+
+        elif args.export_format == "arkiv":
+            from chartfold.export_arkiv import export_arkiv
+
+            path = export_arkiv(
+                db,
+                output_dir=args.output,
+                include_notes=not args.exclude_notes,
             )
 
     print(f"Exported to {path}")

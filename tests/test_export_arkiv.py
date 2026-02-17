@@ -740,3 +740,202 @@ class TestEdgeCases:
         }
         record = _row_to_record(row, "family_history", None)
         assert record["metadata"]["deceased"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: export_arkiv (integration)
+# ---------------------------------------------------------------------------
+
+
+class TestExportArkiv:
+    """Integration tests for the main export_arkiv function."""
+
+    def test_export_arkiv_full(self, tmp_path):
+        """Full integration: export creates JSONL files + manifest."""
+        from chartfold.export_arkiv import export_arkiv
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+        records = UnifiedRecords(
+            source="test_source",
+            lab_results=[
+                LabResult(
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    result_date="2025-01-15",
+                ),
+            ],
+            family_history=[
+                FamilyHistoryRecord(
+                    source="test_source",
+                    relation="Father",
+                    condition="Heart Disease",
+                ),
+            ],
+        )
+        db.load_source(records)
+        db.save_note(title="My Note", content="Some content", tags=["test"])
+
+        output_dir = str(tmp_path / "arkiv-out")
+        result = export_arkiv(db, output_dir)
+        db.close()
+
+        assert result == output_dir
+        assert os.path.isdir(output_dir)
+
+        # Non-empty tables have JSONL files
+        assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))
+        assert os.path.exists(os.path.join(output_dir, "family_history.jsonl"))
+        assert os.path.exists(os.path.join(output_dir, "notes.jsonl"))
+
+        # Empty tables are skipped
+        assert not os.path.exists(os.path.join(output_dir, "medications.jsonl"))
+        assert not os.path.exists(os.path.join(output_dir, "immunizations.jsonl"))
+
+        # Excluded tables never appear
+        assert not os.path.exists(os.path.join(output_dir, "load_log.jsonl"))
+        assert not os.path.exists(os.path.join(output_dir, "source_assets.jsonl"))
+        assert not os.path.exists(os.path.join(output_dir, "note_tags.jsonl"))
+
+        # Check manifest
+        with open(os.path.join(output_dir, "manifest.json")) as f:
+            manifest = json.load(f)
+        assert manifest["description"] == "Chartfold clinical data export"
+        assert manifest["metadata"]["source_tool"] == "chartfold"
+        assert "created" in manifest
+
+        collection_files = {c["file"] for c in manifest["collections"]}
+        assert "lab_results.jsonl" in collection_files
+        assert "family_history.jsonl" in collection_files
+        assert "notes.jsonl" in collection_files
+        assert "medications.jsonl" not in collection_files
+
+        # Schema in manifest
+        lab_coll = [c for c in manifest["collections"] if c["file"] == "lab_results.jsonl"][0]
+        assert lab_coll["record_count"] == 1
+        assert "metadata_keys" in lab_coll["schema"]
+        assert "test_name" in lab_coll["schema"]["metadata_keys"]
+        assert lab_coll["description"] == "Laboratory test results with values, reference ranges, and interpretations"
+
+    def test_export_arkiv_exclude_notes(self, tmp_path):
+        """include_notes=False omits notes and analyses."""
+        from chartfold.export_arkiv import export_arkiv
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+        records = UnifiedRecords(
+            source="test_source",
+            lab_results=[
+                LabResult(
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    result_date="2025-01-15",
+                ),
+            ],
+        )
+        db.load_source(records)
+        db.save_note(title="My Note", content="Content", tags=["test"])
+        db.save_analysis(slug="test", title="Test", content="Analysis", tags=["tag"])
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db, output_dir, include_notes=False)
+        db.close()
+
+        assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))
+        assert not os.path.exists(os.path.join(output_dir, "notes.jsonl"))
+        assert not os.path.exists(os.path.join(output_dir, "analyses.jsonl"))
+
+        # Manifest should not mention notes/analyses
+        with open(os.path.join(output_dir, "manifest.json")) as f:
+            manifest = json.load(f)
+        coll_files = {c["file"] for c in manifest["collections"]}
+        assert "notes.jsonl" not in coll_files
+        assert "analyses.jsonl" not in coll_files
+
+    def test_export_arkiv_note_tags_folded(self, tmp_path):
+        """Notes in the export have their tags folded in."""
+        from chartfold.export_arkiv import export_arkiv
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+        db.save_note(title="Tagged", content="Has tags", tags=["oncology", "cea"])
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db, output_dir)
+        db.close()
+
+        lines = open(os.path.join(output_dir, "notes.jsonl")).read().strip().split("\n")
+        record = json.loads(lines[0])
+        assert set(record["metadata"]["tags"]) == {"oncology", "cea"}
+
+    def test_export_arkiv_empty_db(self, tmp_path):
+        """Export of empty database creates manifest with no collections."""
+        from chartfold.export_arkiv import export_arkiv
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db, output_dir)
+        db.close()
+
+        with open(os.path.join(output_dir, "manifest.json")) as f:
+            manifest = json.load(f)
+        assert manifest["collections"] == []
+        # No JSONL files
+        jsonl_files = [f for f in os.listdir(output_dir) if f.endswith(".jsonl")]
+        assert jsonl_files == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: CLI integration
+# ---------------------------------------------------------------------------
+
+
+class TestCLI:
+    """CLI integration tests."""
+
+    def test_cli_export_arkiv(self, tmp_path):
+        """CLI: chartfold export arkiv works end-to-end."""
+        import subprocess
+        import sys
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+        records = UnifiedRecords(
+            source="test_source",
+            lab_results=[
+                LabResult(
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    result_date="2025-01-15",
+                ),
+            ],
+        )
+        db.load_source(records)
+        db.close()
+
+        output_dir = str(tmp_path / "arkiv-out")
+        result = subprocess.run(
+            [sys.executable, "-m", "chartfold", "export", "arkiv",
+             "--db", db_path, "--output", output_dir],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert "Exported to" in result.stdout
+        assert os.path.exists(os.path.join(output_dir, "manifest.json"))
+        assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))
