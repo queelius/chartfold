@@ -52,6 +52,10 @@ python -m chartfold export html --output summary.html
 python -m chartfold export html --output summary.html --embed-images  # With images
 python -m chartfold export html --output summary.html --config chartfold.toml
 
+# Export as arkiv universal record format (JSONL + manifest)
+python -m chartfold export arkiv --output ./arkiv/
+python -m chartfold export arkiv --output ./arkiv/ --exclude-notes
+
 # Full-fidelity export (all tables, all records)
 python -m chartfold export markdown --full --output data.md
 python -m chartfold export json --output data.json
