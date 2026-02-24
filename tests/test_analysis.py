@@ -630,33 +630,35 @@ class TestSurgicalTimeline:
 
     def test_procedure_fields(self, surgical_db):
         timeline = build_surgical_timeline(surgical_db)
+        # Most recent first (descending): Liver resection, then Right hemicolectomy
         proc0 = timeline[0]["procedure"]
-        assert proc0["name"] == "Right hemicolectomy"
-        assert proc0["date"] == "2024-07-01"
-        assert proc0["facility"] == "Anderson Hospital"
+        assert proc0["name"] == "Liver resection"
+        assert proc0["date"] == "2025-05-14"
+        assert proc0["facility"] == "Siteman Cancer Center"
 
     def test_pathology_linked(self, surgical_db):
         timeline = build_surgical_timeline(surgical_db)
-        # Pathology report_date 2024-07-03 within 14 days of procedure 2024-07-01
-        path0 = timeline[0]["pathology"]
-        assert path0 is not None
-        assert "adenocarcinoma" in path0["diagnosis"].lower()
-        assert "pT3N2a" in path0["staging"]
+        # Right hemicolectomy is now index 1 (older)
+        path1 = timeline[1]["pathology"]
+        assert path1 is not None
+        assert "adenocarcinoma" in path1["diagnosis"].lower()
+        assert "pT3N2a" in path1["staging"]
 
     def test_related_imaging(self, surgical_db):
         timeline = build_surgical_timeline(surgical_db)
-        # CT on 2024-06-25 is within 30 days of 2024-07-01 procedure
-        imgs = timeline[0]["related_imaging"]
+        # CT on 2024-06-25 is within 30 days of Right hemicolectomy (2024-07-01), now at index 1
+        imgs = timeline[1]["related_imaging"]
         assert len(imgs) >= 1
         assert any("CT" in img["study"] for img in imgs)
 
     def test_second_procedure(self, surgical_db):
         timeline = build_surgical_timeline(surgical_db)
+        # Index 1 = older procedure (Right hemicolectomy)
         proc1 = timeline[1]["procedure"]
-        assert proc1["name"] == "Liver resection"
+        assert proc1["name"] == "Right hemicolectomy"
         path1 = timeline[1]["pathology"]
         assert path1 is not None
-        assert "cauterized" in path1["margins"].lower()
+        assert "adenocarcinoma" in path1["diagnosis"].lower()
 
     def test_empty_db(self, tmp_db):
         timeline = build_surgical_timeline(tmp_db)
@@ -664,7 +666,8 @@ class TestSurgicalTimeline:
 
     def test_imaging_has_timing(self, surgical_db):
         timeline = build_surgical_timeline(surgical_db)
-        imgs = timeline[0]["related_imaging"]
+        # Right hemicolectomy (2024-07-01) is now at index 1
+        imgs = timeline[1]["related_imaging"]
         # CT on 2024-06-25 before proc on 2024-07-01 → pre-op
         ct_img = next(i for i in imgs if "CT" in i["study"])
         assert ct_img["timing"] == "pre-op"
@@ -691,19 +694,20 @@ class TestSurgicalTimeline:
         """Limit restricts number of procedures returned."""
         timeline = build_surgical_timeline(surgical_db, limit=1)
         assert len(timeline) == 1
-        assert timeline[0]["procedure"]["name"] == "Right hemicolectomy"
+        # Most recent first
+        assert timeline[0]["procedure"]["name"] == "Liver resection"
 
     def test_offset(self, surgical_db):
         """Offset skips procedures."""
         timeline = build_surgical_timeline(surgical_db, offset=1)
         assert len(timeline) == 1
-        assert timeline[0]["procedure"]["name"] == "Liver resection"
+        assert timeline[0]["procedure"]["name"] == "Right hemicolectomy"
 
     def test_limit_and_offset(self, surgical_db):
         """Limit + offset work together."""
         timeline = build_surgical_timeline(surgical_db, limit=1, offset=1)
         assert len(timeline) == 1
-        assert timeline[0]["procedure"]["name"] == "Liver resection"
+        assert timeline[0]["procedure"]["name"] == "Right hemicolectomy"
 
     def test_offset_beyond_end(self, surgical_db):
         """Offset past all procedures returns empty."""
@@ -713,6 +717,7 @@ class TestSurgicalTimeline:
     def test_include_full_text_false(self, surgical_db):
         """include_full_text=False omits pathology full_text."""
         timeline = build_surgical_timeline(surgical_db, include_full_text=False)
+        # Both procedures have pathology; check the first (Liver resection)
         path0 = timeline[0]["pathology"]
         assert path0 is not None
         assert "full_text" not in path0
@@ -726,6 +731,141 @@ class TestSurgicalTimeline:
         path0 = timeline[0]["pathology"]
         assert path0 is not None
         assert "full_text" in path0
+
+
+class TestSurgicalTimelineSortOrder:
+    """Surgical timeline should return most recent procedures first."""
+
+    def test_most_recent_first(self, surgical_db):
+        """Timeline should return procedures in descending date order."""
+        timeline = build_surgical_timeline(surgical_db)
+        assert len(timeline) == 2
+        # Liver resection (2025-05-14) should come before Right hemicolectomy (2024-07-01)
+        assert timeline[0]["procedure"]["name"] == "Liver resection"
+        assert timeline[1]["procedure"]["name"] == "Right hemicolectomy"
+
+    def test_empty_dates_sort_last(self, tmp_db):
+        """Procedures with empty dates should sort after dated procedures."""
+        records = UnifiedRecords(
+            source="test_sort",
+            procedures=[
+                ProcedureRecord(
+                    source="test_sort",
+                    name="Dated procedure",
+                    procedure_date="2025-01-15",
+                ),
+                ProcedureRecord(
+                    source="test_sort",
+                    name="Undated procedure",
+                    procedure_date="",
+                ),
+                ProcedureRecord(
+                    source="test_sort",
+                    name="Older procedure",
+                    procedure_date="2024-06-01",
+                ),
+            ],
+        )
+        tmp_db.load_source(records)
+        timeline = build_surgical_timeline(tmp_db)
+        assert len(timeline) == 3
+        # Dated procedures first (most recent to oldest), undated last
+        assert timeline[0]["procedure"]["name"] == "Dated procedure"
+        assert timeline[1]["procedure"]["name"] == "Older procedure"
+        assert timeline[2]["procedure"]["name"] == "Undated procedure"
+
+    def test_limit_returns_most_recent(self, surgical_db):
+        """limit=1 should return the most recent procedure, not the oldest."""
+        timeline = build_surgical_timeline(surgical_db, limit=1)
+        assert len(timeline) == 1
+        assert timeline[0]["procedure"]["name"] == "Liver resection"
+
+
+class TestMetadataStorage:
+    """Metadata JSON column should be stored and retrieved for all clinical tables."""
+
+    def test_procedure_metadata_stored(self, tmp_db):
+        """Procedure metadata should be stored and queryable."""
+        import json
+
+        records = UnifiedRecords(
+            source="test_meta",
+            procedures=[
+                ProcedureRecord(
+                    source="test_meta",
+                    name="Test procedure",
+                    procedure_date="2025-01-15",
+                    metadata=json.dumps({"encounter_date": "2025-01-15", "code_system": "2.16.840.1.113883.6.96"}),
+                ),
+            ],
+        )
+        tmp_db.load_source(records)
+        rows = tmp_db.query("SELECT name, metadata FROM procedures WHERE source = 'test_meta'")
+        assert len(rows) == 1
+        meta = json.loads(rows[0]["metadata"])
+        assert meta["encounter_date"] == "2025-01-15"
+        assert meta["code_system"] == "2.16.840.1.113883.6.96"
+
+    def test_lab_result_metadata_stored(self, tmp_db):
+        """Lab result metadata should be stored and queryable."""
+        import json
+
+        records = UnifiedRecords(
+            source="test_meta",
+            lab_results=[
+                LabResult(
+                    source="test_meta",
+                    test_name="CEA",
+                    value="1.4",
+                    result_date="2025-01-01",
+                    metadata=json.dumps({"method": "immunoassay"}),
+                ),
+            ],
+        )
+        tmp_db.load_source(records)
+        rows = tmp_db.query("SELECT metadata FROM lab_results WHERE source = 'test_meta'")
+        assert len(rows) == 1
+        meta = json.loads(rows[0]["metadata"])
+        assert meta["method"] == "immunoassay"
+
+    def test_metadata_defaults_to_empty(self, tmp_db):
+        """Records without metadata should have empty string metadata."""
+        records = UnifiedRecords(
+            source="test_meta",
+            procedures=[
+                ProcedureRecord(
+                    source="test_meta",
+                    name="No metadata",
+                    procedure_date="2025-01-15",
+                ),
+            ],
+        )
+        tmp_db.load_source(records)
+        rows = tmp_db.query("SELECT metadata FROM procedures WHERE source = 'test_meta'")
+        assert len(rows) == 1
+        assert rows[0]["metadata"] == ""
+
+    def test_metadata_queryable_with_json_extract(self, tmp_db):
+        """Metadata should be queryable with SQLite json_extract()."""
+        import json
+
+        records = UnifiedRecords(
+            source="test_meta",
+            encounters=[
+                EncounterRecord(
+                    source="test_meta",
+                    encounter_date="2025-06-15",
+                    encounter_type="office visit",
+                    metadata=json.dumps({"visit_number": "V12345", "department": "oncology"}),
+                ),
+            ],
+        )
+        tmp_db.load_source(records)
+        rows = tmp_db.query(
+            "SELECT json_extract(metadata, '$.department') as dept "
+            "FROM encounters WHERE source = 'test_meta'"
+        )
+        assert rows[0]["dept"] == "oncology"
 
 
 @pytest.fixture

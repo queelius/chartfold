@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from chartfold.core.utils import derive_source_name, normalize_date_to_iso, try_parse_numeric
 from chartfold.models import (
     AllergyRecord,
@@ -23,6 +25,10 @@ from chartfold.models import (
 )
 from chartfold.sources.assets import discover_source_assets
 from chartfold.sources.epic import OID_SNOMED
+
+# Keys explicitly consumed by the procedure adapter mapping.
+# Everything else in the source dict gets captured as metadata JSON.
+_PROC_MAPPED_KEYS = frozenset({"name", "code_value", "date", "status", "provider", "source_doc"})
 
 
 def _is_valid_legacy_text(text: str, header_prefix: str) -> bool:
@@ -295,15 +301,25 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
 
     # Procedures
     for proc in data.get("procedures", []):
+        # Fall back to document encounter_date when procedure has no date
+        proc_date = normalize_date_to_iso(
+            proc.get("date") or proc.get("encounter_date", "")
+        )
+        # Capture unmapped keys in metadata, normalizing dates for consistency
+        extras = {}
+        for k, v in proc.items():
+            if k not in _PROC_MAPPED_KEYS and v:
+                extras[k] = normalize_date_to_iso(v) if k.endswith("_date") else v
         records.procedures.append(
             ProcedureRecord(
                 source=source,
                 source_doc_id=proc.get("source_doc", ""),
                 name=proc.get("name", ""),
                 snomed_code=_extract_snomed_code(proc),
-                procedure_date=normalize_date_to_iso(proc.get("date", "")),
+                procedure_date=proc_date,
                 provider=proc.get("provider", ""),
                 status=proc.get("status", ""),
+                metadata=json.dumps(extras) if extras else "",
             )
         )
 

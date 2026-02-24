@@ -274,7 +274,7 @@ class TestDatabaseSourceAssets:
         )
         tmp_db.load_source(records1)
 
-        # Reload with different assets
+        # Reload with different assets (replace=True to delete stale ones)
         records2 = UnifiedRecords(
             source="test_source",
             source_assets=[
@@ -283,7 +283,7 @@ class TestDatabaseSourceAssets:
                 ),
             ],
         )
-        tmp_db.load_source(records2)
+        tmp_db.load_source(records2, replace=True)
 
         rows = tmp_db.query("SELECT * FROM source_assets")
         assert len(rows) == 1

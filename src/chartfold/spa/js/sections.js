@@ -1,13 +1,84 @@
+// Lazy-loaded embedded images cache (asset ID string -> data URI)
+var _embeddedImages = null;
+function _getEmbeddedImages() {
+  if (_embeddedImages !== null) return _embeddedImages;
+  _embeddedImages = {};
+  try {
+    var imgEl = document.getElementById('chartfold-images');
+    if (imgEl) _embeddedImages = JSON.parse(imgEl.textContent);
+  } catch (e) { /* ignore */ }
+  return _embeddedImages;
+}
+
+function _showImageOverlay(dataUri) {
+  var overlay = UI.el('div', {
+    style: 'position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; cursor: zoom-out;'
+  });
+  overlay.onclick = function() { document.body.removeChild(overlay); };
+  var img = UI.el('img', {
+    src: dataUri,
+    style: 'max-width: 95vw; max-height: 95vh; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.5);'
+  });
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+  // Close on Escape key
+  function onKey(e) { if (e.key === 'Escape') { document.body.removeChild(overlay); document.removeEventListener('keydown', onKey); } }
+  document.addEventListener('keydown', onKey);
+}
+
 function _renderLinkedAssets(card, db, refTable, refId) {
   try {
-    var assets = db.query('SELECT file_name FROM source_assets WHERE ref_table = ? AND ref_id = ?', [refTable, refId]);
-    if (assets.length > 0) {
-      var assetRow = UI.el('div', { style: 'margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;' });
-      for (var i = 0; i < assets.length; i++) {
-        assetRow.appendChild(UI.badge(assets[i].file_name, 'gray'));
+    var assets = db.query('SELECT id, file_name, asset_type FROM source_assets WHERE ref_table = ? AND ref_id = ?', [refTable, refId]);
+    if (assets.length === 0) return;
+    var images = _getEmbeddedImages();
+    var container = UI.el('div', { style: 'margin-top: 8px;' });
+
+    // Separate image assets (with embedded data) from non-image assets
+    var imageAssets = [];
+    var otherAssets = [];
+    for (var i = 0; i < assets.length; i++) {
+      var assetId = String(assets[i].id);
+      if (images[assetId]) {
+        imageAssets.push({ asset: assets[i], dataUri: images[assetId] });
+      } else {
+        otherAssets.push(assets[i]);
       }
-      card.appendChild(assetRow);
     }
+
+    // Render image thumbnails in a grid
+    if (imageAssets.length > 0) {
+      var grid = UI.el('div', { style: 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;' });
+      for (var j = 0; j < imageAssets.length; j++) {
+        var imgData = imageAssets[j];
+        var wrapper = UI.el('div', {
+          title: imgData.asset.file_name || 'Clinical image',
+          style: 'cursor: pointer; border-radius: 6px; border: 1px solid var(--border); overflow: hidden; transition: box-shadow 0.15s;'
+        });
+        wrapper.onmouseover = function() { this.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'; };
+        wrapper.onmouseout = function() { this.style.boxShadow = 'none'; };
+        (function(dataUri) {
+          wrapper.onclick = function() { _showImageOverlay(dataUri); };
+        })(imgData.dataUri);
+        var thumb = UI.el('img', {
+          src: imgData.dataUri,
+          style: 'max-height: 120px; max-width: 200px; display: block;'
+        });
+        wrapper.appendChild(thumb);
+        grid.appendChild(wrapper);
+      }
+      container.appendChild(grid);
+    }
+
+    // Render non-image assets as badges
+    if (otherAssets.length > 0) {
+      var badgeRow = UI.el('div', { style: 'display: flex; gap: 4px; flex-wrap: wrap;' });
+      for (var k = 0; k < otherAssets.length; k++) {
+        badgeRow.appendChild(UI.badge(otherAssets[k].file_name, 'gray'));
+      }
+      container.appendChild(badgeRow);
+    }
+
+    card.appendChild(container);
   } catch (e) { /* source_assets may not exist */ }
 }
 
@@ -1224,12 +1295,7 @@ const Sections = {
     var n = _sectionPreamble(el, db, 'source_assets', 'Sources', 'No source assets recorded.', 'source assets');
     if (n === -1) return;
 
-    // Load embedded images
-    var images = {};
-    try {
-      var imgEl = document.getElementById('chartfold-images');
-      if (imgEl) images = JSON.parse(imgEl.textContent);
-    } catch (e) { /* ignore */ }
+    var images = _getEmbeddedImages();
 
     var assets = db.query('SELECT * FROM source_assets ORDER BY encounter_date DESC, asset_type, file_name');
 

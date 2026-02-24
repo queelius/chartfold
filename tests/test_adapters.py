@@ -765,3 +765,63 @@ class TestEpicAdapterEdgeCases:
         from chartfold.adapters.epic_adapter import _format_provider_list
         assert _format_provider_list("Dr. Smith") == ""
         assert _format_provider_list(None) == ""
+
+    def test_procedure_date_fallback_to_encounter_date(self, sample_epic_data):
+        """Procedure with no date should fall back to encounter_date from source doc."""
+        sample_epic_data["procedures"] = [
+            {
+                "name": "Liver Resection",
+                "code_value": "",
+                "code_system": "",
+                "date": "",  # No date on the procedure itself
+                "status": "completed",
+                "provider": "Dr. Chapman",
+                "source_doc": "DOC0003",
+                "encounter_date": "20251218",  # From the document's encounter date
+            },
+        ]
+        records = epic_to_unified(sample_epic_data)
+        assert len(records.procedures) == 1
+        assert records.procedures[0].procedure_date == "2025-12-18"
+
+    def test_procedure_date_prefers_own_date(self, sample_epic_data):
+        """Procedure with its own date should use that, not encounter_date."""
+        sample_epic_data["procedures"] = [
+            {
+                "name": "Colonoscopy",
+                "code_value": "73761001",
+                "code_system": "2.16.840.1.113883.6.96",
+                "date": "20211122",  # Has its own date
+                "status": "completed",
+                "provider": "Dr. Smith",
+                "source_doc": "DOC0003",
+                "encounter_date": "20250115",  # Document's encounter date (should be ignored)
+            },
+        ]
+        records = epic_to_unified(sample_epic_data)
+        assert records.procedures[0].procedure_date == "2021-11-22"
+
+    def test_procedure_metadata_captures_extras(self, sample_epic_data):
+        """Unmapped keys in procedure dict should be captured in metadata."""
+        import json
+
+        sample_epic_data["procedures"] = [
+            {
+                "name": "Colonoscopy",
+                "code_value": "73761001",
+                "code_system": "2.16.840.1.113883.6.96",
+                "date": "20211122",
+                "status": "completed",
+                "provider": "Dr. Smith",
+                "source_doc": "DOC0003",
+                "encounter_date": "20251218",
+            },
+        ]
+        records = epic_to_unified(sample_epic_data)
+        assert records.procedures[0].metadata != ""
+        meta = json.loads(records.procedures[0].metadata)
+        # code_system and encounter_date are not mapped to schema columns,
+        # so they should be in metadata
+        assert meta["code_system"] == "2.16.840.1.113883.6.96"
+        # encounter_date should be normalized to ISO format in metadata
+        assert meta["encounter_date"] == "2025-12-18"

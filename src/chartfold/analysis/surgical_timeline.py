@@ -35,7 +35,8 @@ def build_surgical_timeline(
     # Query all procedures for pathology linking, then paginate the result
     all_procedures = db.query(
         "SELECT id, name, procedure_date, provider, facility, source, operative_note "
-        "FROM procedures ORDER BY procedure_date"
+        "FROM procedures ORDER BY CASE WHEN procedure_date = '' THEN 1 ELSE 0 END, "
+        "procedure_date DESC"
     )
     pathology = db.query(
         "SELECT id, report_date, specimen, diagnosis, staging, margins, "

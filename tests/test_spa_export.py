@@ -1534,3 +1534,41 @@ class TestSpaUxImprovements:
     def test_dark_mode_chart_tooltip(self, exported_html):
         """Dark mode styles chart tooltips."""
         assert ".chart-tooltip" in exported_html
+
+
+class TestLinkedAssetImages:
+    """Tests for the upgraded _renderLinkedAssets with inline thumbnails."""
+
+    def test_queries_asset_id_and_type(self, exported_html):
+        """_renderLinkedAssets should query id, file_name, asset_type."""
+        assert "SELECT id, file_name, asset_type FROM source_assets" in exported_html
+
+    def test_loads_embedded_images_cache(self, exported_html):
+        """_getEmbeddedImages should parse chartfold-images script tag."""
+        assert "_getEmbeddedImages" in exported_html
+        assert "chartfold-images" in exported_html
+
+    def test_renders_img_tag_for_image_assets(self, exported_html):
+        """Should render <img> tags for assets with embedded image data."""
+        assert "max-height: 120px" in exported_html
+        assert "max-width: 200px" in exported_html
+
+    def test_clickable_thumbnail_opens_full_size(self, exported_html):
+        """Thumbnails should call _showImageOverlay on click."""
+        assert "_showImageOverlay" in exported_html
+
+    def test_overlay_has_dismiss_behavior(self, exported_html):
+        """Image overlay should close on click and Escape key."""
+        assert "cursor: zoom-out" in exported_html
+        assert "Escape" in exported_html
+
+    def test_falls_back_to_badge_for_non_images(self, exported_html):
+        """Non-image assets should still render as badges."""
+        assert "otherAssets" in exported_html
+        assert "UI.badge(otherAssets" in exported_html
+
+    def test_sources_section_uses_shared_cache(self, exported_html):
+        """Sources section should use _getEmbeddedImages() not duplicate loading."""
+        # Should only have one getElementById('chartfold-images') — in the cache function
+        count = exported_html.count("getElementById('chartfold-images')")
+        assert count == 1

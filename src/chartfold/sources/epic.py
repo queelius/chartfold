@@ -205,6 +205,8 @@ def process_epic_documents(input_dir: str, config: SourceConfig | None = None) -
                 procs = _extract_epic_procedures(sections["Procedures"])
                 for p in procs:
                     p["source_doc"] = doc_id
+                    if enc_date:
+                        p["encounter_date"] = enc_date
                 data["procedures"].extend(procs)
 
             print(
