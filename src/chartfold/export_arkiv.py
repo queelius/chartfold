@@ -33,6 +33,7 @@ _TIMESTAMP_FIELDS: dict[str, str | None] = {
     "allergies": "onset_date",
     "conditions": "onset_date",
     "social_history": "recorded_date",
+    "genetic_variants": "collection_date",
     "family_history": None,
     "mental_status": "recorded_date",
     "patients": "date_of_birth",
@@ -76,6 +77,7 @@ _COLLECTION_DESCRIPTIONS: dict[str, str] = {
     "social_history": "Social history (smoking, alcohol, etc.)",
     "family_history": "Family medical history",
     "mental_status": "Mental health screening instruments (PHQ-9, GAD-7, etc.)",
+    "genetic_variants": "Genetic variants from genomic testing panels",
     "notes": "Personal notes and annotations",
     "analyses": "Structured analysis documents",
 }

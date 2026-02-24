@@ -20,6 +20,7 @@ class PatientRecord:
     mrn: str = ""
     address: str = ""
     phone: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -33,6 +34,7 @@ class DocumentRecord:
     encounter_date: str = ""  # ISO YYYY-MM-DD
     file_path: str = ""
     file_size_kb: int = 0
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -48,6 +50,7 @@ class EncounterRecord:
     provider: str = ""
     reason: str = ""
     discharge_disposition: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -66,6 +69,7 @@ class LabResult:
     interpretation: str = ""  # H, L, N, A, etc.
     result_date: str = ""  # ISO YYYY-MM-DD
     status: str = ""  # final, preliminary, etc.
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -79,6 +83,7 @@ class VitalRecord:
     value_text: str = ""  # Original text for non-numeric
     unit: str = ""
     recorded_date: str = ""  # ISO YYYY-MM-DD
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -95,6 +100,7 @@ class MedicationRecord:
     start_date: str = ""  # ISO YYYY-MM-DD
     stop_date: str = ""  # ISO YYYY-MM-DD
     prescriber: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -110,6 +116,7 @@ class ConditionRecord:
     onset_date: str = ""  # ISO YYYY-MM-DD
     resolved_date: str = ""  # ISO YYYY-MM-DD
     category: str = ""  # problem-list-item, encounter-diagnosis
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -126,6 +133,7 @@ class ProcedureRecord:
     facility: str = ""
     operative_note: str = ""
     status: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -144,6 +152,7 @@ class PathologyReport:
     margins: str = ""
     lymph_nodes: str = ""
     full_text: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -159,6 +168,7 @@ class ImagingReport:
     findings: str = ""
     impression: str = ""
     full_text: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -172,6 +182,7 @@ class ClinicalNote:
     note_date: str = ""  # ISO YYYY-MM-DD
     content: str = ""
     content_format: str = "text"  # text, html
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -186,6 +197,7 @@ class ImmunizationRecord:
     lot_number: str = ""
     site: str = ""
     status: str = ""
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -199,6 +211,7 @@ class AllergyRecord:
     severity: str = ""  # mild, moderate, severe
     status: str = ""  # active, inactive
     onset_date: str = ""  # ISO YYYY-MM-DD
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -210,6 +223,7 @@ class SocialHistoryRecord:
     category: str = ""  # smoking, alcohol, drug_use, occupation, etc.
     value: str = ""
     recorded_date: str = ""  # ISO YYYY-MM-DD
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -222,6 +236,7 @@ class FamilyHistoryRecord:
     condition: str = ""
     age_at_onset: str = ""
     deceased: bool | None = None
+    metadata: str = ""  # JSON blob for unmapped source fields
 
 
 @dataclass
@@ -236,6 +251,31 @@ class MentalStatusRecord:
     score: int | None = None
     total_score: int | None = None
     recorded_date: str = ""  # ISO YYYY-MM-DD
+    metadata: str = ""  # JSON blob for unmapped source fields
+
+
+@dataclass
+class GeneticVariant:
+    """A genetic variant from genomic testing (e.g., Tempus XF panel)."""
+
+    source: str
+    gene: str = ""
+    variant_type: str = ""  # Missense variant, Frameshift, etc.
+    assessment: str = ""  # Detected, Not Detected
+    classification: str = ""  # Uncertain significance, Pathogenic, Benign
+    variant_origin: str = ""  # Somatic, Germline, Unknown genomic origin
+    vaf: float | None = None  # Variant allele fraction (e.g., 53.2)
+    dna_change: str = ""  # c.1369G>A
+    protein_change: str = ""  # p.A457T
+    transcript: str = ""  # NM_003786
+    analysis_method: str = ""  # Sequencing
+    test_name: str = ""  # 523 gene liquid biopsy
+    specimen: str = ""  # Blood
+    collection_date: str = ""  # ISO YYYY-MM-DD
+    result_date: str = ""  # ISO YYYY-MM-DD
+    lab_name: str = ""  # TEMPUS LAB
+    provider: str = ""  # Ordering physician
+    metadata: str = ""
 
 
 @dataclass
@@ -282,6 +322,7 @@ class UnifiedRecords:
     family_history: list[FamilyHistoryRecord] = field(default_factory=list)
     mental_status: list[MentalStatusRecord] = field(default_factory=list)
     source_assets: list[SourceAsset] = field(default_factory=list)
+    genetic_variants: list[GeneticVariant] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
         """Return record counts per table, matching the keys from db.load_source()."""
@@ -303,4 +344,5 @@ class UnifiedRecords:
             "family_history": len(self.family_history),
             "mental_status": len(self.mental_status),
             "source_assets": len(self.source_assets),
+            "genetic_variants": len(self.genetic_variants),
         }

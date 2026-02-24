@@ -1,6 +1,7 @@
 -- chartfold SQLite schema
--- Every fact table has `source` and `source_doc_id` for provenance tracking.
--- Idempotent loading: DELETE WHERE source = ? then INSERT.
+-- Every clinical table has `source` for provenance tracking.
+-- Natural key UNIQUE constraints enable UPSERT (stable IDs across re-imports).
+-- load_source(replace=True) does UPSERT + cleanup; replace=False is additive only.
 
 CREATE TABLE IF NOT EXISTS patients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS patients (
     mrn TEXT,
     address TEXT,
     phone TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
     UNIQUE(source, name, date_of_birth)
 );
 
@@ -23,6 +25,7 @@ CREATE TABLE IF NOT EXISTS documents (
     encounter_date TEXT,  -- ISO YYYY-MM-DD
     file_path TEXT,
     file_size_kb INTEGER,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
     UNIQUE(source, doc_id)
 );
 
@@ -36,7 +39,9 @@ CREATE TABLE IF NOT EXISTS encounters (
     facility TEXT,
     provider TEXT,
     reason TEXT,
-    discharge_disposition TEXT
+    discharge_disposition TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, encounter_date, encounter_type, facility)
 );
 
 CREATE TABLE IF NOT EXISTS lab_results (
@@ -52,7 +57,9 @@ CREATE TABLE IF NOT EXISTS lab_results (
     ref_range TEXT,
     interpretation TEXT,   -- H, L, N, A, etc.
     result_date TEXT,      -- ISO YYYY-MM-DD
-    status TEXT
+    status TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, test_name, result_date, value)
 );
 
 CREATE INDEX IF NOT EXISTS idx_lab_results_date ON lab_results(result_date);
@@ -68,7 +75,9 @@ CREATE TABLE IF NOT EXISTS vitals (
     value REAL,
     value_text TEXT,
     unit TEXT,
-    recorded_date TEXT  -- ISO YYYY-MM-DD
+    recorded_date TEXT,  -- ISO YYYY-MM-DD
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, vital_type, recorded_date, value_text)
 );
 
 CREATE INDEX IF NOT EXISTS idx_vitals_date ON vitals(recorded_date);
@@ -85,7 +94,9 @@ CREATE TABLE IF NOT EXISTS medications (
     route TEXT,
     start_date TEXT,
     stop_date TEXT,
-    prescriber TEXT
+    prescriber TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, name, start_date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_medications_status ON medications(status);
@@ -100,7 +111,9 @@ CREATE TABLE IF NOT EXISTS conditions (
     clinical_status TEXT,
     onset_date TEXT,
     resolved_date TEXT,
-    category TEXT
+    category TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, condition_name, icd10_code)
 );
 
 CREATE INDEX IF NOT EXISTS idx_conditions_status ON conditions(clinical_status);
@@ -117,7 +130,9 @@ CREATE TABLE IF NOT EXISTS procedures (
     provider TEXT,
     facility TEXT,
     operative_note TEXT,
-    status TEXT
+    status TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, name, procedure_date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_procedures_date ON procedures(procedure_date);
@@ -136,7 +151,9 @@ CREATE TABLE IF NOT EXISTS pathology_reports (
     margins TEXT,
     lymph_nodes TEXT,
     full_text TEXT,
-    FOREIGN KEY (procedure_id) REFERENCES procedures(id)
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id),
+    UNIQUE(source, report_date, specimen)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pathology_date ON pathology_reports(report_date);
@@ -151,7 +168,9 @@ CREATE TABLE IF NOT EXISTS imaging_reports (
     ordering_provider TEXT,
     findings TEXT,
     impression TEXT,
-    full_text TEXT
+    full_text TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, study_name, study_date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_imaging_date ON imaging_reports(study_date);
@@ -165,7 +184,9 @@ CREATE TABLE IF NOT EXISTS clinical_notes (
     author TEXT,
     note_date TEXT,        -- ISO YYYY-MM-DD
     content TEXT,
-    content_format TEXT DEFAULT 'text'
+    content_format TEXT DEFAULT 'text',
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, note_date, note_type, author)
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_date ON clinical_notes(note_date);
@@ -180,7 +201,9 @@ CREATE TABLE IF NOT EXISTS immunizations (
     admin_date TEXT,       -- ISO YYYY-MM-DD
     lot_number TEXT,
     site TEXT,
-    status TEXT
+    status TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, vaccine_name, admin_date)
 );
 
 CREATE TABLE IF NOT EXISTS allergies (
@@ -191,7 +214,9 @@ CREATE TABLE IF NOT EXISTS allergies (
     reaction TEXT,
     severity TEXT,
     status TEXT,
-    onset_date TEXT
+    onset_date TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, allergen)
 );
 
 CREATE TABLE IF NOT EXISTS social_history (
@@ -200,7 +225,9 @@ CREATE TABLE IF NOT EXISTS social_history (
     source_doc_id TEXT,
     category TEXT,
     value TEXT,
-    recorded_date TEXT
+    recorded_date TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, category, recorded_date)
 );
 
 CREATE TABLE IF NOT EXISTS family_history (
@@ -210,7 +237,9 @@ CREATE TABLE IF NOT EXISTS family_history (
     relation TEXT,
     condition TEXT,
     age_at_onset TEXT,
-    deceased INTEGER  -- 0 or 1
+    deceased INTEGER,  -- 0 or 1
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, relation, condition)
 );
 
 CREATE TABLE IF NOT EXISTS mental_status (
@@ -222,14 +251,43 @@ CREATE TABLE IF NOT EXISTS mental_status (
     answer TEXT,
     score INTEGER,
     total_score INTEGER,
-    recorded_date TEXT
+    recorded_date TEXT,
+    metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
+    UNIQUE(source, instrument, question, recorded_date)
 );
+
+CREATE TABLE IF NOT EXISTS genetic_variants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    gene TEXT NOT NULL,
+    variant_type TEXT,
+    assessment TEXT,
+    classification TEXT,
+    variant_origin TEXT,
+    vaf REAL,
+    dna_change TEXT,
+    protein_change TEXT,
+    transcript TEXT,
+    analysis_method TEXT,
+    test_name TEXT,
+    specimen TEXT,
+    collection_date TEXT,
+    result_date TEXT,
+    lab_name TEXT,
+    provider TEXT,
+    metadata TEXT DEFAULT '',
+    UNIQUE(source, gene, dna_change, test_name, collection_date)
+);
+CREATE INDEX IF NOT EXISTS idx_genetic_variants_gene ON genetic_variants(gene);
+CREATE INDEX IF NOT EXISTS idx_genetic_variants_date ON genetic_variants(collection_date);
+CREATE INDEX IF NOT EXISTS idx_genetic_variants_classification ON genetic_variants(classification);
 
 CREATE TABLE IF NOT EXISTS load_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
     loaded_at TEXT NOT NULL,  -- ISO datetime
     duration_seconds REAL,
+    content_hash TEXT,  -- SHA-256 hex digest of serialized records
     patients_count INTEGER DEFAULT 0,
     documents_count INTEGER DEFAULT 0,
     encounters_count INTEGER DEFAULT 0,
@@ -246,7 +304,8 @@ CREATE TABLE IF NOT EXISTS load_log (
     social_history_count INTEGER DEFAULT 0,
     family_history_count INTEGER DEFAULT 0,
     mental_status_count INTEGER DEFAULT 0,
-    source_assets_count INTEGER DEFAULT 0
+    source_assets_count INTEGER DEFAULT 0,
+    genetic_variants_count INTEGER DEFAULT 0
 );
 
 -- Personal notes / analysis storage (created by Claude or user)
@@ -286,7 +345,8 @@ CREATE TABLE IF NOT EXISTS source_assets (
     doc_id TEXT,                   -- cross-ref to documents.doc_id (nullable)
     ref_table TEXT,                -- clinical table (nullable)
     ref_id INTEGER,                -- row ID in ref_table (nullable)
-    metadata TEXT                  -- JSON blob for source-specific extras
+    metadata TEXT,                 -- JSON blob for source-specific extras
+    UNIQUE(source, file_path)
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_assets_source ON source_assets(source);

@@ -89,6 +89,14 @@ def visit_diff(db: ChartfoldDB, since_date: str) -> dict:
         (since_date,),
     )
 
+    new_genetic_variants = db.query(
+        "SELECT gene, variant_type, classification, vaf, dna_change, "
+        "protein_change, test_name, collection_date, result_date, source "
+        "FROM genetic_variants WHERE collection_date >= ? "
+        "ORDER BY collection_date DESC",
+        (since_date,),
+    )
+
     result = {
         "since_date": since_date,
         "new_labs": new_labs,
@@ -99,6 +107,7 @@ def visit_diff(db: ChartfoldDB, since_date: str) -> dict:
         "new_conditions": new_conditions,
         "new_encounters": new_encounters,
         "new_procedures": new_procedures,
+        "new_genetic_variants": new_genetic_variants,
         "summary": {
             "labs": len(new_labs),
             "imaging": len(new_imaging),
@@ -108,6 +117,7 @@ def visit_diff(db: ChartfoldDB, since_date: str) -> dict:
             "conditions": len(new_conditions),
             "encounters": len(new_encounters),
             "procedures": len(new_procedures),
+            "genetic_variants": len(new_genetic_variants),
         },
     }
     return result

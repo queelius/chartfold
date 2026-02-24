@@ -620,6 +620,7 @@ class TestConstants:
             "social_history",
             "family_history",
             "mental_status",
+            "genetic_variants",
             "notes",
             "analyses",
         }

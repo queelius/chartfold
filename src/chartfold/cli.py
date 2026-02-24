@@ -67,6 +67,15 @@ def main():
         "--source-name", default="mychart", help="Source identifier (default: mychart)"
     )
 
+    test_result_parser = load_sub.add_parser(
+        "mychart-test-result", help="Load genomic test results from MyChart MHTML"
+    )
+    test_result_parser.add_argument("input_file", help="Path to .mhtml file")
+    test_result_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+    test_result_parser.add_argument(
+        "--source-name", default="mychart_tempus", help="Source identifier (default: mychart_tempus)"
+    )
+
     all_parser = load_sub.add_parser("all", help="Load all sources at once")
     all_parser.add_argument("--epic-dir", help="Epic source directory")
     all_parser.add_argument("--meditech-dir", help="MEDITECH source directory")
@@ -265,6 +274,10 @@ def _handle_load(args):
             _load_mychart_visit(db, args)
             _print_db_summary(db)
             return
+        elif args.source == "mychart-test-result":
+            _load_mychart_test_result(db, args)
+            _print_db_summary(db)
+            return
         elif args.source == "auto":
             _load_auto(db, args.input_dir, getattr(args, "source_name", ""))
         elif args.source == "all":
@@ -364,17 +377,23 @@ def _load_auto(db, input_dir: str, source_name: str = ""):
 
     input_dir = os.path.expanduser(input_dir)
 
-    # Handle MHTML files directly (MyChart visit pages)
+    # Handle MHTML files directly (MyChart pages)
     if os.path.isfile(input_dir) and input_dir.lower().endswith(".mhtml"):
-        # Build a minimal args-like object for _load_mychart_visit
         class _Args:
             pass
         args = _Args()
         args.input_file = input_dir
-        args.source_name = source_name or "mychart"
-        args.image_dir = ""
-        print("Detected source: mychart-visit (MHTML file)")
-        _load_mychart_visit(db, args)
+
+        # Peek at HTML to detect test-result vs visit-note
+        if _is_test_result_mhtml(input_dir):
+            args.source_name = source_name or "mychart_tempus"
+            print("Detected source: mychart-test-result (MHTML file)")
+            _load_mychart_test_result(db, args)
+        else:
+            args.source_name = source_name or "mychart"
+            args.image_dir = ""
+            print("Detected source: mychart-visit (MHTML file)")
+            _load_mychart_visit(db, args)
         return
 
     if not os.path.isdir(input_dir):
@@ -484,12 +503,12 @@ def _load_analyses(db, input_dir: str):
 
 def _load_mychart_visit(db, args):
     """Load clinical images and data from an Epic MyChart MHTML visit page."""
-    from chartfold.adapters.mychart_adapter import (
+    from chartfold.adapters.mhtml_visit_adapter import (
         _parser_counts,
         mychart_to_unified,
         save_images,
     )
-    from chartfold.sources.mychart_mhtml import parse_mhtml
+    from chartfold.sources.mhtml_visit import parse_mhtml
 
     input_file = os.path.expanduser(args.input_file)
     if not os.path.isfile(input_file):
@@ -572,6 +591,67 @@ def _link_assets_to_imaging(db, source: str) -> int:
                 (row["report_id"], row["asset_id"]),
             )
     return len(rows)
+
+
+def _is_test_result_mhtml(file_path: str) -> bool:
+    """Peek at an MHTML file to detect if it's a test-result page.
+
+    Test-result pages have componentHeading classes (for TMB, MSI, etc.)
+    and a "Test Results List" back-link which visit-note pages do not.
+    We read 200KB because the HTML portion starts after MIME headers.
+    """
+    try:
+        with open(file_path, "r", errors="replace") as f:
+            head = f.read(200_000)
+        return "componentHeading" in head
+    except OSError:
+        return False
+
+
+def _load_mychart_test_result(db, args):
+    """Load genomic test results from an Epic MyChart MHTML test-result page."""
+    from chartfold.adapters.mhtml_test_result_adapter import (
+        _parser_counts,
+        test_result_to_unified,
+    )
+    from chartfold.sources.mhtml_test_result import parse_test_result_mhtml
+
+    input_file = os.path.expanduser(args.input_file)
+    if not os.path.isfile(input_file):
+        print(f"Error: MHTML file not found: {input_file}")
+        sys.exit(1)
+
+    print(f"\n--- Loading MyChart test result from {input_file} ---")
+    data = parse_test_result_mhtml(input_file)
+
+    if not data.test_name and not data.variants:
+        print("Error: No test result data found in MHTML file.")
+        return
+
+    # Print test info
+    print(f"  Test: {data.test_name}")
+    if data.panel:
+        print(f"  Panel: {data.panel}")
+    if data.provider:
+        print(f"  Provider: {data.provider}")
+    if data.collection_date:
+        print(f"  Collected: {data.collection_date}")
+    if data.result_date:
+        print(f"  Result: {data.result_date}")
+    print(f"  Variants: {len(data.variants)}")
+
+    # Convert to unified records
+    parser_counts = _parser_counts(data)
+    records = test_result_to_unified(data, source=args.source_name)
+    adapter_counts = records.counts()
+
+    # Use replace=False for granular import
+    result = db.load_source(records, replace=False)
+    print(f"  Source: {records.source}")
+    if result["skipped"]:
+        print("  Skipped: data identical to last load")
+        return
+    _print_load_result(result, parser_counts, adapter_counts)
 
 
 def _handle_export(args):

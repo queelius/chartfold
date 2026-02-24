@@ -44,6 +44,7 @@ class TestUnifiedRecordsCounts:
             "family_history",
             "mental_status",
             "source_assets",
+            "genetic_variants",
         }
         assert set(counts.keys()) == expected_keys
         assert all(v == 0 for v in counts.values())
@@ -372,108 +373,131 @@ class TestIdempotentLoad:
 
     def test_epic_idempotent(self, tmp_db, sample_epic_data):
         records = epic_to_unified(sample_epic_data)
-        counts1 = tmp_db.load_source(records)
-        counts2 = tmp_db.load_source(records)
-        assert counts1 == counts2
+        result1 = tmp_db.load_source(records)
+        result2 = tmp_db.load_source(records)
+        # Second load should be skipped (identical content hash)
+        assert result2["skipped"] is True
 
         # DB totals should match single load (not doubled)
         summary = tmp_db.summary()
-        for key in counts1:
-            assert summary[key] == counts1[key]
+        for key in result1:
+            assert summary[key] == result1[key]
 
     def test_athena_idempotent(self, tmp_db, sample_athena_data):
         records = athena_to_unified(sample_athena_data)
-        counts1 = tmp_db.load_source(records)
-        counts2 = tmp_db.load_source(records)
-        assert counts1 == counts2
+        result1 = tmp_db.load_source(records)
+        result2 = tmp_db.load_source(records)
+        # Second load should be skipped (identical content hash)
+        assert result2["skipped"] is True
 
 
 class TestStageComparison:
-    """Test the CLI stage comparison table display."""
+    """Test the CLI _print_load_result display."""
+
+    @staticmethod
+    def _make_result(table_stats):
+        """Build a LoadResult from a simple {table: total} dict."""
+        from chartfold.db import LoadResult
+        tables = {
+            k: {"new": v, "existing": 0, "removed": 0, "total": v}
+            for k, v in table_stats.items()
+        }
+        return LoadResult(tables=tables, content_hash="test", skipped=False)
 
     def test_matching_counts_no_flags(self, capsys):
         """When all stages match, no flags should be printed."""
-        from chartfold.cli import _print_stage_comparison
+        from chartfold.cli import _print_load_result
 
         counts = {"lab_results": 10, "medications": 5}
-        _print_stage_comparison(counts, counts, counts)
+        result = self._make_result(counts)
+        _print_load_result(result, counts, counts)
         output = capsys.readouterr().out
         assert "lab_results" in output
         assert "(dedup)" not in output
-        assert "(LOSS!)" not in output
-        assert "(expand)" not in output
 
     def test_dedup_flagged(self, capsys):
         """Parser > adapter should show (dedup) flag."""
-        from chartfold.cli import _print_stage_comparison
+        from chartfold.cli import _print_load_result
 
         parser = {"lab_results": 10}
         adapter = {"lab_results": 8}
-        db = {"lab_results": 8}
-        _print_stage_comparison(parser, adapter, db)
+        result = self._make_result(adapter)
+        _print_load_result(result, parser, adapter)
         output = capsys.readouterr().out
         assert "dedup" in output
 
     def test_expand_flagged(self, capsys):
         """Parser < adapter should show (expand) flag."""
-        from chartfold.cli import _print_stage_comparison
+        from chartfold.cli import _print_load_result
 
         parser = {"lab_results": 5}
         adapter = {"lab_results": 10}
-        db = {"lab_results": 10}
-        _print_stage_comparison(parser, adapter, db)
+        result = self._make_result(adapter)
+        _print_load_result(result, parser, adapter)
         output = capsys.readouterr().out
         assert "expand" in output
 
-    def test_loss_flagged(self, capsys):
-        """DB < adapter should show LOSS! flag."""
-        from chartfold.cli import _print_stage_comparison
-
-        parser = {"lab_results": 10}
-        adapter = {"lab_results": 10}
-        db = {"lab_results": 8}
-        _print_stage_comparison(parser, adapter, db)
-        output = capsys.readouterr().out
-        assert "LOSS!" in output
-
-    def test_extra_flagged(self, capsys):
-        """DB > adapter should show extra! flag."""
-        from chartfold.cli import _print_stage_comparison
-
-        parser = {"lab_results": 10}
-        adapter = {"lab_results": 10}
-        db = {"lab_results": 12}
-        _print_stage_comparison(parser, adapter, db)
-        output = capsys.readouterr().out
-        assert "extra!" in output
-
-    def test_dedup_and_loss_both_visible(self, capsys):
-        """Both dedup and loss flags should be visible when both apply."""
-        from chartfold.cli import _print_stage_comparison
-
-        parser = {"lab_results": 10}
-        adapter = {"lab_results": 8}
-        db = {"lab_results": 5}
-        _print_stage_comparison(parser, adapter, db)
-        output = capsys.readouterr().out
-        assert "dedup" in output
-        assert "LOSS!" in output
-
     def test_all_zero_rows_hidden(self, capsys):
-        """Rows where all three counts are 0 should not be displayed."""
-        from chartfold.cli import _print_stage_comparison
+        """Rows where all counts are 0 should not be displayed."""
+        from chartfold.cli import _print_load_result
 
         parser = {"lab_results": 0, "medications": 5}
         adapter = {"lab_results": 0, "medications": 5}
-        db = {"lab_results": 0, "medications": 5}
-        _print_stage_comparison(parser, adapter, db)
+        result = self._make_result(adapter)
+        _print_load_result(result, parser, adapter)
         output = capsys.readouterr().out
         assert "lab_results" not in output
         assert "medications" in output
 
     def test_empty_counts_prints_nothing(self, capsys):
         """All-empty input should produce no output."""
-        from chartfold.cli import _print_stage_comparison
+        from chartfold.cli import _print_load_result
+        from chartfold.db import LoadResult
 
-        _print_stage_comparison({}, {}, {})
+        result = LoadResult(tables={}, content_hash="test", skipped=False)
+        _print_load_result(result, {}, {})
         assert capsys.readouterr().out == ""
+
+    def test_diff_shows_new_count(self, capsys):
+        """Diff column should show +N for new records."""
+        from chartfold.cli import _print_load_result
+        from chartfold.db import LoadResult
+
+        tables = {
+            "lab_results": {"new": 3, "existing": 7, "removed": 0, "total": 10},
+        }
+        result = LoadResult(tables=tables, content_hash="test", skipped=False)
+        _print_load_result(result, {"lab_results": 10}, {"lab_results": 10})
+        output = capsys.readouterr().out
+        assert "+3" in output
+        assert "=7" in output
+
+    def test_diff_shows_removed_count(self, capsys):
+        """Diff column should show -N for removed records."""
+        from chartfold.cli import _print_load_result
+        from chartfold.db import LoadResult
+
+        tables = {
+            "lab_results": {"new": 0, "existing": 8, "removed": 2, "total": 8},
+        }
+        result = LoadResult(tables=tables, content_hash="test", skipped=False)
+        _print_load_result(result, {"lab_results": 8}, {"lab_results": 8})
+        output = capsys.readouterr().out
+        assert "-2" in output
+
+    def test_summary_line(self, capsys):
+        """Summary line should show totals."""
+        from chartfold.cli import _print_load_result
+        from chartfold.db import LoadResult
+
+        tables = {
+            "lab_results": {"new": 3, "existing": 7, "removed": 0, "total": 10},
+            "medications": {"new": 1, "existing": 4, "removed": 0, "total": 5},
+        }
+        result = LoadResult(tables=tables, content_hash="test", skipped=False)
+        _print_load_result(
+            result, {"lab_results": 10, "medications": 5}, {"lab_results": 10, "medications": 5}
+        )
+        output = capsys.readouterr().out
+        assert "4 new" in output
+        assert "11 existing" in output

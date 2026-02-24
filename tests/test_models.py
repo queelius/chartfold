@@ -9,6 +9,7 @@ from chartfold.models import (
     DocumentRecord,
     EncounterRecord,
     FamilyHistoryRecord,
+    GeneticVariant,
     ImagingReport,
     ImmunizationRecord,
     LabResult,
@@ -99,6 +100,12 @@ class TestDataclassInstantiation:
         assert ms.score is None
         assert ms.total_score is None
 
+    def test_genetic_variant(self):
+        gv = GeneticVariant(source="test", gene="TP53", dna_change="c.713G>A")
+        assert gv.gene == "TP53"
+        assert gv.vaf is None
+        assert gv.classification == ""
+
 
 class TestUnifiedRecords:
     def test_empty_container(self):
@@ -128,3 +135,50 @@ class TestUnifiedRecords:
         assert d["source"] == "test"
         assert d["test_name"] == "CEA"
         assert d["value_numeric"] == 5.8
+
+
+class TestMetadataField:
+    """All clinical record dataclasses should have a metadata field."""
+
+    CLINICAL_TYPES = [
+        PatientRecord,
+        DocumentRecord,
+        EncounterRecord,
+        LabResult,
+        VitalRecord,
+        MedicationRecord,
+        ConditionRecord,
+        ProcedureRecord,
+        PathologyReport,
+        ImagingReport,
+        ClinicalNote,
+        ImmunizationRecord,
+        AllergyRecord,
+        SocialHistoryRecord,
+        FamilyHistoryRecord,
+        MentalStatusRecord,
+        GeneticVariant,
+    ]
+
+    def test_all_types_have_metadata_field(self):
+        """Every clinical record type should have a metadata field."""
+        from dataclasses import fields as dc_fields
+
+        for cls in self.CLINICAL_TYPES:
+            field_names = {f.name for f in dc_fields(cls)}
+            assert "metadata" in field_names, f"{cls.__name__} missing metadata field"
+
+    def test_metadata_defaults_to_empty_string(self):
+        """Metadata should default to empty string (not None)."""
+        p = ProcedureRecord(source="test", name="test")
+        assert p.metadata == ""
+
+    def test_metadata_accepts_json_string(self):
+        """Metadata should accept a JSON string."""
+        import json
+
+        meta = json.dumps({"key": "value", "number": 42})
+        p = ProcedureRecord(source="test", name="test", metadata=meta)
+        parsed = json.loads(p.metadata)
+        assert parsed["key"] == "value"
+        assert parsed["number"] == 42
