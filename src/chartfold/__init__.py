@@ -3,4 +3,4 @@
 Supports Epic (CDA R2 XML) and MEDITECH Expanse (CCDA XML + FHIR JSON) formats.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"
