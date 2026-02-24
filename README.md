@@ -7,9 +7,9 @@ Patient-facing tool for consolidating personal health data from multiple EHR (El
 ## Features
 
 - **Multi-EHR data consolidation** — Import from Epic MyChart, MEDITECH Expanse, and athenahealth
-- **SQLite database** — 16 clinical tables with full audit trail
-- **MCP server** — 22 tools for LLM-assisted analysis with Claude
-- **Export formats** — Markdown, self-contained HTML with charts, Hugo static sites, JSON
+- **SQLite database** — 17 clinical tables with full audit trail
+- **MCP server** — 25 tools for LLM-assisted analysis with Claude
+- **Export formats** — Markdown, self-contained HTML SPA, Hugo static sites, JSON, Arkiv
 - **Personal notes** — Tag and annotate any clinical record
 - **Visit preparation** — Generate visit diffs and clinical summaries
 
@@ -100,6 +100,7 @@ chartfold notes search --ref-table lab_results
 | Source | Format | Description |
 |--------|--------|-------------|
 | **Epic MyChart** | CDA R2 XML | IHE XDM exports from Epic MyChart |
+| **Epic MyChart (MHTML)** | MHTML | Visit notes and genomic test results (e.g., Tempus XF) |
 | **MEDITECH Expanse** | CCDA XML + FHIR JSON | Dual-format bulk exports (merged and deduplicated) |
 | **athenahealth** | FHIR R4 XML | Ambulatory summary exports |
 
@@ -123,15 +124,16 @@ chartfold stores data in 16 clinical tables:
 | **Medications** | `medications`, `allergies` |
 | **Conditions** | `conditions` |
 | **Procedures** | `procedures`, `pathology_reports`, `imaging_reports` |
+| **Genomics** | `genetic_variants` |
 | **Notes** | `clinical_notes` |
 | **History** | `immunizations`, `social_history`, `family_history`, `mental_status` |
-| **System** | `load_log` (audit), `notes`, `note_tags` (personal), `source_assets` |
+| **System** | `load_log` (audit), `notes`, `note_tags` (personal), `source_assets`, `analyses`, `analysis_tags` |
 
 All dates are stored as ISO `YYYY-MM-DD` strings. Every record carries a `source` field for provenance tracking.
 
 ## MCP Server
 
-chartfold includes an MCP (Model Context Protocol) server with 22 tools for LLM-assisted health data analysis:
+chartfold includes an MCP (Model Context Protocol) server with 25 tools for LLM-assisted health data analysis:
 
 ```bash
 chartfold serve-mcp --db chartfold.db
@@ -141,14 +143,32 @@ chartfold serve-mcp --db chartfold.db
 
 | Category | Tools |
 |----------|-------|
-| **SQL & Schema** | `run_sql`, `get_schema` |
+| **SQL & Schema** | `run_sql`, `get_schema`, `get_database_summary` |
 | **Labs** | `query_labs`, `get_lab_series_tool`, `get_available_tests_tool`, `get_abnormal_labs_tool` |
 | **Medications** | `get_medications`, `reconcile_medications_tool` |
 | **Clinical** | `get_timeline`, `search_notes`, `get_pathology_report` |
-| **Analysis** | `get_visit_diff`, `get_visit_prep`, `get_surgical_timeline` |
+| **Visit Prep** | `get_visit_diff`, `get_visit_prep`, `get_surgical_timeline` |
 | **Cross-source** | `match_cross_source_encounters`, `get_data_quality_report` |
-| **Summary** | `get_database_summary` |
+| **Source Assets** | `get_source_files`, `get_asset_summary` |
 | **Personal Notes** | `save_note`, `get_note`, `search_notes_personal`, `delete_note` |
+| **Analyses** | `save_analysis`, `get_analysis`, `search_analyses`, `list_analyses`, `delete_analysis` |
+
+Clinical data is read-only (`?mode=ro` enforced at the SQLite engine level). Write operations are limited to personal notes and structured analyses.
+
+### Claude Code Configuration
+
+Drop a `.mcp.json` in any directory where you run Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "chartfold": {
+      "command": "python",
+      "args": ["-m", "chartfold", "serve-mcp", "--db", "/path/to/chartfold.db"]
+    }
+  }
+}
+```
 
 ### Claude Desktop Configuration
 
@@ -212,7 +232,7 @@ Raw EHR files (XML/FHIR)
 ## Testing
 
 ```bash
-# Run all tests (700+ tests)
+# Run all tests (1000+ tests)
 python -m pytest tests/
 
 # Run a single test file
