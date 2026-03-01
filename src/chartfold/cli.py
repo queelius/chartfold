@@ -61,7 +61,8 @@ def main():
     mychart_parser.add_argument("input_file", help="Path to .mhtml file")
     mychart_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     mychart_parser.add_argument(
-        "--image-dir", default="", help="Directory to save extracted images (default: next to .mhtml)"
+        "--image-dir", default="",
+        help="Directory to save extracted images (default: next to .mhtml)"
     )
     mychart_parser.add_argument(
         "--source-name", default="mychart", help="Source identifier (default: mychart)"
@@ -73,7 +74,8 @@ def main():
     test_result_parser.add_argument("input_file", help="Path to .mhtml file")
     test_result_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     test_result_parser.add_argument(
-        "--source-name", default="mychart_tempus", help="Source identifier (default: mychart_tempus)"
+        "--source-name", default="mychart_tempus",
+        help="Source identifier (default: mychart_tempus)"
     )
 
     all_parser = load_sub.add_parser("all", help="Load all sources at once")
@@ -141,6 +143,10 @@ def main():
     )
     arkiv_parser.add_argument(
         "--exclude-notes", action="store_true", help="Exclude personal notes and analyses"
+    )
+    arkiv_parser.add_argument(
+        "--embed", action="store_true",
+        help="Base64-encode source asset content inline (larger output, self-contained)"
     )
 
     # --- import ---
@@ -284,7 +290,8 @@ def _handle_load(args):
             if args.epic_dir:
                 _load_source(db, "epic", args.epic_dir, getattr(args, "epic_source_name", ""))
             if args.meditech_dir:
-                _load_source(db, "meditech", args.meditech_dir, getattr(args, "meditech_source_name", ""))
+                source_name = getattr(args, "meditech_source_name", "")
+                _load_source(db, "meditech", args.meditech_dir, source_name)
             if args.athena_dir:
                 _load_source(db, "athena", args.athena_dir, getattr(args, "athena_source_name", ""))
         elif args.source in _KNOWN_SOURCES:
@@ -350,7 +357,7 @@ def _print_load_result(
     if not rows:
         return
 
-    print(f"\n  Stage Comparison:")
+    print("\n  Stage Comparison:")
     print(f"    {'Table':<22} {'Parser':>7}  {'Adapt':>7}  {'Load':>7}  {'Diff'}")
     print(f"    {'-' * 22} {'-' * 7}  {'-' * 7}  {'-' * 7}  {'-' * 14}")
     for key, p, a, total, diff, flag in rows:
@@ -369,7 +376,7 @@ def _print_load_result(
     if parts:
         print(f"\n  Summary: {', '.join(parts)}")
     elif not total_new and not total_removed:
-        print(f"\n  No changes")
+        print("\n  No changes")
 
 
 def _load_auto(db, input_dir: str, source_name: str = ""):
@@ -493,7 +500,7 @@ def _load_analyses(db, input_dir: str):
 
     print(f"\nLoading {len(analyses)} analyses from {input_dir}...")
     for a in analyses:
-        aid = db.save_analysis(**a)
+        db.save_analysis(**a)
         tags = ", ".join(a["tags"]) if a["tags"] else ""
         tag_str = f" [{tags}]" if tags else ""
         print(f"  {a['slug']:<30} {a['title'][:40]}{tag_str}")
@@ -696,6 +703,7 @@ def _handle_export(args):
                 db,
                 output_dir=args.output,
                 include_notes=not args.exclude_notes,
+                embed=args.embed,
             )
 
     print(f"Exported to {path}")

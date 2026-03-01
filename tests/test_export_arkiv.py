@@ -1143,3 +1143,39 @@ class TestCLI:
         assert os.path.exists(os.path.join(output_dir, "README.md"))
         assert os.path.exists(os.path.join(output_dir, "schema.yaml"))
         assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))
+
+    def test_cli_export_arkiv_embed(self, tmp_path):
+        """CLI: chartfold export arkiv --embed works."""
+        import subprocess
+        import sys
+
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+
+        # Create a real file for the source asset
+        asset_file = tmp_path / "test.png"
+        asset_file.write_bytes(b"\x89PNG test data")
+
+        db.conn.execute(
+            """INSERT INTO source_assets
+               (source, asset_type, file_path, file_name, file_size_kb, content_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("test", "png", str(asset_file), "test.png", 1, "image/png"),
+        )
+        db.conn.commit()
+        db.close()
+
+        output_dir = str(tmp_path / "arkiv-out")
+        result = subprocess.run(
+            [sys.executable, "-m", "chartfold", "export", "arkiv",
+             "--db", db_path, "--output", output_dir, "--embed"],
+            check=False, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        # Verify base64 content is present
+        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+        with open(jsonl_path) as f:
+            rec = json.loads(f.readline())
+        assert "content" in rec
