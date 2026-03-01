@@ -1,9 +1,10 @@
-"""Tests for chartfold arkiv export (JSONL + manifest format)."""
+"""Tests for chartfold arkiv export (JSONL + README.md + schema.yaml)."""
 
 import json
 import os
 
 import pytest
+import yaml
 
 from chartfold.db import ChartfoldDB
 from chartfold.export_arkiv import (
@@ -20,7 +21,6 @@ from chartfold.export_arkiv import (
 from chartfold.models import (
     FamilyHistoryRecord,
     LabResult,
-    MedicationRecord,
     PathologyReport,
     ProcedureRecord,
     UnifiedRecords,
@@ -752,7 +752,7 @@ class TestExportArkiv:
     """Integration tests for the main export_arkiv function."""
 
     def test_export_arkiv_full(self, tmp_path):
-        """Full integration: export creates JSONL files + manifest."""
+        """Full integration: export creates JSONL files + README.md + schema.yaml."""
         from chartfold.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
@@ -802,25 +802,48 @@ class TestExportArkiv:
         assert not os.path.exists(os.path.join(output_dir, "source_assets.jsonl"))
         assert not os.path.exists(os.path.join(output_dir, "note_tags.jsonl"))
 
-        # Check manifest
-        with open(os.path.join(output_dir, "manifest.json")) as f:
-            manifest = json.load(f)
-        assert manifest["description"] == "Chartfold clinical data export"
-        assert manifest["metadata"]["source_tool"] == "chartfold"
-        assert "created" in manifest
+        # No manifest.json (replaced by README.md + schema.yaml)
+        assert not os.path.exists(os.path.join(output_dir, "manifest.json"))
 
-        collection_files = {c["file"] for c in manifest["collections"]}
-        assert "lab_results.jsonl" in collection_files
-        assert "family_history.jsonl" in collection_files
-        assert "notes.jsonl" in collection_files
-        assert "medications.jsonl" not in collection_files
+        # Check README.md with YAML frontmatter
+        readme_path = os.path.join(output_dir, "README.md")
+        assert os.path.exists(readme_path)
+        with open(readme_path) as f:
+            content = f.read()
+        assert content.startswith("---\n")
+        parts = content.split("---\n", 2)
+        frontmatter = yaml.safe_load(parts[1])
 
-        # Schema in manifest
-        lab_coll = [c for c in manifest["collections"] if c["file"] == "lab_results.jsonl"][0]
-        assert lab_coll["record_count"] == 1
-        assert "metadata_keys" in lab_coll["schema"]
-        assert "test_name" in lab_coll["schema"]["metadata_keys"]
-        assert lab_coll["description"] == "Laboratory test results with values, reference ranges, and interpretations"
+        assert frontmatter["name"] == "Chartfold clinical data export"
+        assert frontmatter["description"] == "Clinical records from Epic, MEDITECH, and athenahealth"
+        assert "datetime" in frontmatter
+        assert frontmatter["generator"].startswith("chartfold v")
+
+        content_paths = {c["path"] for c in frontmatter["contents"]}
+        assert "lab_results.jsonl" in content_paths
+        assert "family_history.jsonl" in content_paths
+        assert "notes.jsonl" in content_paths
+        assert "medications.jsonl" not in content_paths
+
+        # Check lab description in contents
+        lab_entry = next(c for c in frontmatter["contents"] if c["path"] == "lab_results.jsonl")
+        assert lab_entry["description"] == "Laboratory test results with values, reference ranges, and interpretations"
+
+        # Body text after frontmatter
+        body = parts[2]
+        assert "Chartfold Clinical Data Export" in body
+        assert "Exported from chartfold database on" in body
+
+        # Check schema.yaml
+        schema_path = os.path.join(output_dir, "schema.yaml")
+        assert os.path.exists(schema_path)
+        with open(schema_path) as f:
+            schema = yaml.safe_load(f)
+
+        assert "lab_results" in schema
+        assert schema["lab_results"]["record_count"] == 1
+        assert "metadata_keys" in schema["lab_results"]
+        assert "test_name" in schema["lab_results"]["metadata_keys"]
 
     def test_export_arkiv_exclude_notes(self, tmp_path):
         """include_notes=False omits notes and analyses."""
@@ -854,12 +877,15 @@ class TestExportArkiv:
         assert not os.path.exists(os.path.join(output_dir, "notes.jsonl"))
         assert not os.path.exists(os.path.join(output_dir, "analyses.jsonl"))
 
-        # Manifest should not mention notes/analyses
-        with open(os.path.join(output_dir, "manifest.json")) as f:
-            manifest = json.load(f)
-        coll_files = {c["file"] for c in manifest["collections"]}
-        assert "notes.jsonl" not in coll_files
-        assert "analyses.jsonl" not in coll_files
+        # README.md should not mention notes/analyses
+        readme_path = os.path.join(output_dir, "README.md")
+        with open(readme_path) as f:
+            content = f.read()
+        parts = content.split("---\n", 2)
+        frontmatter = yaml.safe_load(parts[1])
+        content_paths = {c["path"] for c in frontmatter["contents"]}
+        assert "notes.jsonl" not in content_paths
+        assert "analyses.jsonl" not in content_paths
 
     def test_export_arkiv_note_tags_folded(self, tmp_path):
         """Notes in the export have their tags folded in."""
@@ -874,12 +900,13 @@ class TestExportArkiv:
         export_arkiv(db, output_dir)
         db.close()
 
-        lines = open(os.path.join(output_dir, "notes.jsonl")).read().strip().split("\n")
+        with open(os.path.join(output_dir, "notes.jsonl")) as f:
+            lines = f.read().strip().split("\n")
         record = json.loads(lines[0])
         assert set(record["metadata"]["tags"]) == {"oncology", "cea"}
 
     def test_export_arkiv_empty_db(self, tmp_path):
-        """Export of empty database creates manifest with no collections."""
+        """Export of empty database creates README.md with empty contents."""
         from chartfold.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
@@ -890,9 +917,20 @@ class TestExportArkiv:
         export_arkiv(db, output_dir)
         db.close()
 
-        with open(os.path.join(output_dir, "manifest.json")) as f:
-            manifest = json.load(f)
-        assert manifest["collections"] == []
+        # README.md with empty contents
+        readme_path = os.path.join(output_dir, "README.md")
+        with open(readme_path) as f:
+            content = f.read()
+        parts = content.split("---\n", 2)
+        frontmatter = yaml.safe_load(parts[1])
+        assert frontmatter["contents"] == []
+
+        # schema.yaml should be empty/null (no collections)
+        schema_path = os.path.join(output_dir, "schema.yaml")
+        with open(schema_path) as f:
+            schema = yaml.safe_load(f)
+        assert schema is None or schema == {}
+
         # No JSONL files
         jsonl_files = [f for f in os.listdir(output_dir) if f.endswith(".jsonl")]
         assert jsonl_files == []
@@ -934,9 +972,10 @@ class TestCLI:
         result = subprocess.run(
             [sys.executable, "-m", "chartfold", "export", "arkiv",
              "--db", db_path, "--output", output_dir],
-            capture_output=True, text=True,
+            check=False, capture_output=True, text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "Exported to" in result.stdout
-        assert os.path.exists(os.path.join(output_dir, "manifest.json"))
+        assert os.path.exists(os.path.join(output_dir, "README.md"))
+        assert os.path.exists(os.path.join(output_dir, "schema.yaml"))
         assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))

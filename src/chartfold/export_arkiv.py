@@ -1,17 +1,23 @@
-"""Export chartfold clinical data to arkiv universal record format (JSONL + manifest).
+"""Export chartfold clinical data to arkiv universal record format.
 
 Each clinical table is exported as a separate .jsonl file, with one arkiv record
 per database row. Tags from note_tags and analysis_tags are folded into the
 parent record's metadata.
+
+The archive manifest is written as README.md (YAML frontmatter) + schema.yaml,
+following the arkiv specification.
 """
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import os
 from collections import defaultdict
 from datetime import date
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 if TYPE_CHECKING:
     from chartfold.db import ChartfoldDB
@@ -163,7 +169,7 @@ def _export_table(
     Returns:
         List of arkiv records, or None if the table is empty.
     """
-    rows = db.query(f"SELECT * FROM {table}")  # noqa: S608
+    rows = db.query(f"SELECT * FROM {table}")
     if not rows:
         return None
 
@@ -206,12 +212,12 @@ def _export_table_with_tags(
     Returns:
         List of arkiv records, or None if the table is empty.
     """
-    rows = db.query(f"SELECT * FROM {table}")  # noqa: S608
+    rows = db.query(f"SELECT * FROM {table}")
     if not rows:
         return None
 
     # Build tag lookup: parent_id -> sorted list of tags
-    tag_rows = db.query(f"SELECT {tag_fk_col}, tag FROM {tag_table}")  # noqa: S608
+    tag_rows = db.query(f"SELECT {tag_fk_col}, tag FROM {tag_table}")
     tag_lookup: dict[int, list[str]] = defaultdict(list)
     for trow in tag_rows:
         tag_lookup[trow[tag_fk_col]].append(trow["tag"])
@@ -352,6 +358,19 @@ def _sort_values(values: list[Any]) -> list[Any]:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_version() -> str:
+    """Return the installed chartfold version, or 'dev' if not installed."""
+    try:
+        return importlib.metadata.version("chartfold")
+    except importlib.metadata.PackageNotFoundError:
+        return "dev"
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -360,13 +379,15 @@ def export_arkiv(
     db: ChartfoldDB,
     output_dir: str,
     include_notes: bool = True,
+    embed: bool = False,
 ) -> str:
-    """Export database to arkiv format (JSONL + manifest).
+    """Export database to arkiv format (JSONL + README.md + schema.yaml).
 
     Args:
         db: Database connection.
         output_dir: Directory to write output files.
         include_notes: Include personal notes and analyses.
+        embed: Reserved for future source-asset embedding (not yet wired).
 
     Returns the output directory path.
     """
@@ -378,7 +399,10 @@ def export_arkiv(
         and (include_notes or t not in _NOTE_TABLES)
     ]
 
-    collections = []
+    # Per-collection data for README contents and schema.yaml
+    contents: list[dict[str, str]] = []
+    schema_data: dict[str, Any] = {}
+
     for table in tables_to_export:
         ts_field = _TIMESTAMP_FIELDS[table]
 
@@ -394,21 +418,40 @@ def export_arkiv(
             continue
 
         schema = _build_schema(records)
-        collections.append({
-            "file": f"{table}.jsonl",
-            "description": _COLLECTION_DESCRIPTIONS.get(table, table),
-            "record_count": len(records),
-            "schema": schema,
+        description = _COLLECTION_DESCRIPTIONS.get(table, table)
+        contents.append({
+            "path": f"{table}.jsonl",
+            "description": description,
         })
+        schema_data[table] = {
+            "record_count": len(records),
+            **schema,
+        }
 
-    manifest = {
-        "description": "Chartfold clinical data export",
-        "created": date.today().isoformat(),
-        "metadata": {"source_tool": "chartfold"},
-        "collections": collections,
+    # Write README.md with YAML frontmatter
+    today = date.today().isoformat()
+    version = _get_version()
+
+    frontmatter = {
+        "name": "Chartfold clinical data export",
+        "description": "Clinical records from Epic, MEDITECH, and athenahealth",
+        "datetime": today,
+        "generator": f"chartfold v{version}",
+        "contents": contents,
     }
-    manifest_path = os.path.join(output_dir, "manifest.json")
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    frontmatter_yaml = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+
+    readme_path = os.path.join(output_dir, "README.md")
+    with open(readme_path, "w", encoding="utf-8") as f:
+        f.write("---\n")
+        f.write(frontmatter_yaml)
+        f.write("---\n\n")
+        f.write("# Chartfold Clinical Data Export\n\n")
+        f.write(f"Exported from chartfold database on {today}.\n")
+
+    # Write schema.yaml
+    schema_path = os.path.join(output_dir, "schema.yaml")
+    with open(schema_path, "w", encoding="utf-8") as f:
+        yaml.dump(schema_data, f, default_flow_style=False, sort_keys=False)
 
     return output_dir
