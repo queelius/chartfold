@@ -659,7 +659,7 @@ def _handle_export(args):
     from chartfold.db import ChartfoldDB
 
     if args.export_format is None:
-        print("Usage: chartfold export <arkiv|html|json> [options]")
+        print("Usage: chartfold export <arkiv|html> [options]")
         print("\nSubcommands:")
         print("  arkiv      Export as arkiv universal record format (JSONL + manifest)")
         print("  html       Export as self-contained HTML SPA with embedded SQLite")

@@ -819,6 +819,58 @@ class TestImportArkiv:
             assert len(imaging) == 1
             assert assets[0]["ref_id"] == imaging[0]["id"]
 
+    def test_import_partial_archive_missing_fk_parent(self, tmp_path):
+        """Child records with FK to missing parent should get NULL FK."""
+        from chartfold.import_arkiv import import_arkiv
+
+        arkiv_dir = tmp_path / "arkiv"
+        arkiv_dir.mkdir()
+
+        # Build archive with pathology_reports in contents but NO procedures
+        contents = [
+            {"path": "lab_results.jsonl", "description": "Labs"},
+            {"path": "pathology_reports.jsonl", "description": "Pathology"},
+        ]
+        frontmatter = {
+            "name": "Test export",
+            "datetime": "2026-02-28",
+            "generator": "test",
+            "contents": contents,
+        }
+        readme = "---\n" + yaml.dump(frontmatter, sort_keys=False) + "---\n\n# Test\n"
+        (arkiv_dir / "README.md").write_text(readme)
+        schema = {"lab_results": {}, "pathology_reports": {}}
+        (arkiv_dir / "schema.yaml").write_text(yaml.dump(schema))
+        (arkiv_dir / "lab_results.jsonl").write_text("")  # empty, no labs needed
+
+        # Write a pathology_report referencing a procedure that doesn't exist
+        path_file = os.path.join(str(arkiv_dir), "pathology_reports.jsonl")
+        record = {
+            "mimetype": "application/json",
+            "uri": "chartfold:pathology_reports/1",
+            "metadata": {
+                "table": "pathology_reports",
+                "source": "test",
+                "report_date": "2025-03-15",
+                "specimen": "Colon biopsy",
+                "diagnosis": "Adenocarcinoma",
+                "procedure_uri": "chartfold:procedures/999",  # no procedures in archive
+            },
+        }
+        with open(path_file, "w") as f:
+            f.write(json.dumps(record) + "\n")
+
+        db_path = str(tmp_path / "test.db")
+        result = import_arkiv(str(arkiv_dir), db_path)
+        assert result["success"] is True
+        assert result["counts"]["pathology_reports"] == 1
+
+        with ChartfoldDB(db_path) as db:
+            reports = db.query("SELECT * FROM pathology_reports")
+            assert len(reports) == 1
+            assert reports[0]["procedure_id"] is None  # NULL, not stale old ID
+            assert reports[0]["specimen"] == "Colon biopsy"
+
 
 # ---------------------------------------------------------------------------
 # Tests: Round-trip (export -> import -> verify)

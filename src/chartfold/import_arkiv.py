@@ -216,18 +216,22 @@ def _import_source_assets(
         base64_content = row.pop("_base64_content", None)
 
         if media_name and os.path.isdir(media_dir):
-            media_path = os.path.join(media_dir, media_name)
-            if os.path.isfile(media_path):
-                row["file_path"] = os.path.abspath(media_path)
+            media_path = os.path.realpath(os.path.join(media_dir, media_name))
+            real_media_dir = os.path.realpath(media_dir)
+            if media_path.startswith(real_media_dir + os.sep) and os.path.isfile(media_path):
+                row["file_path"] = media_path
 
         if not row.get("file_path") and base64_content:
             # Write base64 content to media/ in the archive
             os.makedirs(media_dir, exist_ok=True)
             file_name = row.get("file_name", f"asset_{old_id}")
-            dest = os.path.join(media_dir, file_name)
+            dest = os.path.realpath(os.path.join(media_dir, file_name))
+            real_media_dir = os.path.realpath(media_dir)
+            if not dest.startswith(real_media_dir + os.sep):
+                continue  # skip path-traversal attempt
             with open(dest, "wb") as f:
                 f.write(base64.b64decode(base64_content))
-            row["file_path"] = os.path.abspath(dest)
+            row["file_path"] = dest
 
         if not row.get("file_path"):
             row["file_path"] = ""
@@ -237,7 +241,7 @@ def _import_source_assets(
         ref_id = row.get("ref_id")
         if ref_table and ref_id is not None:
             parent_map = id_map.get(ref_table, {})
-            row["ref_id"] = parent_map.get(ref_id, ref_id)
+            row["ref_id"] = parent_map.get(ref_id)  # None if parent not imported
 
         # Filter to known columns only
         filtered = {k: v for k, v in row.items() if k in table_columns}
@@ -495,7 +499,7 @@ def import_arkiv(
                     old_fk = row.get(fk_col)
                     if old_fk is not None:
                         parent_map = id_map.get(parent_table, {})
-                        row[fk_col] = parent_map.get(old_fk, old_fk)
+                        row[fk_col] = parent_map.get(old_fk)  # None if parent not imported
 
                 # Filter to valid columns only
                 filtered = {k: v for k, v in row.items() if k in valid_columns}
