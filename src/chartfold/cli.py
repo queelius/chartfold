@@ -9,7 +9,7 @@ Usage:
     python -m chartfold query <sql> [--db chartfold.db]
     python -m chartfold summary [--db chartfold.db]
     python -m chartfold export html [--output FILE] [--embed-images] [--config FILE]
-    python -m chartfold export json [--output FILE]
+    python -m chartfold export arkiv [--output DIR] [--embed] [--exclude-notes]
     python -m chartfold serve-mcp [--db chartfold.db]
 """
 
@@ -113,12 +113,6 @@ def main():
     # Common db argument for all export subcommands
     db_help = "SQLite database path"
 
-    # export json (for full exports)
-    json_parser = export_sub.add_parser("json", help="Export as JSON (full database dump)")
-    json_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
-    json_parser.add_argument("--output", default="chartfold_export.json", help="Output file path")
-    json_parser.add_argument("--include-load-log", action="store_true", help="Include audit log")
-    json_parser.add_argument("--exclude-notes", action="store_true", help="Exclude personal notes")
 
     # export html
     html_parser = export_sub.add_parser(
@@ -669,24 +663,13 @@ def _handle_export(args):
         print("\nSubcommands:")
         print("  arkiv      Export as arkiv universal record format (JSONL + manifest)")
         print("  html       Export as self-contained HTML SPA with embedded SQLite")
-        print("  json       Export as JSON (full database dump)")
         print("\nRun 'chartfold export <subcommand> --help' for options.")
         sys.exit(1)
 
     with ChartfoldDB(args.db) as db:
         db.init_schema()
 
-        if args.export_format == "json":
-            from chartfold.export_full import export_full_json
-
-            path = export_full_json(
-                db,
-                output_path=args.output,
-                include_notes=not args.exclude_notes,
-                include_load_log=args.include_load_log,
-            )
-
-        elif args.export_format == "html":
+        if args.export_format == "html":
             from chartfold.spa.export import export_spa
 
             path = export_spa(

@@ -1,9 +1,10 @@
 """Tests for the structured analyses system.
 
-Covers: analysis_parser, DB CRUD methods, CLI commands, and JSON round-trip.
+Covers: analysis_parser, DB CRUD methods, CLI commands, and arkiv round-trip.
 """
 
 import json
+import os
 
 import pytest
 
@@ -412,7 +413,7 @@ class TestAnalysesCLI:
 
 class TestAnalysesRoundTrip:
     def test_analyses_in_export(self, analysis_db, tmp_path):
-        """Analyses should auto-appear in JSON export via auto-discovery."""
+        """Analyses should appear in arkiv export."""
         analysis_db.save_analysis(
             slug="test-analysis",
             title="Test",
@@ -420,19 +421,20 @@ class TestAnalysesRoundTrip:
             tags=["tag1"],
         )
 
-        from chartfold.export_full import export_full_json
+        from chartfold.export_arkiv import export_arkiv
 
-        output_path = str(tmp_path / "export.json")
-        export_full_json(analysis_db, output_path)
+        output_dir = str(tmp_path / "arkiv")
+        export_arkiv(analysis_db, output_dir)
 
-        with open(output_path) as f:
-            data = json.load(f)
-
-        assert "analyses" in data["tables"]
-        assert "analysis_tags" in data["tables"]
-        assert len(data["tables"]["analyses"]) == 1
-        assert data["tables"]["analyses"][0]["slug"] == "test-analysis"
-        assert len(data["tables"]["analysis_tags"]) == 1
+        # Check analyses collection exists in JSONL
+        analyses_path = os.path.join(output_dir, "analyses.jsonl")
+        assert os.path.exists(analyses_path)
+        with open(analyses_path) as f:
+            records = [json.loads(line) for line in f]
+        assert len(records) == 1
+        assert records[0]["metadata"]["slug"] == "test-analysis"
+        # Tags should be folded into metadata
+        assert records[0]["metadata"]["tags"] == ["tag1"]
 
     def test_analyses_round_trip(self, analysis_db, tmp_path):
         """Analyses should survive export -> import round-trip with FK remapping."""
@@ -445,17 +447,17 @@ class TestAnalysesRoundTrip:
             source="claude",
         )
 
-        from chartfold.export_full import export_full_json, import_json
+        from chartfold.export_arkiv import export_arkiv
+        from chartfold.import_arkiv import import_arkiv
 
-        json_path = str(tmp_path / "export.json")
+        arkiv_dir = str(tmp_path / "arkiv")
         import_db_path = str(tmp_path / "imported.db")
 
-        export_full_json(analysis_db, json_path)
+        export_arkiv(analysis_db, arkiv_dir)
 
-        result = import_json(json_path, import_db_path)
+        result = import_arkiv(arkiv_dir, import_db_path)
         assert result["success"] is True
         assert result["counts"]["analyses"] == 1
-        assert result["counts"]["analysis_tags"] == 2
 
         with ChartfoldDB(import_db_path) as imported_db:
             imported_db.init_schema()
