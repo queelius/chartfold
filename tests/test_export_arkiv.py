@@ -993,6 +993,9 @@ class TestSourceAssetExport:
         assert "content" not in png_rec
         assert png_rec["metadata"]["title"] == "CT Abdomen"
         assert png_rec["metadata"]["ref_table"] == "imaging_reports"
+        # ref_id replaced by ref_id_uri (not both)
+        assert "ref_id" not in png_rec["metadata"]
+        assert png_rec["metadata"]["ref_id_uri"] == "chartfold:imaging_reports/7"
 
         assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
         assert os.path.exists(os.path.join(output_dir, "media", "report.pdf"))
@@ -1049,6 +1052,52 @@ class TestSourceAssetExport:
 
         paths = {c["path"] for c in frontmatter["contents"]}
         assert "source_assets.jsonl" in paths
+
+    def test_source_assets_filename_collision(self, tmp_db, tmp_path):
+        """Colliding file names get disambiguated with ID prefix."""
+        from chartfold.export_arkiv import export_arkiv
+
+        media_src = tmp_path / "source_files"
+        media_src.mkdir()
+        # Two different files, both named "report.pdf"
+        src_a = media_src / "a"
+        src_a.mkdir()
+        (src_a / "report.pdf").write_bytes(b"PDF-A content")
+        src_b = media_src / "b"
+        src_b.mkdir()
+        (src_b / "report.pdf").write_bytes(b"PDF-B content")
+
+        tmp_db.conn.execute(
+            """INSERT INTO source_assets
+               (source, asset_type, file_path, file_name, file_size_kb, content_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("src_a", "pdf", str(src_a / "report.pdf"), "report.pdf",
+             1, "application/pdf"),
+        )
+        tmp_db.conn.execute(
+            """INSERT INTO source_assets
+               (source, asset_type, file_path, file_name, file_size_kb, content_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("src_b", "pdf", str(src_b / "report.pdf"), "report.pdf",
+             1, "application/pdf"),
+        )
+        tmp_db.conn.commit()
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(tmp_db, output_dir)
+
+        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+        with open(jsonl_path) as f:
+            records = [json.loads(line) for line in f]
+
+        assert len(records) == 2
+        uris = {r["uri"] for r in records}
+        # One keeps original name, the other gets ID prefix
+        assert len(uris) == 2  # No collision in URIs
+
+        # Both files exist in media/ with distinct names
+        media_files = os.listdir(os.path.join(output_dir, "media"))
+        assert len(media_files) == 2
 
 
 # ---------------------------------------------------------------------------

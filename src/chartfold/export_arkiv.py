@@ -398,6 +398,7 @@ def _export_source_assets(
     os.makedirs(media_dir, exist_ok=True)
 
     records: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
     for row in rows:
         file_name = row["file_name"]
         file_path = row["file_path"]
@@ -408,9 +409,15 @@ def _export_source_assets(
         if not src_path.is_file():
             continue
 
+        # Disambiguate colliding file names with row ID prefix
+        media_name = file_name
+        if media_name in seen_names:
+            media_name = f"{row['id']}_{file_name}"
+        seen_names.add(media_name)
+
         record: dict[str, Any] = {
             "mimetype": mime,
-            "uri": f"file://media/{file_name}",
+            "uri": f"file://media/{media_name}",
         }
 
         # Timestamp
@@ -419,7 +426,7 @@ def _export_source_assets(
             record["timestamp"] = ts
 
         # Copy file to media/
-        dest = os.path.join(media_dir, file_name)
+        dest = os.path.join(media_dir, media_name)
         shutil.copy2(str(src_path), dest)
 
         # Embed mode: base64 inline
@@ -427,9 +434,10 @@ def _export_source_assets(
             with open(str(src_path), "rb") as bf:
                 record["content"] = base64.b64encode(bf.read()).decode("ascii")
 
-        # Build metadata (skip file_path — replaced by URI)
+        # Build metadata (skip file_path — replaced by URI;
+        # skip ref_id — replaced by ref_id_uri below)
         metadata: dict[str, Any] = {"table": "source_assets"}
-        skip_keys = {"id", "file_path", "content_type"}
+        skip_keys = {"id", "file_path", "content_type", "ref_id"}
         for col, val in row.items():
             if col in skip_keys:
                 continue
