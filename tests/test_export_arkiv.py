@@ -1,5 +1,6 @@
 """Tests for chartfold arkiv export (JSONL + README.md + schema.yaml)."""
 
+import base64
 import json
 import os
 
@@ -185,6 +186,34 @@ def db_with_analyses(tmp_db):
         tags=["medications"],
         category="pharmacy",
     )
+    return tmp_db
+
+
+@pytest.fixture
+def db_with_assets(tmp_db, tmp_path):
+    """DB with source assets that reference real files."""
+    media_src = tmp_path / "source_files"
+    media_src.mkdir()
+    (media_src / "scan.png").write_bytes(b"\x89PNG fake image data")
+    (media_src / "report.pdf").write_bytes(b"%PDF fake pdf data")
+
+    tmp_db.conn.execute(
+        """INSERT INTO source_assets
+           (source, asset_type, file_path, file_name, file_size_kb,
+            content_type, title, encounter_date, ref_table, ref_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("test_source", "png", str(media_src / "scan.png"), "scan.png",
+         1, "image/png", "CT Abdomen", "2025-01-15", "imaging_reports", 7),
+    )
+    tmp_db.conn.execute(
+        """INSERT INTO source_assets
+           (source, asset_type, file_path, file_name, file_size_kb,
+            content_type, title)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ("test_source", "pdf", str(media_src / "report.pdf"), "report.pdf",
+         2, "application/pdf", "Lab Report"),
+    )
+    tmp_db.conn.commit()
     return tmp_db
 
 
@@ -621,6 +650,7 @@ class TestConstants:
             "family_history",
             "mental_status",
             "genetic_variants",
+            "source_assets",
             "notes",
             "analyses",
         }
@@ -934,6 +964,91 @@ class TestExportArkiv:
         # No JSONL files
         jsonl_files = [f for f in os.listdir(output_dir) if f.endswith(".jsonl")]
         assert jsonl_files == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: Source asset export
+# ---------------------------------------------------------------------------
+
+
+class TestSourceAssetExport:
+    def test_source_assets_exported_to_media(self, db_with_assets, tmp_path):
+        """Default mode copies files to media/ and uses file:// URIs."""
+        from chartfold.export_arkiv import export_arkiv
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db_with_assets, output_dir)
+
+        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+        assert os.path.exists(jsonl_path)
+
+        with open(jsonl_path) as f:
+            records = [json.loads(line) for line in f]
+
+        assert len(records) == 2
+
+        png_rec = next(r for r in records if "scan.png" in r.get("uri", ""))
+        assert png_rec["mimetype"] == "image/png"
+        assert png_rec["uri"] == "file://media/scan.png"
+        assert "content" not in png_rec
+        assert png_rec["metadata"]["title"] == "CT Abdomen"
+        assert png_rec["metadata"]["ref_table"] == "imaging_reports"
+
+        assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
+        assert os.path.exists(os.path.join(output_dir, "media", "report.pdf"))
+
+    def test_source_assets_embedded_base64(self, db_with_assets, tmp_path):
+        """--embed mode inlines base64 content."""
+        from chartfold.export_arkiv import export_arkiv
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db_with_assets, output_dir, embed=True)
+
+        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+        with open(jsonl_path) as f:
+            records = [json.loads(line) for line in f]
+
+        png_rec = next(r for r in records if "scan.png" in r.get("uri", ""))
+        assert "content" in png_rec
+        decoded = base64.b64decode(png_rec["content"])
+        assert decoded == b"\x89PNG fake image data"
+
+        assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
+
+    def test_source_assets_missing_file_skipped(self, tmp_db, tmp_path):
+        """Assets whose source files don't exist are skipped gracefully."""
+        from chartfold.export_arkiv import export_arkiv
+
+        tmp_db.conn.execute(
+            """INSERT INTO source_assets
+               (source, asset_type, file_path, file_name, file_size_kb, content_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("test", "png", "/nonexistent/file.png", "file.png", 1, "image/png"),
+        )
+        tmp_db.conn.commit()
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(tmp_db, output_dir)
+
+        # All assets had missing files, so no JSONL file is written
+        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+        assert not os.path.exists(jsonl_path)
+        assert not os.path.exists(os.path.join(output_dir, "media", "file.png"))
+
+    def test_source_assets_in_readme_contents(self, db_with_assets, tmp_path):
+        """source_assets.jsonl listed in README.md frontmatter contents."""
+        from chartfold.export_arkiv import export_arkiv
+
+        output_dir = str(tmp_path / "arkiv-out")
+        export_arkiv(db_with_assets, output_dir)
+
+        with open(os.path.join(output_dir, "README.md")) as f:
+            content = f.read()
+        parts = content.split("---\n", 2)
+        frontmatter = yaml.safe_load(parts[1])
+
+        paths = {c["path"] for c in frontmatter["contents"]}
+        assert "source_assets.jsonl" in paths
 
 
 # ---------------------------------------------------------------------------

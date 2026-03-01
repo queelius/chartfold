@@ -10,11 +10,14 @@ following the arkiv specification.
 
 from __future__ import annotations
 
+import base64
 import importlib.metadata
 import json
 import os
+import shutil
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -40,6 +43,7 @@ _TIMESTAMP_FIELDS: dict[str, str | None] = {
     "conditions": "onset_date",
     "social_history": "recorded_date",
     "genetic_variants": "collection_date",
+    "source_assets": "encounter_date",
     "family_history": None,
     "mental_status": "recorded_date",
     "patients": "date_of_birth",
@@ -84,6 +88,7 @@ _COLLECTION_DESCRIPTIONS: dict[str, str] = {
     "family_history": "Family medical history",
     "mental_status": "Mental health screening instruments (PHQ-9, GAD-7, etc.)",
     "genetic_variants": "Genetic variants from genomic testing panels",
+    "source_assets": "Source documents (PDFs, images) from EHR exports",
     "notes": "Personal notes and annotations",
     "analyses": "Structured analysis documents",
 }
@@ -371,6 +376,86 @@ def _get_version() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Source asset export
+# ---------------------------------------------------------------------------
+
+
+def _export_source_assets(
+    db: ChartfoldDB,
+    output_dir: str,
+    embed: bool = False,
+) -> list[dict[str, Any]] | None:
+    """Export source_assets as arkiv records with actual MIME types.
+
+    Default mode: copy files to media/ subdirectory, use file://media/ URIs.
+    Embed mode: also base64-encode content inline per arkiv spec.
+    """
+    rows = db.query("SELECT * FROM source_assets")
+    if not rows:
+        return None
+
+    media_dir = os.path.join(output_dir, "media")
+    os.makedirs(media_dir, exist_ok=True)
+
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        file_name = row["file_name"]
+        file_path = row["file_path"]
+        mime = row.get("content_type") or "application/octet-stream"
+
+        # Skip assets whose source files don't exist
+        src_path = Path(file_path)
+        if not src_path.is_file():
+            continue
+
+        record: dict[str, Any] = {
+            "mimetype": mime,
+            "uri": f"file://media/{file_name}",
+        }
+
+        # Timestamp
+        ts = row.get("encounter_date")
+        if ts:
+            record["timestamp"] = ts
+
+        # Copy file to media/
+        dest = os.path.join(media_dir, file_name)
+        shutil.copy2(str(src_path), dest)
+
+        # Embed mode: base64 inline
+        if embed:
+            with open(str(src_path), "rb") as bf:
+                record["content"] = base64.b64encode(bf.read()).decode("ascii")
+
+        # Build metadata (skip file_path — replaced by URI)
+        metadata: dict[str, Any] = {"table": "source_assets"}
+        skip_keys = {"id", "file_path", "content_type"}
+        for col, val in row.items():
+            if col in skip_keys:
+                continue
+            if val is None or (isinstance(val, str) and val == ""):
+                continue
+            metadata[col] = val
+
+        # Add ref_id_uri if ref_table and ref_id present
+        if row.get("ref_table") and row.get("ref_id"):
+            metadata["ref_id_uri"] = f"chartfold:{row['ref_table']}/{row['ref_id']}"
+
+        record["metadata"] = metadata
+        records.append(record)
+
+    if not records:
+        return None
+
+    jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    return records
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -387,7 +472,7 @@ def export_arkiv(
         db: Database connection.
         output_dir: Directory to write output files.
         include_notes: Include personal notes and analyses.
-        embed: Reserved for future source-asset embedding (not yet wired).
+        embed: Base64-encode source asset content inline in arkiv records.
 
     Returns the output directory path.
     """
@@ -425,6 +510,21 @@ def export_arkiv(
         })
         schema_data[table] = {
             "record_count": len(records),
+            **schema,
+        }
+
+    # Export source assets separately (different record format)
+    asset_records = _export_source_assets(db, output_dir, embed=embed)
+    if asset_records is not None:
+        schema = _build_schema(asset_records)
+        contents.append({
+            "path": "source_assets.jsonl",
+            "description": _COLLECTION_DESCRIPTIONS.get(
+                "source_assets", "Source assets"
+            ),
+        })
+        schema_data["source_assets"] = {
+            "record_count": len(asset_records),
             **schema,
         }
 
