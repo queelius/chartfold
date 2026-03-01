@@ -9,7 +9,7 @@ Patient-facing tool for consolidating personal health data from multiple EHR (El
 - **Multi-EHR data consolidation** — Import from Epic MyChart, MEDITECH Expanse, and athenahealth
 - **SQLite database** — 17 clinical tables with full audit trail
 - **MCP server** — 25 tools for LLM-assisted analysis with Claude
-- **Export formats** — Self-contained HTML SPA, JSON, Arkiv
+- **Export formats** — Self-contained HTML SPA, Arkiv (JSONL + README.md + schema.yaml)
 - **Personal notes** — Tag and annotate any clinical record
 - **Visit preparation** — Generate visit diffs and clinical summaries
 
@@ -67,11 +67,15 @@ chartfold diff 2025-01-01
 chartfold export html --output summary.html
 chartfold export html --output summary.html --embed-images --config chartfold.toml
 
-# JSON for backup/restore (round-trip capable)
-chartfold export json --output data.json
-
-# Arkiv universal record format (JSONL + manifest)
+# Arkiv universal record format — primary backup/restore (round-trip capable)
 chartfold export arkiv --output ./arkiv/
+chartfold export arkiv --output ./arkiv/ --embed          # inline base64 assets
+chartfold export arkiv --output ./arkiv/ --exclude-notes
+
+# Import from arkiv archive
+chartfold import ./arkiv/ --db new_chartfold.db
+chartfold import ./arkiv/ --validate-only
+chartfold import ./arkiv/ --db existing.db --overwrite
 ```
 
 ### Personal Notes
@@ -246,8 +250,8 @@ src/chartfold/
 ├── models.py       # Dataclass models
 ├── config.py       # Configuration management
 ├── cli.py          # Command-line interface
-├── export_full.py  # Full JSON export/import (round-trip capable)
-└── export_arkiv.py # Arkiv universal record export (JSONL + manifest)
+├── export_arkiv.py # Arkiv export (JSONL + README.md + schema.yaml)
+└── import_arkiv.py # Arkiv import with validation and FK remapping
 ```
 
 ## Adding a New EHR Source

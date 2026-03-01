@@ -51,16 +51,17 @@ python -m chartfold summary
 # What's new since a given date (visit diff)
 python -m chartfold diff 2025-01-01
 
-# Export formats: json, html, arkiv
-python -m chartfold export json --output data.json
-python -m chartfold export json --include-load-log --output full.json
+# Export formats: arkiv, html
+python -m chartfold export arkiv --output ./arkiv/
+python -m chartfold export arkiv --output ./arkiv/ --embed          # inline base64 assets
+python -m chartfold export arkiv --output ./arkiv/ --exclude-notes
 python -m chartfold export html --output summary.html
 python -m chartfold export html --output summary.html --embed-images --config chartfold.toml
-python -m chartfold export arkiv --output ./arkiv/
 
-# Import JSON back to new database (round-trip capable)
-python -m chartfold import data.json --db new_chartfold.db
-python -m chartfold import data.json --validate-only
+# Import from arkiv archive (round-trip capable)
+python -m chartfold import ./arkiv/ --db new_chartfold.db
+python -m chartfold import ./arkiv/ --validate-only
+python -m chartfold import ./arkiv/ --db existing.db --overwrite
 
 # Generate personalized config from your data
 python -m chartfold init-config
@@ -149,8 +150,8 @@ Parameterized query helpers that surface structured views of the data for LLMs (
 ### Export Modules
 
 - `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images` and `--config`.
-- `export_full.py` — Full-fidelity JSON export/import of all tables for round-trip backup/restore.
-- `export_arkiv.py` — Arkiv universal record format (JSONL + manifest).
+- `export_arkiv.py` — Arkiv universal record format (JSONL + README.md + schema.yaml). Primary backup/restore format with full round-trip support. Source assets exported to `media/` or inline base64 via `--embed`.
+- `import_arkiv.py` — Arkiv import with validation, FK remapping, tag unfolding, and source asset restoration.
 
 ### Configuration (config.py)
 
@@ -180,4 +181,4 @@ TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, da
 - `mhtml_test_result.py`: The function `test_result_to_unified` starts with `test_` — pytest tries to collect it as a test. Import it with `from ... import test_result_to_unified as adapt_test_result` in tests.
 - `source_assets` are inserted via raw SQL in tests (not through the adapter pipeline).
 - `_UNIQUE_KEYS` in `db.py` must match the UNIQUE constraints declared in `schema.sql`.
-- When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`), and `analysis/visit_diff.py`.
+- When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`, `_FK_FIELDS` if applicable), and `analysis/visit_diff.py`.
