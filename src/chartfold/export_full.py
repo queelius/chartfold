@@ -13,7 +13,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from chartfold.db import ChartfoldDB
+from chartfold.db import (
+    ChartfoldDB,
+    _discover_fk_graph,
+    _discover_tables,
+    _topological_sort,
+)
 
 EXPORT_VERSION = "1.0"
 SCHEMA_VERSION = 1
@@ -23,71 +28,6 @@ _EXCLUDE_BY_DEFAULT = {"load_log"}
 
 # Tables excluded when --exclude-notes is used
 _NOTE_TABLES = {"notes", "note_tags"}
-
-
-def _discover_tables(db: ChartfoldDB) -> list[str]:
-    """All user tables from sqlite_master, excluding sqlite_ internals."""
-    rows = db.query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
-        "ORDER BY name"
-    )
-    return [r["name"] for r in rows]
-
-
-def _discover_fk_graph(db: ChartfoldDB, tables: list[str]) -> dict[str, list[tuple[str, str, str]]]:
-    """FK graph via PRAGMA foreign_key_list().
-
-    Returns {child_table: [(fk_col, parent_table, parent_col), ...]}.
-    Only includes relationships where both tables are in the provided list.
-    """
-    table_set = set(tables)
-    graph: dict[str, list[tuple[str, str, str]]] = {}
-    for table in tables:
-        fks = db.query(f"PRAGMA foreign_key_list({table})")
-        for fk in fks:
-            parent = fk["table"]
-            if parent in table_set:
-                graph.setdefault(table, []).append((fk["from"], parent, fk["to"]))
-    return graph
-
-
-def _topological_sort(tables: list[str], fk_graph: dict[str, list[tuple[str, str, str]]]) -> list[str]:
-    """Sort tables so parents come before children.
-
-    Uses Kahn's algorithm. Handles cycles gracefully by appending remaining
-    tables at the end (cycle shouldn't happen in a well-formed schema).
-    """
-    # Build adjacency: parent -> set of children
-    in_degree: dict[str, int] = {t: 0 for t in tables}
-    children: dict[str, list[str]] = {t: [] for t in tables}
-
-    for child, fk_list in fk_graph.items():
-        parents = {fk[1] for fk in fk_list}  # unique parent tables
-        for parent in parents:
-            if parent != child and parent in in_degree:  # skip self-references
-                in_degree[child] = in_degree.get(child, 0) + 1
-                children.setdefault(parent, []).append(child)
-
-    # Start with nodes that have no dependencies
-    queue = [t for t in tables if in_degree[t] == 0]
-    result = []
-
-    while queue:
-        # Sort for deterministic ordering
-        queue.sort()
-        node = queue.pop(0)
-        result.append(node)
-        for child in children.get(node, []):
-            in_degree[child] -= 1
-            if in_degree[child] == 0:
-                queue.append(child)
-
-    # Append any remaining (cycle) tables
-    remaining = [t for t in tables if t not in set(result)]
-    remaining.sort()
-    result.extend(remaining)
-
-    return result
 
 
 def export_full_json(

@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from chartfold import db as db_module
 from chartfold.db import ChartfoldDB
 from chartfold.export_full import (
     EXPORT_VERSION,
@@ -285,6 +286,12 @@ def populated_db_with_pathology(tmp_path):
 
 class TestAutoDiscovery:
     """Tests for the auto-discovery helpers."""
+
+    def test_helpers_accessible_from_db_module(self):
+        """Topo sort helpers should be importable from chartfold.db."""
+        assert db_module._discover_tables is _discover_tables
+        assert db_module._discover_fk_graph is _discover_fk_graph
+        assert db_module._topological_sort is _topological_sort
 
     def test_discover_tables_finds_all(self, populated_db):
         """discover_tables should find all schema tables."""
