@@ -8,8 +8,11 @@ import yaml
 from chartfold.db import ChartfoldDB
 from chartfold.export_arkiv import export_arkiv
 from chartfold.models import (
+    ConditionRecord,
+    EncounterRecord,
     FamilyHistoryRecord,
     LabResult,
+    MedicationRecord,
     ProcedureRecord,
     UnifiedRecords,
 )
@@ -1010,3 +1013,162 @@ class TestRoundTrip:
             assert fh[0]["condition"] == "Heart Disease"
             assert fh[1]["relation"] == "Mother"
             assert fh[1]["condition"] == "Diabetes"
+
+    def test_round_trip_comprehensive(self, tmp_path):
+        """Multi-table round-trip with counts, values, FKs, and tags."""
+        from chartfold.import_arkiv import import_arkiv
+
+        src_db_path = str(tmp_path / "source.db")
+        with ChartfoldDB(src_db_path) as db:
+            db.init_schema()
+
+            records = UnifiedRecords(
+                source="test_source",
+                lab_results=[
+                    LabResult(
+                        source="test_source", test_name="CEA",
+                        value="5.8", value_numeric=5.8, unit="ng/mL",
+                        ref_range="0.0-3.0", interpretation="H",
+                        result_date="2025-01-15", status="final",
+                    ),
+                    LabResult(
+                        source="test_source", test_name="Hemoglobin",
+                        value="12.5", value_numeric=12.5, unit="g/dL",
+                        result_date="2025-01-15",
+                    ),
+                ],
+                encounters=[
+                    EncounterRecord(
+                        source="test_source", encounter_date="2025-01-15",
+                        encounter_type="office visit", facility="Test Hospital",
+                    ),
+                ],
+                medications=[
+                    MedicationRecord(
+                        source="test_source", name="Capecitabine",
+                        status="active",
+                    ),
+                ],
+                conditions=[
+                    ConditionRecord(
+                        source="test_source", condition_name="Colon cancer",
+                        icd10_code="C18.9",
+                    ),
+                ],
+                procedures=[
+                    ProcedureRecord(
+                        source="test_source", name="Right hemicolectomy",
+                        procedure_date="2024-07-01",
+                    ),
+                ],
+                family_history=[
+                    FamilyHistoryRecord(
+                        source="test_source", relation="Father",
+                        condition="Heart Disease",
+                    ),
+                ],
+            )
+            db.load_source(records)
+
+            # Add pathology linked to procedure
+            procs = db.query("SELECT id FROM procedures")
+            proc_id = procs[0]["id"]
+            db.conn.execute(
+                "INSERT INTO pathology_reports (source, procedure_id, report_date, specimen, diagnosis) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("test_source", proc_id, "2024-07-03", "Right colon", "Adenocarcinoma"),
+            )
+            db.conn.commit()
+
+            # Add note with tags
+            db.save_note(
+                title="CEA Trend",
+                content="CEA trending up",
+                tags=["oncology", "cea"],
+            )
+
+            # Record counts before export
+            original_counts = {}
+            for table in ["lab_results", "encounters", "medications", "conditions",
+                          "procedures", "pathology_reports", "family_history", "notes"]:
+                rows = db.query(f"SELECT COUNT(*) as cnt FROM {table}")
+                original_counts[table] = rows[0]["cnt"]
+
+            archive_dir = str(tmp_path / "arkiv-export")
+            export_arkiv(db, archive_dir)
+
+        # Import into new DB
+        imported_db_path = str(tmp_path / "imported.db")
+        result = import_arkiv(archive_dir, imported_db_path)
+        assert result["success"] is True
+
+        # Verify counts and values
+        with ChartfoldDB(imported_db_path) as idb:
+            for table, expected in original_counts.items():
+                rows = idb.query(f"SELECT COUNT(*) as cnt FROM {table}")
+                assert rows[0]["cnt"] == expected, f"{table}: {rows[0]['cnt']} != {expected}"
+
+            # Verify data values
+            cea = idb.query("SELECT * FROM lab_results WHERE test_name = 'CEA'")[0]
+            assert cea["value_numeric"] == 5.8
+            assert cea["interpretation"] == "H"
+
+            meds = idb.query("SELECT * FROM medications WHERE name = 'Capecitabine'")[0]
+            assert meds["status"] == "active"
+
+            # FK preserved
+            fk_result = idb.query("""
+                SELECT p.name AS proc_name, pr.diagnosis
+                FROM pathology_reports pr
+                JOIN procedures p ON pr.procedure_id = p.id
+            """)
+            assert len(fk_result) == 1
+            assert fk_result[0]["proc_name"] == "Right hemicolectomy"
+            assert fk_result[0]["diagnosis"] == "Adenocarcinoma"
+
+            # Tags preserved
+            tags = idb.query(
+                "SELECT tag FROM note_tags nt JOIN notes n ON nt.note_id = n.id "
+                "WHERE n.title = 'CEA Trend' ORDER BY tag"
+            )
+            assert [t["tag"] for t in tags] == ["cea", "oncology"]
+
+
+class TestImportCLI:
+    """CLI integration tests for arkiv import."""
+
+    def test_cli_import_arkiv(self, tmp_path):
+        """CLI: chartfold import <dir> works end-to-end."""
+        import subprocess
+        import sys
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        db_path = str(tmp_path / "imported.db")
+        result = subprocess.run(
+            [sys.executable, "-m", "chartfold", "import",
+             str(archive_dir), "--db", db_path],
+            check=False, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert (tmp_path / "imported.db").exists()
+
+    def test_cli_import_validate_only(self, tmp_path):
+        """CLI: chartfold import --validate-only works."""
+        import subprocess
+        import sys
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        db_path = str(tmp_path / "imported.db")
+        result = subprocess.run(
+            [sys.executable, "-m", "chartfold", "import",
+             str(archive_dir), "--db", db_path, "--validate-only"],
+            check=False, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert not (tmp_path / "imported.db").exists()

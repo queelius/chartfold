@@ -150,8 +150,8 @@ def main():
     )
 
     # --- import ---
-    import_parser = sub.add_parser("import", help="Import data from JSON export")
-    import_parser.add_argument("input_file", help="Path to JSON export file")
+    import_parser = sub.add_parser("import", help="Import data from arkiv archive")
+    import_parser.add_argument("input_dir", help="Path to arkiv archive directory")
     import_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     import_parser.add_argument(
         "--validate-only", action="store_true", help="Validate without importing"
@@ -710,44 +710,35 @@ def _handle_export(args):
 
 
 def _handle_import(args):
-    from chartfold.export_full import import_json, validate_json_export
+    from chartfold.import_arkiv import import_arkiv
 
-    if args.validate_only:
-        result = validate_json_export(args.input_file)
-        if result["valid"]:
+    result = import_arkiv(
+        args.input_dir,
+        args.db,
+        validate_only=args.validate_only,
+        overwrite=args.overwrite,
+    )
+
+    if result["success"]:
+        if args.validate_only:
             print("Validation successful!")
-            print("\nTable counts:")
-            for table, count in sorted(result["summary"].items()):
-                if count > 0:
-                    print(f"  {table:<25} {count:>6}")
-            total = sum(result["summary"].values())
-            print(f"\n  Total records: {total}")
+            label = "Table counts:"
         else:
-            print("Validation failed:")
-            for error in result["errors"]:
-                print(f"  - {error}")
-            sys.exit(1)
-    else:
-        result = import_json(
-            args.input_file,
-            args.db,
-            validate_only=False,
-            overwrite=args.overwrite,
-        )
-
-        if result["success"]:
             print(f"Import successful to {args.db}")
-            print("\nRecords imported:")
-            for table, count in sorted(result["counts"].items()):
-                if count > 0:
-                    print(f"  {table:<25} {count:>6}")
-            total = sum(result["counts"].values())
-            print(f"\n  Total records: {total}")
-        else:
-            print("Import failed:")
-            for error in result["errors"]:
-                print(f"  - {error}")
-            sys.exit(1)
+            label = "Records imported:"
+
+        print(f"\n{label}")
+        counts = result.get("counts", result.get("summary", {}))
+        for table, count in sorted(counts.items()):
+            if count > 0:
+                print(f"  {table:<25} {count:>6}")
+        total = sum(counts.values())
+        print(f"\n  Total records: {total}")
+    else:
+        print("Import failed:" if not args.validate_only else "Validation failed:")
+        for error in result["errors"]:
+            print(f"  - {error}")
+        sys.exit(1)
 
 
 def _handle_diff(args):

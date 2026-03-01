@@ -237,8 +237,7 @@ def _import_source_assets(
         ref_id = row.get("ref_id")
         if ref_table and ref_id is not None:
             parent_map = id_map.get(ref_table, {})
-            if parent_map:
-                row["ref_id"] = parent_map.get(ref_id, ref_id)
+            row["ref_id"] = parent_map.get(ref_id, ref_id)
 
         # Filter to known columns only
         filtered = {k: v for k, v in row.items() if k in table_columns}
@@ -496,8 +495,7 @@ def import_arkiv(
                     old_fk = row.get(fk_col)
                     if old_fk is not None:
                         parent_map = id_map.get(parent_table, {})
-                        if parent_map:
-                            row[fk_col] = parent_map.get(old_fk, old_fk)
+                        row[fk_col] = parent_map.get(old_fk, old_fk)
 
                 # Filter to valid columns only
                 filtered = {k: v for k, v in row.items() if k in valid_columns}
