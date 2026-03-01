@@ -4,7 +4,6 @@ import email
 import email.mime.multipart
 import email.mime.text
 import quopri
-from pathlib import Path
 
 import pytest
 
@@ -16,7 +15,6 @@ from chartfold.adapters.mhtml_test_result_adapter import (
 from chartfold.db import ChartfoldDB
 from chartfold.sources.mhtml_test_result import (
     ParsedTestResult,
-    ParsedVariant,
     parse_test_result_mhtml,
 )
 
@@ -446,7 +444,7 @@ class TestTestResultAdapter:
 
     def test_variant_vaf_parsed(self, sample_parsed):
         records = adapt_test_result(sample_parsed)
-        abcc3 = [gv for gv in records.genetic_variants if gv.gene == "ABCC3"][0]
+        abcc3 = next(gv for gv in records.genetic_variants if gv.gene == "ABCC3")
         assert abcc3.vaf == 53.2
 
     def test_variant_metadata_fields(self, sample_parsed):
@@ -513,7 +511,7 @@ class TestTestResultDbIntegration:
         db.init_schema()
 
         records = adapt_test_result(sample_parsed)
-        result1 = db.load_source(records, replace=False)
+        db.load_source(records, replace=False)
         result2 = db.load_source(records, replace=False)
 
         assert result2["skipped"] is True

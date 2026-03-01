@@ -1,6 +1,9 @@
 """Tests for chartfold.models dataclasses."""
 
+from __future__ import annotations
+
 from dataclasses import asdict
+from typing import ClassVar
 
 from chartfold.models import (
     AllergyRecord,
@@ -140,7 +143,7 @@ class TestUnifiedRecords:
 class TestMetadataField:
     """All clinical record dataclasses should have a metadata field."""
 
-    CLINICAL_TYPES = [
+    CLINICAL_TYPES: ClassVar[list] = [
         PatientRecord,
         DocumentRecord,
         EncounterRecord,

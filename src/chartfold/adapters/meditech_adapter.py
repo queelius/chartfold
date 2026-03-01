@@ -230,7 +230,9 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
         (p.name.lower().strip(), p.procedure_date) for p in records.procedures
     }
     for proc in deduplicate_procedures(ccda.get("all_procedures", [])):
-        key = (proc.get("name", "").lower().strip(), normalize_date_to_iso(proc.get("date_iso", "")))
+        name = proc.get("name", "").lower().strip()
+        date = normalize_date_to_iso(proc.get("date_iso", ""))
+        key = (name, date)
         if key not in existing_procs:
             records.procedures.append(
                 ProcedureRecord(
@@ -514,7 +516,9 @@ def _is_imaging_report_name(name_lower: str) -> bool:
 def _add_fhir_diagnostic_reports(
     records: UnifiedRecords, diagnostic_reports: list[dict], source: str
 ) -> None:
-    """Classify FHIR DiagnosticReports by category into PathologyReport, ImagingReport, or ClinicalNote.
+    """Classify FHIR DiagnosticReports by category.
+
+    Maps to PathologyReport, ImagingReport, or ClinicalNote.
 
     LAB reports are skipped — their individual results are already captured via
     FHIR Observations parsed as lab_results. Cardiology and other categories
@@ -562,17 +566,16 @@ def _add_fhir_diagnostic_reports(
             # LAB DiagnosticReports are reference containers — individual results
             # are already captured via FHIR Observations as lab_results.
             continue
-        else:
-            # Cardiology, other categories: treat as clinical note
-            if full_text or name:
-                records.clinical_notes.append(
-                    ClinicalNote(
-                        source=source,
-                        note_type=name or "Diagnostic Report",
-                        note_date=date,
-                        content=full_text,
-                    )
+        # Cardiology, other categories: treat as clinical note
+        elif full_text or name:
+            records.clinical_notes.append(
+                ClinicalNote(
+                    source=source,
+                    note_type=name or "Diagnostic Report",
+                    note_date=date,
+                    content=full_text,
                 )
+            )
 
 
 def _add_fhir_allergies(

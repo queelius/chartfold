@@ -1,6 +1,6 @@
 # chartfold
 
-Patient-facing tool for consolidating personal health data from multiple EHR (Electronic Health Record) systems into a single SQLite database. Query, analyze, and export your aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or export to Markdown, HTML, or Hugo static sites.
+Patient-facing tool for consolidating personal health data from multiple EHR (Electronic Health Record) systems into a single SQLite database. Query, analyze, and export your aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or self-contained HTML SPA.
 
 **Goal:** Patient empowerment through data ownership — enabling time-series analysis, intelligent querying with tools like Claude Code, and organized preparation for medical visits.
 
@@ -9,7 +9,7 @@ Patient-facing tool for consolidating personal health data from multiple EHR (El
 - **Multi-EHR data consolidation** — Import from Epic MyChart, MEDITECH Expanse, and athenahealth
 - **SQLite database** — 17 clinical tables with full audit trail
 - **MCP server** — 25 tools for LLM-assisted analysis with Claude
-- **Export formats** — Markdown, self-contained HTML SPA, Hugo static sites, JSON, Arkiv
+- **Export formats** — Self-contained HTML SPA, JSON, Arkiv
 - **Personal notes** — Tag and annotate any clinical record
 - **Visit preparation** — Generate visit diffs and clinical summaries
 
@@ -63,23 +63,15 @@ chartfold diff 2025-01-01
 ### Export Your Data
 
 ```bash
-# Markdown summary for your doctor (last 6 months)
-chartfold export markdown --output summary.md --lookback 6
+# Self-contained HTML SPA with embedded SQLite (all data stays client-side)
+chartfold export html --output summary.html
+chartfold export html --output summary.html --embed-images --config chartfold.toml
 
-# PDF via pandoc
-chartfold export markdown --output summary.pdf --pdf
-
-# Self-contained HTML with charts
-chartfold export html --output summary.html --lookback 6
-
-# Full HTML export (all data)
-chartfold export html --full --output full.html
-
-# JSON for backup/restore
+# JSON for backup/restore (round-trip capable)
 chartfold export json --output data.json
 
-# Hugo static site
-chartfold export hugo --output ./site
+# Arkiv universal record format (JSONL + manifest)
+chartfold export arkiv --output ./arkiv/
 ```
 
 ### Personal Notes
@@ -115,7 +107,7 @@ athena:    input_dir/Document_XML/*AmbulatorySummary*.xml
 
 ## Database Schema
 
-chartfold stores data in 16 clinical tables:
+chartfold stores data in 17 clinical tables:
 
 | Category | Tables |
 |----------|--------|
@@ -203,9 +195,6 @@ match = ["CEA", "Carcinoembryonic Antigen"]
 [[lab_tests]]
 name = "Hemoglobin"
 match = ["Hemoglobin", "Hgb", "HGB"]
-
-[hugo]
-dashboard_recent_labs = 10
 ```
 
 ## Architecture
@@ -246,21 +235,19 @@ python -m pytest tests/ --cov=chartfold --cov-report=term-missing
 
 ```
 src/chartfold/
-├── sources/        # EHR-specific parsers (epic.py, meditech.py, athena.py)
+├── sources/        # EHR-specific parsers (epic.py, meditech.py, athena.py, mhtml_*.py)
 ├── adapters/       # Normalize to UnifiedRecords (epic_adapter.py, etc.)
 ├── analysis/       # Query helpers (lab_trends.py, medications.py, etc.)
 ├── extractors/     # Specialized parsers (labs.py, pathology.py)
 ├── core/           # Shared utilities (cda.py, fhir.py, utils.py)
-├── formatters/     # Output formatters (markdown.py)
-├── hugo/           # Hugo site generator (generate.py)
 ├── mcp/            # MCP server (server.py)
+├── spa/            # HTML SPA export with embedded SQLite (sql.js)
 ├── db.py           # Database interface
 ├── models.py       # Dataclass models
 ├── config.py       # Configuration management
 ├── cli.py          # Command-line interface
-├── export.py       # Markdown export
-├── spa/            # HTML SPA export with embedded SQLite (sql.js)
-└── export_full.py  # Full JSON/markdown export
+├── export_full.py  # Full JSON export/import (round-trip capable)
+└── export_arkiv.py # Arkiv universal record export (JSONL + manifest)
 ```
 
 ## Adding a New EHR Source
@@ -274,8 +261,8 @@ src/chartfold/
 ## Requirements
 
 - Python 3.11+ (uses `tomllib` from stdlib)
-- Dependencies: `lxml`, `mcp` (optional)
-- Optional: `pandoc` for PDF export, `hugo` for static site generation
+- Dependencies: `lxml`, `pyyaml`
+- Optional: `mcp` (FastMCP) for MCP server
 
 ## License
 

@@ -162,15 +162,18 @@ def _extract_components(doc, result: ParsedTestResult) -> None:
     components: dict[str, str] = {}
     for h3 in doc.xpath('.//h3[contains(@class, "componentHeading")]'):
         name = h3.text_content().strip()
-        # Navigate: h3 -> parent (titleSection) -> grandparent (ComponentCardHeader)
-        #                                       -> great-grandparent has sibling NonNumericResultComponent
-        gp = _ancestor(h3, 2)
+        # Navigate: h3 -> parent -> grandparent -> great-grandparent has
+        # sibling NonNumericResultComponent
         ggp = _ancestor(h3, 3)
         if ggp is not None:
             # Find NonNumericResultComponent sibling
             for child in ggp:
                 if "NonNumericResultComponent" in child.get("class", ""):
-                    value_spans = child.xpath('.//span[contains(@class, "value") and not(contains(@class, "valueLabel"))]')
+                    xpath = (
+                        './/span[contains(@class, "value")'
+                        ' and not(contains(@class, "valueLabel"))]'
+                    )
+                    value_spans = child.xpath(xpath)
                     if value_spans:
                         components[name] = value_spans[0].text_content().strip()
                     break
@@ -254,7 +257,8 @@ def _extract_variants(doc, result: ParsedTestResult) -> None:
                 if not variant.dna_change:
                     variant.dna_change = value
             elif "transcript" in label_lower:
-                variant.transcript = value.split()[0] if value else ""  # "NM_003786 (RefSeq-T)" -> "NM_003786"
+                # "NM_003786 (RefSeq-T)" -> "NM_003786"
+                variant.transcript = value.split()[0] if value else ""
             elif "amino acid" in label_lower:
                 if not variant.protein_change:
                     variant.protein_change = value

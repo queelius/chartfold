@@ -126,10 +126,7 @@ def mychart_to_unified(
         seen_hashes.add(content_hash)
 
         file_name = f"{content_hash}.png"
-        if image_dir_path:
-            file_path = str(image_dir_path / file_name)
-        else:
-            file_path = file_name
+        file_path = str(image_dir_path / file_name) if image_dir_path else file_name
 
         # Find which study this image belongs to
         ref_study = None

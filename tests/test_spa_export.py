@@ -234,7 +234,7 @@ class TestLoadImagesJson:
         result = json.loads(_load_images_json(spa_db))
         assert len(result) == 1
         # The key is the string asset ID
-        asset_id = list(result.keys())[0]
+        asset_id = next(iter(result.keys()))
         assert result[asset_id].startswith("data:image/png;base64,")
 
     def test_missing_image_file_skipped(self, spa_db):
@@ -1078,7 +1078,7 @@ class TestExportSpaAdditional:
         assert match is not None
         data = json.loads(match.group(1))
         assert len(data) == 1
-        asset_id = list(data.keys())[0]
+        asset_id = next(iter(data.keys()))
         assert data[asset_id].startswith("data:image/png;base64,")
 
     def test_embed_images_skips_oversized(self, spa_db, tmp_path):

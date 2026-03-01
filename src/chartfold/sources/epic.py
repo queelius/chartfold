@@ -1013,8 +1013,8 @@ def _extract_epic_family_history(section) -> list[dict]:
         text = section_text(section)
         if text.strip():
             # Simple line-based parsing for unstructured family history
-            for line in text.strip().split("\n"):
-                line = line.strip()
+            for raw_line in text.strip().split("\n"):
+                line = raw_line.strip()
                 if line and ":" in line:
                     relation_part, condition_part = line.split(":", 1)
                     results.append(

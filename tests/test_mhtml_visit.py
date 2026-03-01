@@ -185,7 +185,7 @@ class TestMhtmlParser:
         assert "bbb22222-3333-4444-5555-666677778888" in parsed_visit.images
 
     def test_image_data_is_png(self, parsed_visit):
-        for uuid, data in parsed_visit.images.items():
+        for data in parsed_visit.images.values():
             assert data[:4] == b"\x89PNG"
 
     def test_identifies_study_refs(self, parsed_visit):
@@ -326,7 +326,7 @@ class TestMychartAdapter:
         image_dir = str(tmp_path / "images")
         saved = save_images(parsed_visit, image_dir)
         assert len(saved) == 2
-        for uuid, path in saved.items():
+        for path in saved.values():
             assert Path(path).is_file()
             assert Path(path).read_bytes()[:4] == b"\x89PNG"
 
@@ -549,7 +549,6 @@ class TestAutoDetectMhtml:
     def test_auto_loads_mhtml_file(self, tmp_path, sample_mhtml):
         """chartfold load auto <file.mhtml> should auto-detect and load mychart."""
         from chartfold.cli import _load_auto
-        from chartfold.db import ChartfoldDB
 
         db_path = str(tmp_path / "test.db")
         with ChartfoldDB(db_path) as db:

@@ -1,6 +1,9 @@
 """Tests for chartfold.adapters — source-to-UnifiedRecords bridges."""
 
-from chartfold.adapters.athena_adapter import athena_to_unified, _guess_modality as athena_guess_modality
+from chartfold.adapters.athena_adapter import (
+    athena_to_unified,
+    _guess_modality as athena_guess_modality,
+)
 from chartfold.adapters.epic_adapter import epic_to_unified, _guess_modality
 from chartfold.adapters.meditech_adapter import meditech_to_unified, _is_imaging_report_name
 

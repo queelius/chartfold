@@ -917,7 +917,7 @@ def _extract_clinical_notes(section, section_name: str) -> list[dict]:
         col_map: dict[str, int] = {}
         for i, h in enumerate(headers):
             hl = h.lower().strip()
-            if hl == "date" or hl == "encounter date":
+            if hl in {"date", "encounter date"}:
                 col_map.setdefault("date", i)
             elif "assessment date" in hl:
                 col_map.setdefault("date2", i)

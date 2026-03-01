@@ -1,8 +1,7 @@
 """Tests for chartfold.db SQLite database layer."""
 
-from chartfold.db import ChartfoldDB, _build_upsert_sql, _cleanup_stale_records, _UNIQUE_KEYS
+from chartfold.db import ChartfoldDB, _build_upsert_sql, _UNIQUE_KEYS
 from chartfold.models import (
-    EncounterRecord,
     ImagingReport,
     LabResult,
     SourceAsset,

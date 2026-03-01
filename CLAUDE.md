@@ -13,12 +13,12 @@ pip install -e ".[dev,mcp]"
 
 ## What This Is
 
-`chartfold` is a patient-facing Python tool for collecting personal health data from multiple EHR (Electronic Health Record) systems and consolidating it into a single SQLite database. Patients can then query, analyze, and export their aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or Hugo/Markdown output. The goal is patient empowerment through data ownership — enabling time-series analysis, intelligent querying with tools like Claude Code, and organized preparation for medical visits.
+`chartfold` is a patient-facing Python tool for collecting personal health data from multiple EHR (Electronic Health Record) systems and consolidating it into a single SQLite database. Patients can then query, analyze, and export their aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or self-contained HTML SPA. The goal is patient empowerment through data ownership — enabling time-series analysis, intelligent querying with tools like Claude Code, and organized preparation for medical visits.
 
 ## Commands
 
 ```bash
-# Run all tests (700+ tests, pytest)
+# Run all tests (1000+ tests, pytest)
 python -m pytest tests/
 
 # Run a single test file
@@ -30,11 +30,19 @@ python -m pytest tests/test_adapters.py::TestEpicAdapter::test_lab_panel_explosi
 # Run tests with coverage
 python -m pytest tests/ --cov=chartfold --cov-report=term-missing
 
+# Lint (ruff configured in pyproject.toml)
+ruff check src/ tests/
+ruff format --check src/ tests/
+
 # Load data from EHR exports
-python -m chartfold load epic <dir>        # Epic MyChart CDA exports
-python -m chartfold load meditech <dir>    # MEDITECH Expanse exports
-python -m chartfold load athena <dir>      # athenahealth/SIHF FHIR exports
+python -m chartfold load epic <dir>
+python -m chartfold load meditech <dir>
+python -m chartfold load athena <dir>
+python -m chartfold load auto <dir-or-file>          # Auto-detect source type
+python -m chartfold load mychart-visit <file.mhtml>   # MyChart visit page MHTML
+python -m chartfold load mychart-test-result <file.mhtml>  # MyChart test result MHTML
 python -m chartfold load all --epic-dir <> --meditech-dir <> --athena-dir <>
+python -m chartfold load analyses <dir>               # Load analysis markdown files
 
 # Query and inspect
 python -m chartfold query "SELECT test_name, value, result_date FROM lab_results ORDER BY result_date DESC"
@@ -43,42 +51,23 @@ python -m chartfold summary
 # What's new since a given date (visit diff)
 python -m chartfold diff 2025-01-01
 
-# Export as Markdown (visit-focused, filtered by lookback)
-python -m chartfold export markdown --output summary.md --lookback 6
-python -m chartfold export markdown --output summary.pdf --pdf   # PDF via pandoc
-
-# Export as self-contained HTML SPA with embedded SQLite
-python -m chartfold export html --output summary.html
-python -m chartfold export html --output summary.html --embed-images  # With images
-python -m chartfold export html --output summary.html --config chartfold.toml
-
-# Export as arkiv universal record format (JSONL + manifest)
-python -m chartfold export arkiv --output ./arkiv/
-python -m chartfold export arkiv --output ./arkiv/ --exclude-notes
-
-# Full-fidelity export (all tables, all records)
-python -m chartfold export markdown --full --output data.md
+# Export formats: json, html, arkiv
 python -m chartfold export json --output data.json
 python -m chartfold export json --include-load-log --output full.json
-python -m chartfold export json --exclude-notes --output clinical.json
+python -m chartfold export html --output summary.html
+python -m chartfold export html --output summary.html --embed-images --config chartfold.toml
+python -m chartfold export arkiv --output ./arkiv/
 
 # Import JSON back to new database (round-trip capable)
 python -m chartfold import data.json --db new_chartfold.db
 python -m chartfold import data.json --validate-only
-python -m chartfold import data.json --db existing.db --overwrite
 
 # Generate personalized config from your data
 python -m chartfold init-config
 
-# Generate Hugo static site
-python -m chartfold export hugo --output ./site
-python -m chartfold export hugo --output ./site --config chartfold.toml
-python -m chartfold export hugo --output ./site --linked-sources
-
 # Personal notes
 python -m chartfold notes list --limit 20
 python -m chartfold notes search --tag oncology --query "CEA"
-python -m chartfold notes search --ref-table lab_results
 python -m chartfold notes show <note-id>
 
 # Start MCP server for Claude integration
@@ -92,25 +81,31 @@ python -m chartfold serve-mcp --db chartfold.db
 Every EHR source goes through the same pipeline, and each stage is independently testable:
 
 ```
-Raw EHR files (XML/FHIR)
+Raw EHR files (XML/FHIR/MHTML)
     ↓
-[Source Parser]  → source-specific dict  (sources/epic.py, sources/meditech.py, sources/athena.py)
+[Source Parser]  → source-specific dict  (sources/*.py)
     ↓
-[Adapter]        → UnifiedRecords        (adapters/epic_adapter.py, etc.)
+[Adapter]        → UnifiedRecords        (adapters/*_adapter.py)
     ↓
 [DB Loader]      → SQLite tables         (db.py using schema.sql)
 ```
 
 - **Shared parsing infrastructure** in `core/cda.py` (CDA R2 XML: namespace handling, section extraction, date formatting) and `core/fhir.py` (FHIR R4 Bundle: resource extraction by type, base64 decode of presented forms). Source parsers build on these.
-- **Source parsers** handle format-specific XML/FHIR parsing and return dicts with keys like `lab_results`, `medications`, `problems`, `clinical_notes`, etc.
+- **Source parsers** handle format-specific XML/FHIR/HTML parsing and return dicts with keys like `lab_results`, `medications`, `problems`, `clinical_notes`, etc.
 - **Adapters** normalize dates to ISO 8601, parse numeric values, deduplicate records, and map everything into dataclass instances (`models.py`).
-- **DB loader** is idempotent: `DELETE FROM table WHERE source = ?` then `INSERT` for each source, so re-runs are safe.
+- **DB loader** uses UPSERT (INSERT...ON CONFLICT...DO UPDATE) for stable autoincrement IDs across re-imports. `replace=True` mode also cleans up stale records.
 
 The CLI prints a **stage comparison table** after loading to verify no silent data loss (parser count → adapter count → DB count).
 
-### Source Configurations (sources/base.py)
+### Source Types
 
-`SourceConfig` dataclass defines per-EHR settings: section title mappings, file discovery patterns, XML recovery mode, and cumulative vs. per-encounter document models. Pre-built configs: `EPIC_CONFIG`, `MEDITECH_CONFIG`, `ATHENA_CONFIG`.
+| Source | Format | Parser | Adapter |
+|--------|--------|--------|---------|
+| Epic MyChart | CDA R2 XML (IHE XDM) | `sources/epic.py` | `adapters/epic_adapter.py` |
+| MEDITECH Expanse | CCDA XML + FHIR JSON (dual-format merge) | `sources/meditech.py` | `adapters/meditech_adapter.py` |
+| athenahealth | FHIR R4 Bundle XML | `sources/athena.py` | `adapters/athena_adapter.py` |
+| MyChart Visit MHTML | MIME HTML (visit notes, images) | `sources/mhtml_visit.py` | `adapters/mhtml_visit_adapter.py` |
+| MyChart Test Result MHTML | MIME HTML (genomic panels) | `sources/mhtml_test_result.py` | `adapters/mhtml_test_result_adapter.py` |
 
 ### MEDITECH Dual-Format Merge
 
@@ -123,91 +118,66 @@ The adapter deduplicates across formats using composite keys (e.g., `(test.lower
 
 ### Unified Data Model (models.py)
 
-16 dataclass types mapping 1:1 to SQLite tables. All dates are ISO `YYYY-MM-DD` strings. Every record carries a `source` field for provenance tracking. The `UnifiedRecords` container holds all records from a single source load.
+17 dataclass types mapping 1:1 to SQLite tables (including `genetic_variants`). All dates are ISO `YYYY-MM-DD` strings. Every record carries a `source` field for provenance tracking. The `UnifiedRecords` container holds all records from a single source load.
 
 Lab results have both `value` (text, handles `<0.5`, `positive`) and `value_numeric` (float, NULL when not parseable).
 
 ### Database (db.py, schema.sql)
 
-SQLite with WAL mode and foreign keys enabled. 16 clinical tables + `load_log` audit trail + `notes`/`note_tags` tables for personal annotations (notes can reference any clinical record via `ref_table`/`ref_id`). Key indexes on lab dates/test names/LOINC codes, vital types/dates, procedure/imaging dates. Pathology reports FK to procedures with CASCADE.
+SQLite with WAL mode and foreign keys enabled. 17 clinical tables + `load_log` audit trail + `notes`/`note_tags` + `analyses`/`analysis_tags` + `source_assets`. Key indexes on lab dates/test names/LOINC codes, vital types/dates, procedure/imaging dates. Pathology reports FK to procedures with CASCADE.
+
+**UPSERT loading** (`_UNIQUE_KEYS` in `db.py`): Each table has a natural key used for conflict detection. `load_source(records, replace=True)` does UPSERT + stale cleanup (bulk import). `load_source(records, replace=False)` does UPSERT only (additive import, e.g., MHTML).
+
+`db.query()` returns `list[dict]` (via `sqlite3.Row` factory).
 
 ### MCP Server (mcp/server.py)
 
-FastMCP server exposes 12 tools. Config in `mcp/config.json`.
-
-- **Read-only SQL**: `run_sql` (SQLite connection opened with `?mode=ro` — engine-level read-only enforcement, no regex needed). Also blocks ATTACH/DETACH to prevent opening writable databases.
-- **Schema**: `get_schema` (raw CREATE TABLE DDL from sqlite_master)
-- **Summary**: `get_database_summary` (table counts + load history — start here)
-- **Personal notes (CRUD)**: `save_note`, `get_note`, `search_notes_personal`, `delete_note`
-- **Structured analyses (CRUD)**: `save_analysis`, `get_analysis`, `search_analyses`, `list_analyses`, `delete_analysis`
-
-Design principle: the LLM writes its own SQL for all reads. Specialized query tools were removed in favor of `run_sql` + `get_schema`. Write operations go through dedicated tools with controlled parameters.
+FastMCP server with `CHARTFOLD_DB` env var for database path. Design principle: the LLM writes its own SQL for all reads via `run_sql` + `get_schema`. Write operations (notes, analyses) go through dedicated tools with controlled parameters.
 
 ### Data Access Modules (analysis/)
 
-Parameterized query helpers that expose structured views of the data. These don't interpret or analyze — they surface data so that LLMs (via MCP) and the CLI can present it for the user or agent to reason about.
+Parameterized query helpers that surface structured views of the data for LLMs (via MCP) and CLI:
 
-- `lab_trends.py` — lab values by test/date/LOINC, flagged abnormals, cross-source series with ref range discrepancy flags, available test listing
+- `lab_trends.py` — lab values by test/date/LOINC, flagged abnormals, cross-source series
 - `medications.py` — active meds, history, cross-source grouping that surfaces status conflicts
-- `surgical_timeline.py` — procedures with linked pathology/imaging/meds by date proximity (pre-op 90d, post-op 30d windows)
+- `surgical_timeline.py` — procedures with linked pathology/imaging/meds by date proximity
 - `visit_prep.py` — bundle recent data for a given visit date
-- `visit_diff.py` — everything new since date X across all 8 clinical tables
+- `visit_diff.py` — everything new since date X across all clinical tables
 - `data_quality.py` — cross-source duplicate detection, source coverage matrix
 - `cross_source.py` — cross-source encounter matching by date
 
-### Extractors (extractors/)
+### Export Modules
 
-Specialized parsers for structured clinical data that don't fit neatly into the generic source parser flow:
-
-- `labs.py` — CEA value extraction from both FHIR Observations and parsed CCDA lab results
-- `pathology.py` — Structured pathology report parsing (diagnosis, staging, margins, lymph nodes) and procedure-linking by date proximity (default ≤14 days) with name similarity
-
-### Formatters (formatters/)
-
-- `markdown.py` — `MarkdownWriter` class for incremental markdown output (headings, tables, separators). Used by `format_epic_output()` and site generation.
+- `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images` and `--config`.
+- `export_full.py` — Full-fidelity JSON export/import of all tables for round-trip backup/restore.
+- `export_arkiv.py` — Arkiv universal record format (JSONL + manifest).
 
 ### Configuration (config.py)
 
-TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, Hugo dashboard settings. Auto-generated from DB contents via `python -m chartfold init-config`.
-
-### Export Modules
-
-- `export.py` — Structured markdown export of key clinical data (conditions, meds, labs, encounters, imaging, pathology, allergies). Optional PDF via pandoc.
-- `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images` and `--config`.
-- `export_full.py` — Full-fidelity JSON/markdown export of all tables for round-trip backup/restore.
-
-Markdown and full exports support visit-focused (with `--lookback`) and full data modes. HTML SPA always includes all data with client-side filtering.
-
-### Example Data Sources
-
-Real EHR exports live in `~/github/personal/health_stats/dr-tan/`:
-- `HealthSummary_Jan_30_2026/` — Epic MyChart IHE XDM format (79 CDA XML documents in `IHE_XDM/Alexander1/`)
-- `MedicalRecord_AlexanderTowell/` — MEDITECH Expanse bulk export (UUID-named XML, NDJSON TOC, per-admission folders)
-- `SIHF_01-31-26/` — athenahealth FHIR R4 ambulatory summary (single XML in `Document_XML/`)
-
-**Expected input directory structures per source:**
-
-```
-Epic:      input_dir/DOC0001.XML, DOC0002.XML, ...  (DOC\d{4}\.XML pattern)
-MEDITECH:  input_dir/US Core FHIR Resources.json
-           input_dir/CCDA/<uuid>.xml                 (UUID-named CCDA files)
-           input_dir/Table of Contents.ndjson
-athena:    input_dir/Document_XML/*AmbulatorySummary*.xml  (or directly in input_dir)
-```
+TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, dashboard settings. Auto-generated from DB contents via `python -m chartfold init-config`.
 
 ## Key Conventions
 
-- All dates stored as ISO `YYYY-MM-DD` strings throughout the codebase. Date normalization lives in `core/utils.py` (`normalize_date_to_iso`).
-- Source parsers use `lxml` with optional `recover=True` for XML with encoding issues (MEDITECH).
+- All dates stored as ISO `YYYY-MM-DD` strings. Date normalization in `core/utils.py` (`normalize_date_to_iso`).
+- Source parsers use `lxml` with optional `recover=True` for XML with encoding issues (MEDITECH). MHTML parsers use Python stdlib `email` module + `lxml.html` XPath (NOT cssselect — `cssselect` requires an extra package).
 - Deduplication happens at the adapter stage using `deduplicate_by_key` from `core/utils.py`.
 - Tests use pytest fixtures from `tests/conftest.py` with `tmp_db`, `sample_unified_records`, `sample_epic_data`, `sample_meditech_data`, `sample_athena_data`, and `surgical_db`.
 - Roundtrip tests (`test_roundtrip.py`) verify that record counts are preserved through all pipeline stages.
-- Requires Python 3.11+ (`tomllib` from stdlib). No `pyproject.toml` or `requirements.txt` yet. Dependencies: `lxml`, `mcp` (FastMCP), `pytest`. Optional: `pandoc` for PDF export, `hugo` for static site generation. Run as `python -m chartfold`.
+- Requires Python 3.11+ (`tomllib` from stdlib). Dependencies: `lxml`, `pyyaml`. Optional: `mcp` (FastMCP) for MCP server. Run as `python -m chartfold`.
+- Ruff for linting (configured in `pyproject.toml`), line length 100, target Python 3.11.
+- Coverage minimum: 68% (configured in `pyproject.toml`).
 
 ## Adding a New EHR Source
 
 1. Create `sources/newsource.py` with a `process_*_export(input_dir)` function returning a dict
 2. Create `adapters/newsource_adapter.py` with a `*_to_unified(data) -> UnifiedRecords` function and `_parser_counts(data)` helper
-3. Add a `SourceConfig` in `sources/base.py`
+3. Add a `SourceConfig` in `sources/base.py` (if applicable)
 4. Wire into `cli.py` (add subcommand, `_load_newsource` function)
 5. Add fixtures in `tests/conftest.py` and tests in `test_newsource.py`, `test_adapters.py`, `test_roundtrip.py`
+
+## Gotchas
+
+- `mhtml_test_result.py`: The function `test_result_to_unified` starts with `test_` — pytest tries to collect it as a test. Import it with `from ... import test_result_to_unified as adapt_test_result` in tests.
+- `source_assets` are inserted via raw SQL in tests (not through the adapter pipeline).
+- `_UNIQUE_KEYS` in `db.py` must match the UNIQUE constraints declared in `schema.sql`.
+- When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`), and `analysis/visit_diff.py`.

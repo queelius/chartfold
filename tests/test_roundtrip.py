@@ -385,7 +385,7 @@ class TestIdempotentLoad:
 
     def test_athena_idempotent(self, tmp_db, sample_athena_data):
         records = athena_to_unified(sample_athena_data)
-        result1 = tmp_db.load_source(records)
+        tmp_db.load_source(records)
         result2 = tmp_db.load_source(records)
         # Second load should be skipped (identical content hash)
         assert result2["skipped"] is True
