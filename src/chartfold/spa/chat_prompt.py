@@ -42,12 +42,17 @@ def generate_system_prompt(db_path: str) -> str:
         A multi-section system prompt string with role instructions, schema,
         summary statistics, and current analyses.
     """
-    sections = [
-        _get_role_instructions(),
-        _get_schema_section(),
-        _get_summary_stats_section(db_path),
-        _get_current_analyses_section(db_path),
-    ]
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        sections = [
+            _get_role_instructions(),
+            _get_schema_section(),
+            _get_summary_stats_section(conn),
+            _get_current_analyses_section(conn),
+        ]
+    finally:
+        conn.close()
     return "\n\n".join(s for s in sections if s)
 
 
@@ -81,20 +86,15 @@ def _get_schema_section() -> str:
     return f"## Database Schema\n\n```sql\n{schema}\n```"
 
 
-def _get_summary_stats_section(db_path: str) -> str:
+def _get_summary_stats_section(conn: sqlite3.Connection) -> str:
     """Query the DB for sources, record counts, and date ranges.
 
     Tries load_log first for source names (most reliable), then falls back
     to scanning clinical tables directly.
     """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        sources = _get_sources(conn)
-        counts = _get_table_counts(conn)
-        date_range = _get_lab_date_range(conn)
-    finally:
-        conn.close()
+    sources = _get_sources(conn)
+    counts = _get_table_counts(conn)
+    date_range = _get_lab_date_range(conn)
 
     if not sources and not any(counts.values()):
         return ""
@@ -162,18 +162,14 @@ def _get_lab_date_range(conn: sqlite3.Connection) -> tuple[str, str] | None:
     return None
 
 
-def _get_current_analyses_section(db_path: str) -> str:
+def _get_current_analyses_section(conn: sqlite3.Connection) -> str:
     """Fetch analyses with status 'current' in their frontmatter JSON."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             "SELECT title, content, frontmatter FROM analyses ORDER BY updated_at DESC"
         ).fetchall()
     except sqlite3.OperationalError:
         return ""
-    finally:
-        conn.close()
 
     current_analyses: list[tuple[str, str]] = []
     for row in rows:

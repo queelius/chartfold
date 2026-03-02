@@ -40,13 +40,13 @@ _JS_FILES_TAIL = [
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def _safe_json_for_script(json_str: str) -> str:
-    """Escape JSON for safe embedding inside <script> tags.
+def _escape_for_script_tag(content: str) -> str:
+    """Escape content for safe embedding inside <script> tags.
 
     Replaces '</' with '<\\/' to prevent premature closing of <script> elements.
-    This is standard practice for inline JSON in HTML.
+    Works for any content type (JSON, plain text, etc.) embedded in <script> tags.
     """
-    return json_str.replace("</", "<\\/")
+    return content.replace("</", "<\\/")
 
 
 def _load_config_json(path: str) -> str:
@@ -168,8 +168,8 @@ def export_spa(
             css += "\n" + chat_css_path.read_text(encoding="utf-8")
 
     # 6. Load optional data (escaped for safe embedding in <script> tags)
-    config_json = _safe_json_for_script(_load_config_json(config_path))
-    images_json = _safe_json_for_script(
+    config_json = _escape_for_script_tag(_load_config_json(config_path))
+    images_json = _escape_for_script_tag(
         _load_images_json(db_path) if embed_images else "{}"
     )
 
@@ -179,12 +179,12 @@ def export_spa(
     if ai_chat:
         from chartfold.spa.chat_prompt import generate_system_prompt
 
-        system_prompt = _safe_json_for_script(generate_system_prompt(db_path))
+        system_prompt = _escape_for_script_tag(generate_system_prompt(db_path))
         chat_prompt_tag = (
             f'\n    <script id="chartfold-system-prompt" type="text/plain">'
             f"{system_prompt}</script>"
         )
-        chat_config = _safe_json_for_script(
+        chat_config = _escape_for_script_tag(
             json.dumps({"proxyUrl": proxy_url or None})
         )
         chat_config_tag = (

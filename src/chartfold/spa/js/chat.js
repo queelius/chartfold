@@ -251,6 +251,13 @@ var Chat = {
         return { content: 'SQL error: only SELECT, WITH, and EXPLAIN statements are allowed.', is_error: true };
       }
 
+      // Reject multi-statement queries (defense-in-depth; sql.js prepare() only
+      // compiles the first statement, and PRAGMA query_only prevents writes)
+      var body = trimmed.replace(/;?\s*$/, '');
+      if (body.indexOf(';') !== -1) {
+        return { content: 'SQL error: multi-statement queries are not allowed.', is_error: true };
+      }
+
       // Auto-add LIMIT 100 if not present
       var upperFull = upper.replace(/\s+/g, ' ');
       if (upperFull.indexOf('LIMIT') === -1) {
