@@ -17,12 +17,21 @@ from chartfold.core.utils import IMAGE_MIME_TYPES
 
 _SPA_DIR = Path(__file__).parent
 
-# JS files must be concatenated in this dependency order
-_JS_FILES = [
+# JS files must be concatenated in dependency order.
+# chat.js is inserted between base (data/UI layer) and tail (sections/routing/init)
+# only when AI chat is enabled.
+_JS_FILES_BASE = [
     "db.js",
     "ui.js",
     "markdown.js",
     "chart.js",
+]
+
+_JS_FILES_CHAT = [
+    "chat.js",
+]
+
+_JS_FILES_TAIL = [
     "sections.js",
     "router.js",
     "app.js",
@@ -103,6 +112,8 @@ def export_spa(
     output_path: str,
     config_path: str = "",
     embed_images: bool = False,
+    ai_chat: bool = False,
+    proxy_url: str = "",
 ) -> str:
     """Export a chartfold database as a single-file SPA HTML.
 
@@ -111,6 +122,10 @@ def export_spa(
         output_path: Path for the output HTML file.
         config_path: Optional path to a TOML config file.
         embed_images: If True, embed image assets from the database.
+        ai_chat: If True, include the AI chat interface (chat.js, chat.css,
+            system prompt, and proxy config).
+        proxy_url: URL of the CORS proxy for the AI chat API requests.
+            Only used when ai_chat is True.
 
     Returns:
         The output file path as a string.
@@ -129,18 +144,28 @@ def export_spa(
         encoding="utf-8"
     )
 
-    # 4. Concatenate JS files in dependency order
+    # 4. Concatenate JS files in dependency order (chat.js only when enabled)
+    js_files = _JS_FILES_BASE[:]
+    if ai_chat:
+        js_files.extend(_JS_FILES_CHAT)
+    js_files.extend(_JS_FILES_TAIL)
+
     js_parts = []
     js_dir = _SPA_DIR / "js"
-    for js_file in _JS_FILES:
+    for js_file in js_files:
         js_path = js_dir / js_file
         if js_path.is_file():
             js_parts.append(js_path.read_text(encoding="utf-8"))
     app_js = "\n".join(js_parts)
 
-    # 5. Read CSS
+    # 5. Read CSS (append chat.css when AI chat is enabled)
     css_path = _SPA_DIR / "css" / "styles.css"
     css = css_path.read_text(encoding="utf-8") if css_path.is_file() else ""
+
+    if ai_chat:
+        chat_css_path = _SPA_DIR / "css" / "chat.css"
+        if chat_css_path.is_file():
+            css += "\n" + chat_css_path.read_text(encoding="utf-8")
 
     # 6. Load optional data (escaped for safe embedding in <script> tags)
     config_json = _safe_json_for_script(_load_config_json(config_path))
@@ -148,7 +173,27 @@ def export_spa(
         _load_images_json(db_path) if embed_images else "{}"
     )
 
+    # 6b. Generate AI chat data (system prompt + config) when enabled
+    chat_prompt_tag = ""
+    chat_config_tag = ""
+    if ai_chat:
+        from chartfold.spa.chat_prompt import generate_system_prompt
+
+        system_prompt = _safe_json_for_script(generate_system_prompt(db_path))
+        chat_prompt_tag = (
+            f'\n    <script id="chartfold-system-prompt" type="text/plain">'
+            f"{system_prompt}</script>"
+        )
+        chat_config = _safe_json_for_script(
+            json.dumps({"proxyUrl": proxy_url or None})
+        )
+        chat_config_tag = (
+            f'\n    <script id="chartfold-chat-config" type="application/json">'
+            f"{chat_config}</script>"
+        )
+
     # 7. Assemble HTML
+    chat_tags = chat_prompt_tag + chat_config_tag
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -167,7 +212,7 @@ def export_spa(
     <script id="sqljs-wasm" type="application/base64">{wasm_b64}</script>
     <script id="chartfold-db" type="application/gzip+base64">{db_gzip_b64}</script>
     <script id="chartfold-config" type="application/json">{config_json}</script>
-    <script id="chartfold-images" type="application/json">{images_json}</script>
+    <script id="chartfold-images" type="application/json">{images_json}</script>{chat_tags}
     <script>{sqljs_loader_text}</script>
     <script id="app-js">{app_js}</script>
 </body>

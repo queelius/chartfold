@@ -1572,3 +1572,53 @@ class TestLinkedAssetImages:
         # Should only have one getElementById('chartfold-images') — in the cache function
         count = exported_html.count("getElementById('chartfold-images')")
         assert count == 1
+
+
+# --- AI Chat export tests ---
+
+
+class TestAiChatExport:
+    """Tests for the --ai-chat conditional export."""
+
+    def test_default_export_has_no_chat_script_tags(self, exported_html):
+        """Without ai_chat flag, no chat data script tags should appear."""
+        assert 'id="chartfold-system-prompt"' not in exported_html
+        assert 'id="chartfold-chat-config"' not in exported_html
+
+    def test_ai_chat_includes_system_prompt(self, spa_db, spa_output):
+        export_spa(spa_db, spa_output, ai_chat=True, proxy_url="https://example.com/v1/messages")
+        with open(spa_output) as f:
+            html = f.read()
+        assert 'id="chartfold-system-prompt"' in html
+        assert "CREATE TABLE" in html
+        assert "medical data analyst" in html.lower()
+
+    def test_ai_chat_includes_config(self, spa_db, spa_output):
+        export_spa(
+            spa_db, spa_output, ai_chat=True, proxy_url="https://proxy.example.com/v1/messages"
+        )
+        with open(spa_output) as f:
+            html = f.read()
+        assert 'id="chartfold-chat-config"' in html
+        assert "proxy.example.com" in html
+
+    def test_ai_chat_includes_chat_js(self, spa_db, spa_output):
+        export_spa(spa_db, spa_output, ai_chat=True, proxy_url="https://example.com/v1/messages")
+        with open(spa_output) as f:
+            html = f.read()
+        assert "_agentLoop" in html
+
+    def test_ai_chat_includes_chat_css(self, spa_db, spa_output):
+        export_spa(spa_db, spa_output, ai_chat=True, proxy_url="https://example.com/v1/messages")
+        with open(spa_output) as f:
+            html = f.read()
+        assert "chat-container" in html
+        assert "chat-messages" in html
+
+    def test_ai_chat_without_proxy_url(self, spa_db, spa_output):
+        """ai_chat=True without proxy_url still works."""
+        export_spa(spa_db, spa_output, ai_chat=True)
+        with open(spa_output) as f:
+            html = f.read()
+        assert 'id="chartfold-system-prompt"' in html
+        assert 'id="chartfold-chat-config"' in html
