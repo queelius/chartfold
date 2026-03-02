@@ -66,6 +66,7 @@ chartfold diff 2025-01-01
 # Self-contained HTML SPA with embedded SQLite (all data stays client-side)
 chartfold export html --output summary.html
 chartfold export html --output summary.html --embed-images --config chartfold.toml
+chartfold export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
 
 # Arkiv universal record format — primary backup/restore (round-trip capable)
 chartfold export arkiv --output ./arkiv/

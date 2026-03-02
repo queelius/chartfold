@@ -57,6 +57,7 @@ python -m chartfold export arkiv --output ./arkiv/ --embed          # inline bas
 python -m chartfold export arkiv --output ./arkiv/ --exclude-notes
 python -m chartfold export html --output summary.html
 python -m chartfold export html --output summary.html --embed-images --config chartfold.toml
+python -m chartfold export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
 
 # Import from arkiv archive (round-trip capable)
 python -m chartfold import ./arkiv/ --db new_chartfold.db
@@ -149,7 +150,10 @@ Parameterized query helpers that surface structured views of the data for LLMs (
 
 ### Export Modules
 
-- `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images` and `--config`.
+- `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images`, `--config`, `--ai-chat`, and `--proxy-url`.
+- `spa/chat_prompt.py` — System prompt generation for AI chat (schema + stats + current analyses).
+- `spa/js/chat.js` — Client-side agent loop + chat UI (conditionally included with `--ai-chat`).
+- `spa/css/chat.css` — Chat panel styling (conditionally included with `--ai-chat`).
 - `export_arkiv.py` — Arkiv universal record format (JSONL + README.md + schema.yaml). Primary backup/restore format with full round-trip support. Source assets exported to `media/` or inline base64 via `--embed`.
 - `import_arkiv.py` — Arkiv import with validation, FK remapping, tag unfolding, and source asset restoration.
 
