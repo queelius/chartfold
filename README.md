@@ -10,6 +10,7 @@ Patient-facing tool for consolidating personal health data from multiple EHR (El
 - **SQLite database** — 17 clinical tables with full audit trail
 - **MCP server** — 25 tools for LLM-assisted analysis with Claude
 - **Export formats** — Self-contained HTML SPA, Arkiv (JSONL + README.md + schema.yaml)
+- **AI chat** — Ask questions about your record in the HTML SPA via Claude (optional, requires proxy)
 - **Personal notes** — Tag and annotate any clinical record
 - **Visit preparation** — Generate visit diffs and clinical summaries
 
@@ -78,6 +79,20 @@ chartfold import ./arkiv/ --db new_chartfold.db
 chartfold import ./arkiv/ --validate-only
 chartfold import ./arkiv/ --db existing.db --overwrite
 ```
+
+### AI Chat (Optional)
+
+The HTML SPA export can include an AI chat interface that lets you ask natural-language questions about your medical record. The LLM runs SQL queries against the embedded database — all patient data stays in your browser.
+
+```bash
+chartfold export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
+```
+
+Requirements:
+- A CORS proxy that forwards requests to the Anthropic Messages API (injects your API key and sets the model server-side)
+- The proxy URL can also be configured in the SPA via the "Proxy settings" link
+
+The system prompt includes the full database schema, summary statistics, and any analyses marked `status: "current"` in their frontmatter. The chat interface supports multi-turn conversation with an agent loop — the LLM can issue multiple SQL queries per question to build a complete answer.
 
 ### Personal Notes
 
@@ -226,7 +241,7 @@ Raw EHR files (XML/FHIR)
 ## Testing
 
 ```bash
-# Run all tests (1000+ tests)
+# Run all tests (1100+ tests)
 python -m pytest tests/
 
 # Run a single test file
@@ -246,7 +261,7 @@ src/chartfold/
 ├── extractors/     # Specialized parsers (labs.py, pathology.py)
 ├── core/           # Shared utilities (cda.py, fhir.py, utils.py)
 ├── mcp/            # MCP server (server.py)
-├── spa/            # HTML SPA export with embedded SQLite (sql.js)
+├── spa/            # HTML SPA export with embedded SQLite (sql.js) and optional AI chat
 ├── db.py           # Database interface
 ├── models.py       # Dataclass models
 ├── config.py       # Configuration management
