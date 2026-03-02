@@ -157,8 +157,15 @@ var Chat = {
       }
     };
 
+    var MAX_TOOL_ROUNDS = 10;
+    var iterations = 0;
+
     try {
       while (true) {
+        if (++iterations > MAX_TOOL_ROUNDS) {
+          throw new Error('Too many tool use rounds (' + MAX_TOOL_ROUNDS + ') — stopping to prevent runaway API calls.');
+        }
+
         var body = {
           model: 'unused',
           max_tokens: 4096,
@@ -181,6 +188,11 @@ var Chat = {
         }
 
         var data = await response.json();
+
+        if (!data.content || !Array.isArray(data.content)) {
+          throw new Error('Unexpected API response format');
+        }
+
         var textParts = [];
         var toolResults = [];
 
@@ -202,6 +214,10 @@ var Chat = {
         }
 
         if (toolResults.length > 0) {
+          // Show any thinking/explanation text alongside tool calls
+          if (textParts.length > 0) {
+            self._renderMessage('assistant', textParts.join('\n'));
+          }
           // Push assistant message with raw content blocks, then tool results
           self.messages.push({ role: 'assistant', content: data.content });
           self.messages.push({ role: 'user', content: toolResults });
@@ -322,9 +338,12 @@ var Chat = {
           this.proxyUrl = config.proxyUrl || null;
         }
       } catch (e) { /* ignore */ }
-    } else {
+    } else if (input.startsWith('https://') || input.startsWith('http://localhost')) {
       localStorage.setItem('chartfold_proxy_url', input);
       this.proxyUrl = input;
+    } else {
+      alert('Proxy URL must start with https:// (or http://localhost for development).');
+      return;
     }
 
     if (this.proxyUrl) {
