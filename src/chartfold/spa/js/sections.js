@@ -1712,5 +1712,16 @@ const Sections = {
     }
 
     el.appendChild(wrapper);
+  },
+
+  ask_ai: function(el, db) {
+    // Only render chat if system prompt is embedded (--ai-chat flag was used at export time)
+    var promptEl = document.getElementById('chartfold-system-prompt');
+    if (!promptEl) {
+      el.appendChild(UI.sectionHeader('Ask AI', ''));
+      el.appendChild(UI.empty('AI chat is not enabled in this export. Re-export with --ai-chat to enable.'));
+      return;
+    }
+    Chat.init(el, db);
   }
 };
