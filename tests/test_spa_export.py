@@ -1622,3 +1622,75 @@ class TestAiChatExport:
             html = f.read()
         assert 'id="chartfold-system-prompt"' in html
         assert 'id="chartfold-chat-config"' in html
+
+
+class TestAiChatIntegration:
+    """Integration test: full export with AI chat enabled."""
+
+    def test_full_export_with_ai_chat(self, tmp_path):
+        """End-to-end: DB with analyses -> export with ai_chat -> all pieces present."""
+        # Create DB with clinical data + analyses
+        db_path = str(tmp_path / "test.db")
+        db = ChartfoldDB(db_path)
+        db.init_schema()
+        db.conn.execute(
+            "INSERT INTO patients (source, name, date_of_birth) VALUES (?, ?, ?)",
+            ("epic", "Test Patient", "1970-01-01"),
+        )
+        db.conn.execute(
+            "INSERT INTO lab_results (source, test_name, value, result_date) "
+            "VALUES (?, ?, ?, ?)",
+            ("epic", "CEA", "4.5", "2025-06-01"),
+        )
+        db.conn.execute(
+            "INSERT INTO analyses (slug, title, content, source, category, "
+            "frontmatter, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "summary",
+                "Case Summary",
+                "Patient has stage II colon cancer.",
+                "claude",
+                "oncology",
+                json.dumps({"status": "current"}),
+                "2025-08-01T00:00:00",
+                "2025-08-01T00:00:00",
+            ),
+        )
+        db.conn.commit()
+        db.close()
+
+        # Export with AI chat
+        out_path = str(tmp_path / "export.html")
+        export_spa(
+            db_path,
+            out_path,
+            ai_chat=True,
+            proxy_url="https://proxy.example.com/v1/messages",
+        )
+
+        html = Path(out_path).read_text()
+
+        # System prompt embedded with schema and analyses
+        assert 'id="chartfold-system-prompt"' in html
+        assert "CREATE TABLE" in html
+        assert "Case Summary" in html
+        assert "colon cancer" in html
+
+        # Chat config embedded
+        assert 'id="chartfold-chat-config"' in html
+        assert "proxy.example.com" in html
+
+        # Chat JS included
+        assert "_agentLoop" in html
+        assert "run_sql" in html
+
+        # Chat CSS included
+        assert "chat-container" in html
+
+        # Sidebar entry exists
+        assert "ask_ai" in html
+        assert "Ask AI" in html
+
+        # Existing features still work
+        assert "sql-wasm" in html
+        assert "chartfold-db" in html
