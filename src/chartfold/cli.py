@@ -9,6 +9,7 @@ Usage:
     python -m chartfold query <sql> [--db chartfold.db]
     python -m chartfold summary [--db chartfold.db]
     python -m chartfold export html [--output FILE] [--embed-images] [--config FILE]
+                                     [--ai-chat] [--proxy-url URL]
     python -m chartfold export arkiv [--output DIR] [--embed] [--exclude-notes]
     python -m chartfold serve-mcp [--db chartfold.db]
 """
@@ -125,6 +126,16 @@ def main():
         "--embed-images",
         action="store_true",
         help="Embed image assets from source_assets in the HTML file",
+    )
+    html_parser.add_argument(
+        "--ai-chat",
+        action="store_true",
+        help="Include AI chat interface (requires proxy deployment)",
+    )
+    html_parser.add_argument(
+        "--proxy-url",
+        default="",
+        help="Proxy URL for AI chat API calls",
     )
 
     # export arkiv
@@ -677,6 +688,8 @@ def _handle_export(args):
                 output_path=args.output,
                 config_path=args.config,
                 embed_images=args.embed_images,
+                ai_chat=args.ai_chat,
+                proxy_url=args.proxy_url,
             )
 
         elif args.export_format == "arkiv":
