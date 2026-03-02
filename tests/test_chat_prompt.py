@@ -8,6 +8,7 @@ import pytest
 
 from chartfold.db import ChartfoldDB
 from chartfold.models import LabResult, PatientRecord, UnifiedRecords
+from chartfold.spa.chat_prompt import generate_system_prompt
 
 
 @pytest.fixture
@@ -79,44 +80,32 @@ class TestGenerateSystemPrompt:
     """Tests for generate_system_prompt()."""
 
     def test_includes_role_instructions(self, chat_db):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         prompt = generate_system_prompt(chat_db.db_path)
         assert "medical data analyst" in prompt.lower()
         assert "SELECT" in prompt
 
     def test_includes_schema(self, chat_db):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         prompt = generate_system_prompt(chat_db.db_path)
         assert "CREATE TABLE" in prompt
         assert "lab_results" in prompt
         assert "medications" in prompt
 
     def test_includes_summary_stats(self, chat_db):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         prompt = generate_system_prompt(chat_db.db_path)
         assert "epic_anderson" in prompt
         assert "meditech_houston" in prompt
 
     def test_includes_current_analyses(self, chat_db):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         prompt = generate_system_prompt(chat_db.db_path)
         assert "Cancer Timeline" in prompt
         assert "Diagnosed 2024" in prompt
 
     def test_excludes_archived_analyses(self, chat_db):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         prompt = generate_system_prompt(chat_db.db_path)
         assert "Old Draft" not in prompt
         assert "archived content" not in prompt
 
     def test_handles_empty_db(self, tmp_path):
-        from chartfold.spa.chat_prompt import generate_system_prompt
-
         db_path = str(tmp_path / "empty.db")
         db = ChartfoldDB(db_path)
         db.init_schema()

@@ -27,10 +27,6 @@ _JS_FILES_BASE = [
     "chart.js",
 ]
 
-_JS_FILES_CHAT = [
-    "chat.js",
-]
-
 _JS_FILES_TAIL = [
     "sections.js",
     "router.js",
@@ -62,7 +58,6 @@ def _load_config_json(path: str) -> str:
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
     return json.dumps(data)
-
 
 
 def _load_images_json(db_path: str) -> str:
@@ -147,7 +142,7 @@ def export_spa(
     # 4. Concatenate JS files in dependency order (chat.js only when enabled)
     js_files = _JS_FILES_BASE[:]
     if ai_chat:
-        js_files.extend(_JS_FILES_CHAT)
+        js_files.append("chat.js")
     js_files.extend(_JS_FILES_TAIL)
 
     js_parts = []
@@ -173,7 +168,7 @@ def export_spa(
         _load_images_json(db_path) if embed_images else "{}"
     )
 
-    # 6b. Generate AI chat data (system prompt + config) when enabled
+    # 7. Generate AI chat data (system prompt + config) when enabled
     chat_prompt_tag = ""
     chat_config_tag = ""
     if ai_chat:
@@ -192,7 +187,7 @@ def export_spa(
             f"{chat_config}</script>"
         )
 
-    # 7. Assemble HTML
+    # 8. Assemble HTML
     chat_tags = chat_prompt_tag + chat_config_tag
     html = f"""<!DOCTYPE html>
 <html lang="en">

@@ -46,17 +46,17 @@ def generate_system_prompt(db_path: str) -> str:
     conn.row_factory = sqlite3.Row
     try:
         sections = [
-            _get_role_instructions(),
-            _get_schema_section(),
-            _get_summary_stats_section(conn),
-            _get_current_analyses_section(conn),
+            _role_instructions(),
+            _schema_section(),
+            _summary_stats_section(conn),
+            _current_analyses_section(conn),
         ]
     finally:
         conn.close()
     return "\n\n".join(s for s in sections if s)
 
 
-def _get_role_instructions() -> str:
+def _role_instructions() -> str:
     """Return the role and behavior instructions for the LLM."""
     return (
         "## Role\n\n"
@@ -74,19 +74,13 @@ def _get_role_instructions() -> str:
     )
 
 
-def _get_schema() -> str:
-    """Read the database schema SQL from the bundled schema.sql file."""
-    schema_path = Path(__file__).parent.parent / "schema.sql"
-    return schema_path.read_text()
-
-
-def _get_schema_section() -> str:
+def _schema_section() -> str:
     """Return the schema section of the prompt."""
-    schema = _get_schema()
+    schema = (Path(__file__).parent.parent / "schema.sql").read_text()
     return f"## Database Schema\n\n```sql\n{schema}\n```"
 
 
-def _get_summary_stats_section(conn: sqlite3.Connection) -> str:
+def _summary_stats_section(conn: sqlite3.Connection) -> str:
     """Query the DB for sources, record counts, and date ranges.
 
     Tries load_log first for source names (most reliable), then falls back
@@ -162,7 +156,7 @@ def _get_lab_date_range(conn: sqlite3.Connection) -> tuple[str, str] | None:
     return None
 
 
-def _get_current_analyses_section(conn: sqlite3.Connection) -> str:
+def _current_analyses_section(conn: sqlite3.Connection) -> str:
     """Fetch analyses with status 'current' in their frontmatter JSON."""
     try:
         rows = conn.execute(

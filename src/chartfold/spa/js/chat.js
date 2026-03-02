@@ -17,34 +17,32 @@ var Chat = {
     this.messages = [];
     this.db = db;
     this.busy = false;
-    this.proxyUrl = null;
-    this.systemPrompt = null;
 
-    // Read config from embedded script tag
+    // Proxy URL: localStorage override > embedded config > null
+    this.proxyUrl = this._readProxyUrl();
+
+    // Read system prompt from embedded script tag
+    var promptEl = document.getElementById('chartfold-system-prompt');
+    this.systemPrompt = (promptEl && promptEl.textContent.trim()) || null;
+
+    this._buildUI(el);
+    this._syncStatus();
+  },
+
+  _readProxyUrl: function() {
+    var lsOverride = localStorage.getItem('chartfold_proxy_url');
+    if (lsOverride) return lsOverride;
     try {
       var configEl = document.getElementById('chartfold-chat-config');
       if (configEl) {
         var config = JSON.parse(configEl.textContent);
-        this.proxyUrl = config.proxyUrl || null;
+        return config.proxyUrl || null;
       }
     } catch (e) { /* ignore parse errors */ }
+    return null;
+  },
 
-    // Check localStorage override
-    var lsOverride = localStorage.getItem('chartfold_proxy_url');
-    if (lsOverride !== null && lsOverride !== '') {
-      this.proxyUrl = lsOverride;
-    }
-
-    // Read system prompt from embedded script tag
-    try {
-      var promptEl = document.getElementById('chartfold-system-prompt');
-      if (promptEl) {
-        this.systemPrompt = promptEl.textContent.trim() || null;
-      }
-    } catch (e) { /* ignore */ }
-
-    this._buildUI(el);
-
+  _syncStatus: function() {
     if (this.proxyUrl) {
       this._updateStatus('ready', 'Ready');
     } else {
@@ -279,12 +277,7 @@ var Chat = {
   },
 
   _renderMessage: function(role, text) {
-    var cls = 'chat-message';
-    if (role === 'user') cls += ' user';
-    else if (role === 'assistant') cls += ' assistant';
-    else if (role === 'error') cls += ' error';
-
-    var msgDiv = UI.el('div', { className: cls });
+    var msgDiv = UI.el('div', { className: 'chat-message ' + role });
 
     if (role === 'user') {
       msgDiv.textContent = text;
@@ -301,10 +294,7 @@ var Chat = {
   },
 
   _renderToolUse: function(queryPreview) {
-    var display = queryPreview;
-    if (display.length > 100) {
-      display = display.substring(0, 100) + '...';
-    }
+    var display = queryPreview.length > 100 ? queryPreview.substring(0, 100) + '...' : queryPreview;
     var div = UI.el('div', {
       className: 'chat-tool-use',
       textContent: 'Running SQL: ' + display
@@ -315,12 +305,7 @@ var Chat = {
 
   _updateStatus: function(state, text) {
     if (this.statusDot) {
-      this.statusDot.className = 'dot';
-      if (state === 'thinking') {
-        this.statusDot.className = 'dot thinking';
-      } else if (state === 'error') {
-        this.statusDot.className = 'dot error';
-      }
+      this.statusDot.className = state === 'ready' ? 'dot' : 'dot ' + state;
     }
     if (this.statusText) {
       this.statusText.textContent = text || '';
@@ -329,22 +314,14 @@ var Chat = {
 
   _showSettings: function() {
     var current = localStorage.getItem('chartfold_proxy_url') || '';
-    var hint = current ? current : '(using default from config)';
+    var hint = current || '(using default from config)';
     var input = prompt('Enter proxy URL (leave empty to use default):\n\nCurrent: ' + hint, current);
 
     if (input === null) return; // cancelled
 
     if (input === '') {
       localStorage.removeItem('chartfold_proxy_url');
-      // Re-read default from config
-      this.proxyUrl = null;
-      try {
-        var configEl = document.getElementById('chartfold-chat-config');
-        if (configEl) {
-          var config = JSON.parse(configEl.textContent);
-          this.proxyUrl = config.proxyUrl || null;
-        }
-      } catch (e) { /* ignore */ }
+      this.proxyUrl = this._readProxyUrl();
     } else if (input.startsWith('https://') || input.startsWith('http://localhost')) {
       localStorage.setItem('chartfold_proxy_url', input);
       this.proxyUrl = input;
@@ -353,10 +330,6 @@ var Chat = {
       return;
     }
 
-    if (this.proxyUrl) {
-      this._updateStatus('ready', 'Ready');
-    } else {
-      this._updateStatus('error', 'No proxy URL configured');
-    }
+    this._syncStatus();
   }
 };
