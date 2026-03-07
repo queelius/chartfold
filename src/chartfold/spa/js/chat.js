@@ -250,7 +250,9 @@ var Chat = {
       }
 
       // Reject multi-statement queries (defense-in-depth; sql.js prepare() only
-      // compiles the first statement, and PRAGMA query_only prevents writes)
+      // compiles the first statement, and PRAGMA query_only prevents writes).
+      // Note: may false-positive on semicolons inside string literals; acceptable
+      // since the engine-level protections are the real safety net.
       var body = trimmed.replace(/;?\s*$/, '');
       if (body.indexOf(';') !== -1) {
         return { content: 'SQL error: multi-statement queries are not allowed.', is_error: true };
