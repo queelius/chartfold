@@ -62,7 +62,7 @@ var Chat = {
   _buildUI: function(container) {
     var self = this;
 
-    this._container = UI.el('div', {});
+    this._container = UI.el('div');
 
     this._container.appendChild(
       UI.sectionHeader('Ask AI', 'Ask questions about this medical record')
@@ -160,7 +160,6 @@ var Chat = {
 
   _trimHistory: function() {
     if (this.messages.length <= this.MAX_MESSAGES) return;
-    // Slice to keep the last MAX_MESSAGES entries
     this.messages = this.messages.slice(-this.MAX_MESSAGES);
     // Don't start with an orphaned tool_result (its paired tool_use was trimmed)
     while (

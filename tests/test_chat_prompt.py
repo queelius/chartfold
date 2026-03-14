@@ -133,8 +133,7 @@ class TestClinicalTablesList:
         assert set(_CLINICAL_TABLES) == expected
 
     def test_excludes_non_clinical_tables(self):
-        for table in _NON_CLINICAL_TABLES:
-            assert table not in _CLINICAL_TABLES
+        assert _NON_CLINICAL_TABLES.isdisjoint(_CLINICAL_TABLES)
 
     def test_auto_tracks_unique_keys(self):
         """Length matches _UNIQUE_KEYS minus exclusions — catches new tables."""
