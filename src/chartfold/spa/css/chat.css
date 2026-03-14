@@ -173,6 +173,22 @@
   50% { opacity: 0.4; }
 }
 
+.chat-clear-btn {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-clear-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
 /* --- Input area --- */
 .chat-input-area {
   display: flex;

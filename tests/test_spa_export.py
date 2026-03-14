@@ -1621,6 +1621,18 @@ class TestAiChatExport:
         """Chat JS should check for existing _container before rebuilding."""
         assert "Chat._container" in ai_chat_html
 
+    def test_ai_chat_has_clear_button(self, ai_chat_html):
+        """Chat UI should include a clear conversation button."""
+        assert "chat-clear-btn" in ai_chat_html
+
+    def test_ai_chat_has_trim_history(self, ai_chat_html):
+        """Chat JS should include the _trimHistory function."""
+        assert "_trimHistory" in ai_chat_html
+
+    def test_ai_chat_has_max_messages(self, ai_chat_html):
+        """Chat JS should define MAX_MESSAGES constant."""
+        assert "MAX_MESSAGES" in ai_chat_html
+
 
 class TestAiChatIntegration:
     """Integration test: full export with AI chat enabled."""

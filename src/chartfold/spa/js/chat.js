@@ -6,6 +6,7 @@ var Chat = {
   systemPrompt: null,
   busy: false,
   _container: null,
+  MAX_MESSAGES: 40,
 
   // DOM references
   messagesEl: null,
@@ -76,9 +77,17 @@ var Chat = {
     // Status bar
     this.statusDot = UI.el('span', { className: 'dot' });
     this.statusText = UI.el('span', { textContent: 'Initializing...' });
+    // Clear button
+    var clearBtn = UI.el('button', {
+      className: 'chat-clear-btn',
+      textContent: 'Clear',
+      onClick: function() { self._onClear(); }
+    });
+
     var statusBar = UI.el('div', { className: 'chat-status' }, [
       this.statusDot,
-      this.statusText
+      this.statusText,
+      clearBtn
     ]);
     chatContainer.appendChild(statusBar);
 
@@ -147,6 +156,25 @@ var Chat = {
     this.messages.push({ role: 'user', content: text });
     this._renderMessage('user', text);
     this._agentLoop();
+  },
+
+  _trimHistory: function() {
+    if (this.messages.length <= this.MAX_MESSAGES) return;
+    // Slice to keep the last MAX_MESSAGES entries
+    this.messages = this.messages.slice(-this.MAX_MESSAGES);
+    // Don't start with an orphaned tool_result (its paired tool_use was trimmed)
+    while (
+      this.messages.length > 0 &&
+      this.messages[0].role === 'user' &&
+      Array.isArray(this.messages[0].content)
+    ) {
+      this.messages.shift();
+    }
+  },
+
+  _onClear: function() {
+    this.messages = [];
+    this.messagesEl.textContent = '';
   },
 
   _agentLoop: async function() {
@@ -242,6 +270,7 @@ var Chat = {
         break;
       }
 
+      self._trimHistory();
       self._updateStatus('ready', 'Ready');
     } catch (err) {
       self._renderMessage('error', 'Error: ' + err.message);
