@@ -11,25 +11,15 @@ import json
 import sqlite3
 from pathlib import Path
 
+from chartfold.db import _UNIQUE_KEYS
+
+# Tables excluded from clinical summary stats (metadata/system tables).
+_NON_CLINICAL_TABLES = {
+    "documents", "load_log", "notes", "note_tags",
+    "analyses", "analysis_tags", "source_assets",
+}
 # Tables to report record counts for in the summary stats section.
-_CLINICAL_TABLES = [
-    "patients",
-    "encounters",
-    "lab_results",
-    "vitals",
-    "medications",
-    "conditions",
-    "procedures",
-    "pathology_reports",
-    "imaging_reports",
-    "clinical_notes",
-    "immunizations",
-    "allergies",
-    "social_history",
-    "family_history",
-    "mental_status",
-    "genetic_variants",
-]
+_CLINICAL_TABLES = [t for t in _UNIQUE_KEYS if t not in _NON_CLINICAL_TABLES]
 
 
 def generate_system_prompt(db_path: str) -> str:

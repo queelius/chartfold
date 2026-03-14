@@ -114,3 +114,30 @@ class TestGenerateSystemPrompt:
         prompt = generate_system_prompt(db_path)
         assert "CREATE TABLE" in prompt
         assert len(prompt) > 100  # Still has schema + role instructions
+
+
+from chartfold.db import _UNIQUE_KEYS
+from chartfold.spa.chat_prompt import _CLINICAL_TABLES, _NON_CLINICAL_TABLES
+
+
+class TestClinicalTablesList:
+    """Tests for the derived _CLINICAL_TABLES list."""
+
+    def test_contains_expected_clinical_tables(self):
+        expected = {
+            "patients", "encounters", "lab_results", "vitals",
+            "medications", "conditions", "procedures", "pathology_reports",
+            "imaging_reports", "clinical_notes", "immunizations", "allergies",
+            "social_history", "family_history", "mental_status", "genetic_variants",
+        }
+        assert set(_CLINICAL_TABLES) == expected
+
+    def test_excludes_non_clinical_tables(self):
+        for table in _NON_CLINICAL_TABLES:
+            assert table not in _CLINICAL_TABLES
+
+    def test_auto_tracks_unique_keys(self):
+        """Length matches _UNIQUE_KEYS minus exclusions — catches new tables."""
+        excluded_in_unique_keys = _NON_CLINICAL_TABLES & set(_UNIQUE_KEYS)
+        expected_count = len(_UNIQUE_KEYS) - len(excluded_in_unique_keys)
+        assert len(_CLINICAL_TABLES) == expected_count
