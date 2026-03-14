@@ -243,8 +243,9 @@ var Chat = {
 
   _executeSql: function(query) {
     try {
-      var trimmed = query.trim();
-      var upper = trimmed.toUpperCase();
+      // Strip trailing semicolon and whitespace once for all checks
+      var sql = query.trim().replace(/;?\s*$/, '');
+      var upper = sql.toUpperCase();
       if (!upper.startsWith('SELECT') && !upper.startsWith('WITH') && !upper.startsWith('EXPLAIN')) {
         return { content: 'SQL error: only SELECT, WITH, and EXPLAIN statements are allowed.', is_error: true };
       }
@@ -253,18 +254,16 @@ var Chat = {
       // compiles the first statement, and PRAGMA query_only prevents writes).
       // Note: may false-positive on semicolons inside string literals; acceptable
       // since the engine-level protections are the real safety net.
-      var body = trimmed.replace(/;?\s*$/, '');
-      if (body.indexOf(';') !== -1) {
+      if (sql.indexOf(';') !== -1) {
         return { content: 'SQL error: multi-statement queries are not allowed.', is_error: true };
       }
 
       // Auto-add LIMIT 100 if not present
-      var upperFull = upper.replace(/\s+/g, ' ');
-      if (upperFull.indexOf('LIMIT') === -1) {
-        trimmed = trimmed.replace(/;?\s*$/, '') + ' LIMIT 100';
+      if (upper.replace(/\s+/g, ' ').indexOf('LIMIT') === -1) {
+        sql += ' LIMIT 100';
       }
 
-      var rows = this.db.query(trimmed);
+      var rows = this.db.query(sql);
       var content = rows.length + ' rows returned.\n' + JSON.stringify(rows, null, 2);
 
       // Cap result string at 50000 chars

@@ -67,21 +67,21 @@ def _load_images_json(db_path: str) -> str:
     from disk if it exists and is under 10 MB, and base64-encodes it.
     Returns a JSON object keyed by string asset ID with data-URI values.
     """
-    result: dict[str, str] = {}
-
     try:
         conn = sqlite3.connect(db_path)
     except sqlite3.Error:
         return "{}"
 
+    result: dict[str, str] = {}
     try:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, asset_type, file_path, content_type FROM source_assets"
         ).fetchall()
     except sqlite3.Error:
+        return "{}"
+    finally:
         conn.close()
-        return json.dumps(result)
 
     for row in rows:
         asset_type = (row["asset_type"] or "").lower()
@@ -98,7 +98,6 @@ def _load_images_json(db_path: str) -> str:
         data_b64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
         result[str(row["id"])] = f"data:{mime};base64,{data_b64}"
 
-    conn.close()
     return json.dumps(result)
 
 

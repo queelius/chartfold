@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from chartfold.db import ChartfoldDB
 
+_MED_COLUMNS = (
+    "name, rxnorm_code, status, sig, route, start_date, stop_date, prescriber, source"
+)
+
 
 def get_active_medications(db: ChartfoldDB) -> list[dict]:
     """Get currently active medications across all sources."""
@@ -19,18 +23,27 @@ def get_medication_history(db: ChartfoldDB, med_name: str = "") -> list[dict]:
     """Get all medications, optionally filtered by name."""
     if med_name:
         return db.query(
-            "SELECT name, rxnorm_code, status, sig, route, start_date, stop_date, "
-            "prescriber, source "
-            "FROM medications "
+            f"SELECT {_MED_COLUMNS} FROM medications "
             "WHERE LOWER(name) LIKE ? "
             "ORDER BY start_date DESC",
             (f"%{med_name.lower()}%",),
         )
     return db.query(
-        "SELECT name, rxnorm_code, status, sig, route, start_date, stop_date, "
-        "prescriber, source "
-        "FROM medications "
-        "ORDER BY status, name"
+        f"SELECT {_MED_COLUMNS} FROM medications ORDER BY status, name"
+    )
+
+
+def get_medication_list(db: ChartfoldDB, status: str | None = None) -> list[dict]:
+    """Get medications, optionally filtered by status."""
+    if status:
+        return db.query(
+            f"SELECT {_MED_COLUMNS} FROM medications "
+            "WHERE LOWER(status) = ? "
+            "ORDER BY name",
+            (status.lower(),),
+        )
+    return db.query(
+        f"SELECT {_MED_COLUMNS} FROM medications ORDER BY status, name"
     )
 
 

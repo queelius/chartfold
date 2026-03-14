@@ -45,6 +45,14 @@
   border-bottom-left-radius: 4px;
 }
 
+.chat-message.error {
+  align-self: flex-start;
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--red, #dc2626);
+  border-left: 3px solid var(--red, #dc2626);
+  border-bottom-left-radius: 4px;
+}
+
 /* --- Assistant message markdown content --- */
 .chat-message.assistant p {
   margin: 0 0 8px;
@@ -252,6 +260,10 @@
 
   .chat-send-btn:hover {
     background: #409cff;
+  }
+
+  .chat-message.error {
+    background: rgba(220, 38, 38, 0.12);
   }
 }
 

@@ -27,8 +27,7 @@ mcp = FastMCP(
         "- get_available_tests: Discover what tests exist in the database\n"
         "- get_abnormal_labs: All flagged-abnormal lab results\n"
         "- get_medications / reconcile_medications_tool: Medication list and cross-source reconciliation\n"
-        "- get_timeline: Unified event timeline (encounters, procedures, imaging, labs, pathology)\n"
-        "- get_visit_diff: Everything new since a given date\n"
+        "- get_visit_diff: Everything new since a given date (encounters, procedures, imaging, labs, pathology)\n"
         "- get_visit_prep: Pre-appointment summary\n"
         "- get_surgical_timeline: Procedures linked to pathology, imaging, and medications\n"
         "- match_cross_source_encounters: Same-day encounters across different EHR systems\n"
@@ -63,10 +62,9 @@ def _readonly_query(query: str) -> list[dict] | str:
     if any(kw in upper for kw in ("ATTACH", "DETACH")):
         return "Error: ATTACH/DETACH statements are not allowed."
 
-    db_path = DB_PATH
     conn = None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query).fetchall()
         return [dict(r) for r in rows]
@@ -192,7 +190,7 @@ def get_lab_series_tool(
         return get_lab_series(
             db,
             test_name=test_name or None,
-            loinc=loinc or None,
+            test_loinc=loinc or None,
             start_date=start_date or None,
             end_date=end_date or None,
         )
@@ -252,9 +250,9 @@ def get_medications(status: str = "") -> list[dict]:
     """
     db = _get_db()
     try:
-        from chartfold.analysis.medications import get_medications as _get_meds
+        from chartfold.analysis.medications import get_medication_list
 
-        return _get_meds(db, status=status or None)
+        return get_medication_list(db, status=status or None)
     finally:
         db.close()
 
@@ -272,35 +270,6 @@ def reconcile_medications_tool() -> dict:
         from chartfold.analysis.medications import reconcile_medications
 
         return reconcile_medications(db)
-    finally:
-        db.close()
-
-
-@mcp.tool()
-def get_timeline(
-    start_date: str = "",
-    end_date: str = "",
-    event_types: str = "",
-) -> list[dict]:
-    """Get a unified event timeline across all sources.
-
-    Args:
-        start_date: ISO date filter.
-        end_date: ISO date filter.
-        event_types: Comma-separated types to include: encounters, labs, procedures,
-            imaging, pathology. Empty = all types.
-    """
-    db = _get_db()
-    try:
-        from chartfold.analysis.visit_diff import get_timeline as _get_timeline
-
-        types = [t.strip() for t in event_types.split(",") if t.strip()] if event_types else None
-        return _get_timeline(
-            db,
-            start_date=start_date or None,
-            end_date=end_date or None,
-            event_types=types,
-        )
     finally:
         db.close()
 
@@ -416,9 +385,9 @@ def get_visit_prep(
     """
     db = _get_db()
     try:
-        from chartfold.analysis.visit_prep import visit_prep
+        from chartfold.analysis.visit_prep import generate_visit_prep
 
-        return visit_prep(db, visit_date=visit_date or None, lookback_months=lookback_months)
+        return generate_visit_prep(db, visit_date=visit_date or None, lookback_months=lookback_months)
     finally:
         db.close()
 
