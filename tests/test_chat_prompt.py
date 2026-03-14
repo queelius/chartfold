@@ -6,9 +6,13 @@ import json
 
 import pytest
 
-from chartfold.db import ChartfoldDB
+from chartfold.db import ChartfoldDB, _UNIQUE_KEYS
 from chartfold.models import LabResult, PatientRecord, UnifiedRecords
-from chartfold.spa.chat_prompt import generate_system_prompt
+from chartfold.spa.chat_prompt import (
+    _CLINICAL_TABLES,
+    _NON_CLINICAL_TABLES,
+    generate_system_prompt,
+)
 
 
 @pytest.fixture
@@ -114,10 +118,6 @@ class TestGenerateSystemPrompt:
         prompt = generate_system_prompt(db_path)
         assert "CREATE TABLE" in prompt
         assert len(prompt) > 100  # Still has schema + role instructions
-
-
-from chartfold.db import _UNIQUE_KEYS
-from chartfold.spa.chat_prompt import _CLINICAL_TABLES, _NON_CLINICAL_TABLES
 
 
 class TestClinicalTablesList:
