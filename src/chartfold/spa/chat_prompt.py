@@ -14,6 +14,9 @@ from pathlib import Path
 from chartfold.db import _UNIQUE_KEYS
 
 # Tables excluded from clinical summary stats (metadata/system tables).
+# Some entries (load_log, notes, note_tags, analyses, analysis_tags) are not
+# currently in _UNIQUE_KEYS but are listed here as defense-in-depth in case
+# they are added in the future.
 _NON_CLINICAL_TABLES = {
     "documents", "load_log", "notes", "note_tags",
     "analyses", "analysis_tags", "source_assets",
