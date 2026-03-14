@@ -1617,6 +1617,10 @@ class TestAiChatExport:
         assert 'id="chartfold-system-prompt"' in html
         assert 'id="chartfold-chat-config"' in html
 
+    def test_ai_chat_has_container_reattach(self, ai_chat_html):
+        """Chat JS should check for existing _container before rebuilding."""
+        assert "Chat._container" in ai_chat_html
+
 
 class TestAiChatIntegration:
     """Integration test: full export with AI chat enabled."""

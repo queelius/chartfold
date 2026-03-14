@@ -5,6 +5,7 @@ var Chat = {
   proxyUrl: null,
   systemPrompt: null,
   busy: false,
+  _container: null,
 
   // DOM references
   messagesEl: null,
@@ -14,6 +15,13 @@ var Chat = {
   statusText: null,
 
   init: function(el, db) {
+    // Reattach existing container if navigating back
+    if (Chat._container) {
+      el.appendChild(Chat._container);
+      this.inputEl.focus();
+      return;
+    }
+
     this.messages = [];
     this.db = db;
     this.busy = false;
@@ -53,7 +61,9 @@ var Chat = {
   _buildUI: function(container) {
     var self = this;
 
-    container.appendChild(
+    this._container = UI.el('div', {});
+
+    this._container.appendChild(
       UI.sectionHeader('Ask AI', 'Ask questions about this medical record')
     );
 
@@ -118,7 +128,9 @@ var Chat = {
     var settingsDiv = UI.el('div', { className: 'chat-settings' }, [settingsLink]);
     chatContainer.appendChild(settingsDiv);
 
-    container.appendChild(chatContainer);
+    this._container.appendChild(chatContainer);
+
+    container.appendChild(this._container);
 
     // Focus input after brief delay
     setTimeout(function() {
