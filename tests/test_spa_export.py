@@ -1633,6 +1633,12 @@ class TestAiChatExport:
         """Chat JS should define MAX_MESSAGES constant."""
         assert "MAX_MESSAGES" in ai_chat_html
 
+    def test_ai_chat_has_render_chart_tool(self, ai_chat_html):
+        assert "render_chart" in ai_chat_html
+
+    def test_ai_chat_has_execute_render_chart(self, ai_chat_html):
+        assert "_executeRenderChart" in ai_chat_html
+
 
 class TestAiChatIntegration:
     """Integration test: full export with AI chat enabled."""

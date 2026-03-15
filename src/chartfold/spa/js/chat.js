@@ -195,6 +195,21 @@ var Chat = {
       }
     };
 
+    var renderChartTool = {
+      name: 'render_chart',
+      description: 'Render a line chart inline in the chat. Use after querying time-series lab data to visualize trends.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Chart title' },
+          y_label: { type: 'string', description: 'Y-axis label (units)' },
+          data: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, value: { type: 'number' }, source: { type: 'string' } }, required: ['date', 'value'] } },
+          ref_range: { type: 'object', properties: { low: { type: 'number' }, high: { type: 'number' } } }
+        },
+        required: ['title', 'data']
+      }
+    };
+
     var MAX_TOOL_ROUNDS = 10;
     var iterations = 0;
 
@@ -208,7 +223,7 @@ var Chat = {
           model: 'unused',
           max_tokens: 4096,
           messages: self.messages,
-          tools: [runSqlTool]
+          tools: [runSqlTool, renderChartTool]
         };
         if (self.systemPrompt) {
           body.system = self.systemPrompt;
@@ -239,15 +254,25 @@ var Chat = {
           if (block.type === 'text') {
             textParts.push(block.text);
           } else if (block.type === 'tool_use') {
-            var queryStr = (block.input && block.input.query) ? block.input.query : '';
-            self._renderToolUse(queryStr);
-            var result = self._executeSql(queryStr);
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: result.content,
-              is_error: result.is_error
-            });
+            if (block.name === 'render_chart') {
+              self._executeRenderChart(block.input || {});
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: 'Chart rendered: ' + ((block.input && block.input.title) || 'chart'),
+                is_error: false
+              });
+            } else {
+              var queryStr = (block.input && block.input.query) ? block.input.query : '';
+              self._renderToolUse(queryStr);
+              var result = self._executeSql(queryStr);
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: result.content,
+                is_error: result.is_error
+              });
+            }
           }
         }
 
@@ -316,6 +341,36 @@ var Chat = {
     } catch (e) {
       return { content: 'SQL error: ' + e.message, is_error: true };
     }
+  },
+
+  _executeRenderChart: function(input) {
+    var chartDiv = UI.el('div', { className: 'chat-chart' });
+
+    if (input.title) {
+      chartDiv.appendChild(UI.el('div', {
+        textContent: input.title,
+        style: 'font-weight: 600; font-size: 13px; margin-bottom: 4px;'
+      }));
+    }
+
+    // Map {date, value, source} to ChartRenderer's {x, y, source}
+    var dataPoints = [];
+    var data = input.data || [];
+    for (var i = 0; i < data.length; i++) {
+      dataPoints.push({ x: data[i].date, y: data[i].value, source: data[i].source || '' });
+    }
+
+    var canvas = UI.el('canvas');
+    chartDiv.appendChild(canvas);
+
+    var opts = {};
+    if (input.y_label) opts.yLabel = input.y_label;
+    if (input.ref_range) opts.refRange = input.ref_range;
+
+    ChartRenderer.line(canvas, [{ label: input.title || 'Values', data: dataPoints }], opts);
+
+    this.messagesEl.appendChild(chartDiv);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   },
 
   _renderMessage: function(role, text) {

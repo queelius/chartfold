@@ -263,6 +263,22 @@
   text-decoration: underline;
 }
 
+/* --- Inline chart in chat --- */
+.chat-chart {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 10px;
+  margin: 4px 0;
+  background: var(--bg);
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-chart canvas {
+  width: 100%;
+  max-width: 600px;
+}
+
 /* === Dark mode adjustments === */
 @media (prefers-color-scheme: dark) {
   .chat-message.assistant code,
