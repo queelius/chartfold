@@ -63,7 +63,11 @@ def _role_instructions() -> str:
         "documented in the records.\n"
         "- When comparing data across sources, note which source each data point comes from.\n"
         "- Present lab trends chronologically and flag any values outside reference ranges.\n"
-        "- If asked about something not in the database, say so clearly."
+        "- If asked about something not in the database, say so clearly.\n"
+        "- When asked to show trends or visualize data over time, first query the data with "
+        "run_sql, then call render_chart with the results to display an inline chart.\n"
+        "- The render_chart tool accepts: title, data (array of {date, value, source}), "
+        "y_label (units), and optional ref_range ({low, high})."
     )
 
 

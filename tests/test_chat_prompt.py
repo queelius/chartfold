@@ -109,6 +109,10 @@ class TestGenerateSystemPrompt:
         assert "Old Draft" not in prompt
         assert "archived content" not in prompt
 
+    def test_includes_chart_tool_instructions(self, chat_db):
+        prompt = generate_system_prompt(chat_db.db_path)
+        assert "render_chart" in prompt
+
     def test_handles_empty_db(self, tmp_path):
         db_path = str(tmp_path / "empty.db")
         db = ChartfoldDB(db_path)
