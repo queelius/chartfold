@@ -172,6 +172,7 @@ var Chat = {
   },
 
   _onClear: function() {
+    if (this.busy) return;
     this.messages = [];
     this.messagesEl.textContent = '';
   },
