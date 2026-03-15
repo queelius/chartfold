@@ -18,7 +18,7 @@ pip install -e ".[dev,mcp]"
 ## Commands
 
 ```bash
-# Run all tests (1000+ tests, pytest)
+# Run all tests (1120+ tests, pytest)
 python -m pytest tests/
 
 # Run a single test file
@@ -134,7 +134,7 @@ SQLite with WAL mode and foreign keys enabled. 17 clinical tables + `load_log` a
 
 ### MCP Server (mcp/server.py)
 
-FastMCP server with `CHARTFOLD_DB` env var for database path. Design principle: the LLM writes its own SQL for all reads via `run_sql` + `get_schema`. Write operations (notes, analyses) go through dedicated tools with controlled parameters.
+FastMCP server with `CHARTFOLD_DB` env var for database path. 24 tools. Design principle: the LLM writes its own SQL for all reads via `run_sql` + `get_schema`. Write operations (notes, analyses) go through dedicated tools with controlled parameters.
 
 ### Data Access Modules (analysis/)
 
@@ -151,9 +151,10 @@ Parameterized query helpers that surface structured views of the data for LLMs (
 ### Export Modules
 
 - `spa/export.py` — Self-contained HTML SPA with embedded SQLite database via sql.js (WebAssembly). All data stays client-side with in-browser SQL queries. Supports `--embed-images`, `--config`, `--ai-chat`, and `--proxy-url`.
-- `spa/chat_prompt.py` — System prompt generation for AI chat (schema + stats + current analyses).
-- `spa/js/chat.js` — Client-side agent loop + chat UI (conditionally included with `--ai-chat`).
+- `spa/chat_prompt.py` — System prompt generation for AI chat (schema + stats + current analyses). `_CLINICAL_TABLES` derived from `db.py`'s `_UNIQUE_KEYS` (not hardcoded).
+- `spa/js/chat.js` — Client-side agent loop + chat UI (conditionally included with `--ai-chat`). Two tools: `run_sql` (SQL queries) and `render_chart` (inline line charts via `ChartRenderer`). Conversation persists across SPA navigation via DOM detach/reattach (`_container`). Sliding window (`MAX_MESSAGES=40`) with pair-aware trimming.
 - `spa/css/chat.css` — Chat panel styling (conditionally included with `--ai-chat`).
+- `spa/js/sections.js` — All SPA sections including `visit_prep` (auto-detected date, 9 clinical categories, parameterized queries) and `print_summary` (one-page printable view with demographics, conditions, meds, labs with trend arrows, encounters).
 - `export_arkiv.py` — Arkiv universal record format (JSONL + README.md + schema.yaml). Primary backup/restore format with full round-trip support. Source assets exported to `media/` or inline base64 via `--embed`.
 - `import_arkiv.py` — Arkiv import with validation, FK remapping, tag unfolding, and source asset restoration.
 
@@ -185,4 +186,4 @@ TOML config (`chartfold.toml`) for personalized settings. Key tests to chart, da
 - `mhtml_test_result.py`: The function `test_result_to_unified` starts with `test_` — pytest tries to collect it as a test. Import it with `from ... import test_result_to_unified as adapt_test_result` in tests.
 - `source_assets` are inserted via raw SQL in tests (not through the adapter pipeline).
 - `_UNIQUE_KEYS` in `db.py` must match the UNIQUE constraints declared in `schema.sql`.
-- When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`, `_FK_FIELDS` if applicable), and `analysis/visit_diff.py`.
+- When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`, `_FK_FIELDS` if applicable), `analysis/visit_diff.py`, and if it's a non-clinical table add it to `_NON_CLINICAL_TABLES` in `spa/chat_prompt.py`.
