@@ -1747,31 +1747,40 @@ const Sections = {
 
       var categories = [
         { title: 'Lab Results',
-          sql: "SELECT test_name, value, unit, result_date, source FROM lab_results WHERE result_date >= '" + since + "' ORDER BY result_date DESC",
+          sql: 'SELECT test_name, value, unit, result_date, source FROM lab_results WHERE result_date >= ? ORDER BY result_date DESC',
+          params: [since],
           cols: [{label:'Test',key:'test_name'},{label:'Value',key:'value'},{label:'Unit',key:'unit'},{label:'Date',key:'result_date'},{label:'Source',key:'source'}] },
         { title: 'Encounters',
-          sql: "SELECT encounter_date, encounter_type, facility, source FROM encounters WHERE encounter_date >= '" + since + "' ORDER BY encounter_date DESC",
+          sql: 'SELECT encounter_date, encounter_type, facility, source FROM encounters WHERE encounter_date >= ? ORDER BY encounter_date DESC',
+          params: [since],
           cols: [{label:'Date',key:'encounter_date'},{label:'Type',key:'encounter_type'},{label:'Facility',key:'facility'},{label:'Source',key:'source'}] },
         { title: 'Medications',
-          sql: "SELECT name, status, start_date, stop_date, source FROM medications WHERE start_date >= '" + since + "' OR stop_date >= '" + since + "' ORDER BY start_date DESC",
+          sql: 'SELECT name, status, start_date, stop_date, source FROM medications WHERE start_date >= ? OR stop_date >= ? ORDER BY start_date DESC',
+          params: [since, since],
           cols: [{label:'Name',key:'name'},{label:'Status',key:'status'},{label:'Start',key:'start_date'},{label:'Stop',key:'stop_date'},{label:'Source',key:'source'}] },
         { title: 'Imaging',
-          sql: "SELECT study_name, study_date, source FROM imaging_reports WHERE study_date >= '" + since + "' ORDER BY study_date DESC",
+          sql: 'SELECT study_name, study_date, source FROM imaging_reports WHERE study_date >= ? ORDER BY study_date DESC',
+          params: [since],
           cols: [{label:'Study',key:'study_name'},{label:'Date',key:'study_date'},{label:'Source',key:'source'}] },
         { title: 'Clinical Notes',
-          sql: "SELECT note_date, note_type, author, SUBSTR(content, 1, 200) AS preview FROM clinical_notes WHERE note_date >= '" + since + "' ORDER BY note_date DESC",
+          sql: 'SELECT note_date, note_type, author, SUBSTR(content, 1, 200) AS preview FROM clinical_notes WHERE note_date >= ? ORDER BY note_date DESC',
+          params: [since],
           cols: [{label:'Date',key:'note_date'},{label:'Type',key:'note_type'},{label:'Author',key:'author'},{label:'Preview',key:'preview'}] },
         { title: 'Conditions',
-          sql: "SELECT condition_name, onset_date, source FROM conditions WHERE onset_date >= '" + since + "' ORDER BY onset_date DESC",
+          sql: 'SELECT condition_name, onset_date, source FROM conditions WHERE onset_date >= ? ORDER BY onset_date DESC',
+          params: [since],
           cols: [{label:'Condition',key:'condition_name'},{label:'Onset',key:'onset_date'},{label:'Source',key:'source'}] },
         { title: 'Procedures',
-          sql: "SELECT name, procedure_date, source FROM procedures WHERE procedure_date >= '" + since + "' ORDER BY procedure_date DESC",
+          sql: 'SELECT name, procedure_date, source FROM procedures WHERE procedure_date >= ? ORDER BY procedure_date DESC',
+          params: [since],
           cols: [{label:'Procedure',key:'name'},{label:'Date',key:'procedure_date'},{label:'Source',key:'source'}] },
         { title: 'Pathology',
-          sql: "SELECT report_date, specimen, source FROM pathology_reports WHERE report_date >= '" + since + "' ORDER BY report_date DESC",
+          sql: 'SELECT report_date, specimen, source FROM pathology_reports WHERE report_date >= ? ORDER BY report_date DESC',
+          params: [since],
           cols: [{label:'Date',key:'report_date'},{label:'Specimen',key:'specimen'},{label:'Source',key:'source'}] },
         { title: 'Genetic Variants',
-          sql: "SELECT gene, variant_type, classification, collection_date FROM genetic_variants WHERE collection_date >= '" + since + "' ORDER BY collection_date DESC",
+          sql: 'SELECT gene, variant_type, classification, collection_date FROM genetic_variants WHERE collection_date >= ? ORDER BY collection_date DESC',
+          params: [since],
           cols: [{label:'Gene',key:'gene'},{label:'Type',key:'variant_type'},{label:'Classification',key:'classification'},{label:'Date',key:'collection_date'}] }
       ];
 
@@ -1780,7 +1789,7 @@ const Sections = {
         var cat = categories[i];
         var rows = [];
         try {
-          rows = db.query(cat.sql);
+          rows = db.query(cat.sql, cat.params);
         } catch (e) { /* table may not exist */ }
         if (rows.length > 0) {
           total += rows.length;
@@ -1817,16 +1826,27 @@ const Sections = {
     printBtn.onclick = function() { window.print(); };
     el.appendChild(printBtn);
 
-    // Demographics
+    // Helper: query + render a titled table section (skips silently on error or empty)
+    function printSection(title, sql, cols) {
+      try {
+        var rows = db.query(sql);
+        if (rows.length > 0) {
+          el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: title }));
+          el.appendChild(UI.table(cols, rows));
+        }
+      } catch (e) { /* table may not exist */ }
+    }
+
+    // Demographics (uses queryOne, not the bulk pattern)
     try {
       var patient = db.queryOne('SELECT name, date_of_birth, gender FROM patients LIMIT 1');
       if (patient) {
-        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Patient' }));
         var demoRows = [];
         if (patient.name) demoRows.push({ field: 'Name', value: patient.name });
         if (patient.date_of_birth) demoRows.push({ field: 'Date of Birth', value: patient.date_of_birth });
         if (patient.gender) demoRows.push({ field: 'Gender', value: patient.gender });
         if (demoRows.length > 0) {
+          el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Patient' }));
           el.appendChild(UI.table(
             [{ label: 'Field', key: 'field' }, { label: 'Value', key: 'value' }],
             demoRows
@@ -1836,43 +1856,18 @@ const Sections = {
     } catch (e) { /* patients table may not exist */ }
 
     // Active conditions
-    try {
-      var conditions = db.query('SELECT name, status, onset_date FROM conditions ORDER BY name');
-      if (conditions.length > 0) {
-        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Active Conditions' }));
-        el.appendChild(UI.table(
-          [
-            { label: 'Condition', key: 'name' },
-            { label: 'Status', key: 'status' },
-            { label: 'Onset', key: 'onset_date' }
-          ],
-          conditions
-        ));
-      }
-    } catch (e) { /* conditions table may not exist */ }
+    printSection('Active Conditions',
+      "SELECT condition_name, icd10_code, onset_date FROM conditions WHERE clinical_status IS NULL OR LOWER(clinical_status) = 'active' ORDER BY condition_name",
+      [{ label: 'Condition', key: 'condition_name' }, { label: 'ICD-10', key: 'icd10_code' }, { label: 'Onset', key: 'onset_date' }]
+    );
 
     // Active medications
-    try {
-      var meds = db.query(
-        'SELECT name, dose, frequency, status FROM medications ' +
-        "WHERE status IS NULL OR LOWER(status) = 'active' OR stop_date IS NULL " +
-        'ORDER BY name'
-      );
-      if (meds.length > 0) {
-        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Active Medications' }));
-        el.appendChild(UI.table(
-          [
-            { label: 'Medication', key: 'name' },
-            { label: 'Dose', key: 'dose' },
-            { label: 'Frequency', key: 'frequency' },
-            { label: 'Status', key: 'status' }
-          ],
-          meds
-        ));
-      }
-    } catch (e) { /* medications table may not exist */ }
+    printSection('Active Medications',
+      "SELECT name, sig, route, status FROM medications WHERE status IS NULL OR LOWER(status) = 'active' OR stop_date IS NULL ORDER BY name",
+      [{ label: 'Medication', key: 'name' }, { label: 'Sig', key: 'sig' }, { label: 'Route', key: 'route' }, { label: 'Status', key: 'status' }]
+    );
 
-    // Recent labs with trend arrows
+    // Recent labs with trend arrows (needs custom column formatter, so inline)
     try {
       var labs = db.query(
         'SELECT l1.test_name, l1.value, l1.unit, l1.result_date, l1.source, l1.value_numeric ' +
@@ -1931,25 +1926,11 @@ const Sections = {
       }
     } catch (e) { /* lab_results table may not exist */ }
 
-    // Last 3 encounters
-    try {
-      var encounters = db.query(
-        'SELECT encounter_date, encounter_type, facility, source FROM encounters ' +
-        'ORDER BY encounter_date DESC LIMIT 3'
-      );
-      if (encounters.length > 0) {
-        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Recent Encounters' }));
-        el.appendChild(UI.table(
-          [
-            { label: 'Date', key: 'encounter_date' },
-            { label: 'Type', key: 'encounter_type' },
-            { label: 'Facility', key: 'facility' },
-            { label: 'Source', key: 'source' }
-          ],
-          encounters
-        ));
-      }
-    } catch (e) { /* encounters table may not exist */ }
+    // Recent encounters
+    printSection('Recent Encounters',
+      'SELECT encounter_date, encounter_type, facility, source FROM encounters ORDER BY encounter_date DESC LIMIT 3',
+      [{ label: 'Date', key: 'encounter_date' }, { label: 'Type', key: 'encounter_type' }, { label: 'Facility', key: 'facility' }, { label: 'Source', key: 'source' }]
+    );
   },
 
   ask_ai: function(el, db) {

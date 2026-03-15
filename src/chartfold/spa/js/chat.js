@@ -343,6 +343,11 @@ var Chat = {
     }
   },
 
+  _appendToChat: function(el) {
+    this.messagesEl.appendChild(el);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  },
+
   _executeRenderChart: function(input) {
     var chartDiv = UI.el('div', { className: 'chat-chart' });
 
@@ -354,11 +359,10 @@ var Chat = {
     }
 
     // Map {date, value, source} to ChartRenderer's {x, y, source}
-    var dataPoints = [];
     var data = input.data || [];
-    for (var i = 0; i < data.length; i++) {
-      dataPoints.push({ x: data[i].date, y: data[i].value, source: data[i].source || '' });
-    }
+    var dataPoints = data.map(function(d) {
+      return { x: d.date, y: d.value, source: d.source || '' };
+    });
 
     var canvas = UI.el('canvas');
     chartDiv.appendChild(canvas);
@@ -369,8 +373,7 @@ var Chat = {
 
     ChartRenderer.line(canvas, [{ label: input.title || 'Values', data: dataPoints }], opts);
 
-    this.messagesEl.appendChild(chartDiv);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    this._appendToChat(chartDiv);
   },
 
   _renderMessage: function(role, text) {
@@ -386,18 +389,15 @@ var Chat = {
       msgDiv.appendChild(UI.el('div', { innerHTML: rendered }));
     }
 
-    this.messagesEl.appendChild(msgDiv);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    this._appendToChat(msgDiv);
   },
 
   _renderToolUse: function(queryPreview) {
     var display = queryPreview.length > 100 ? queryPreview.substring(0, 100) + '...' : queryPreview;
-    var div = UI.el('div', {
+    this._appendToChat(UI.el('div', {
       className: 'chat-tool-use',
       textContent: 'Running SQL: ' + display
-    });
-    this.messagesEl.appendChild(div);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    }));
   },
 
   _updateStatus: function(state, text) {

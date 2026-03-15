@@ -578,6 +578,14 @@ table tr:last-child td {
 .mb-16 { margin-bottom: 16px; }
 .gap-16 { gap: 16px; }
 
+/* --- Print section title (used by print_summary) --- */
+.print-section-title {
+  font-size: 14px;
+  margin: 12px 0 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #ccc;
+}
+
 /* === Print === */
 @media print {
   .topbar,
@@ -598,20 +606,12 @@ table tr:last-child td {
   }
 
   body { background: white; }
-}
 
-.print-section-title {
-  font-size: 14px;
-  margin: 12px 0 4px;
-  padding-bottom: 2px;
-  border-bottom: 1px solid #ccc;
-}
-
-@media print {
   .print-section-title {
     font-size: 12px;
     margin: 8px 0 2px;
   }
+
   .chat-send-btn { display: none !important; }
 }
 
