@@ -33,6 +33,8 @@
       { id: "analysis",       label: "Analysis",         table: "analyses",          group: "Tools" },
       { id: "sql_console",    label: "SQL Console",      table: null,                group: "Tools" },
       { id: "ask_ai",         label: "Ask AI",           table: null,                group: "Tools" },
+      { id: "print_summary",  label: "Print Summary",    table: null,                group: "Tools" },
+      { id: "visit_prep",     label: "Visit Prep",       table: null,                group: "Tools" },
     ];
 
     // Get counts for each section with a table

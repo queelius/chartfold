@@ -1704,3 +1704,16 @@ class TestAiChatIntegration:
         # Existing features still work
         assert "sql-wasm" in html
         assert "chartfold-db" in html
+
+
+class TestPrintSummary:
+    """Tests for the print summary section."""
+
+    def test_print_summary_in_sidebar(self, exported_html):
+        assert "print_summary" in exported_html
+
+    def test_print_summary_section_exists(self, exported_html):
+        assert "Print Summary" in exported_html
+
+    def test_print_has_window_print(self, exported_html):
+        assert "window.print()" in exported_html

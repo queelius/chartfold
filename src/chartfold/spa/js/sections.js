@@ -1714,6 +1714,152 @@ const Sections = {
     el.appendChild(wrapper);
   },
 
+  print_summary: function(el, db) {
+    el.appendChild(UI.sectionHeader('Print Summary', 'One-page summary for your doctor'));
+
+    var printBtn = UI.el('button', {
+      className: 'chat-send-btn',
+      textContent: 'Print / Save as PDF',
+      style: 'margin-bottom: 16px;'
+    });
+    printBtn.onclick = function() { window.print(); };
+    el.appendChild(printBtn);
+
+    // Demographics
+    try {
+      var patient = db.queryOne('SELECT name, date_of_birth, gender FROM patients LIMIT 1');
+      if (patient) {
+        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Patient' }));
+        var demoRows = [];
+        if (patient.name) demoRows.push({ field: 'Name', value: patient.name });
+        if (patient.date_of_birth) demoRows.push({ field: 'Date of Birth', value: patient.date_of_birth });
+        if (patient.gender) demoRows.push({ field: 'Gender', value: patient.gender });
+        if (demoRows.length > 0) {
+          el.appendChild(UI.table(
+            [{ label: 'Field', key: 'field' }, { label: 'Value', key: 'value' }],
+            demoRows
+          ));
+        }
+      }
+    } catch (e) { /* patients table may not exist */ }
+
+    // Active conditions
+    try {
+      var conditions = db.query('SELECT name, status, onset_date FROM conditions ORDER BY name');
+      if (conditions.length > 0) {
+        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Active Conditions' }));
+        el.appendChild(UI.table(
+          [
+            { label: 'Condition', key: 'name' },
+            { label: 'Status', key: 'status' },
+            { label: 'Onset', key: 'onset_date' }
+          ],
+          conditions
+        ));
+      }
+    } catch (e) { /* conditions table may not exist */ }
+
+    // Active medications
+    try {
+      var meds = db.query(
+        'SELECT name, dose, frequency, status FROM medications ' +
+        "WHERE status IS NULL OR LOWER(status) = 'active' OR stop_date IS NULL " +
+        'ORDER BY name'
+      );
+      if (meds.length > 0) {
+        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Active Medications' }));
+        el.appendChild(UI.table(
+          [
+            { label: 'Medication', key: 'name' },
+            { label: 'Dose', key: 'dose' },
+            { label: 'Frequency', key: 'frequency' },
+            { label: 'Status', key: 'status' }
+          ],
+          meds
+        ));
+      }
+    } catch (e) { /* medications table may not exist */ }
+
+    // Recent labs with trend arrows
+    try {
+      var labs = db.query(
+        'SELECT l1.test_name, l1.value, l1.unit, l1.result_date, l1.source, l1.value_numeric ' +
+        'FROM lab_results l1 ' +
+        'INNER JOIN (SELECT test_name, MAX(result_date) AS max_date FROM lab_results GROUP BY test_name) l2 ' +
+        'ON l1.test_name = l2.test_name AND l1.result_date = l2.max_date ' +
+        'ORDER BY l1.test_name'
+      );
+      if (labs.length > 0) {
+        // Build prior values map for trend arrows
+        var priorMap = {};
+        try {
+          var priorRows = db.query(
+            'SELECT test_name, value_numeric, result_date FROM lab_results ' +
+            'WHERE value_numeric IS NOT NULL ' +
+            'ORDER BY test_name, result_date DESC'
+          );
+          // For each test, collect up to 2 most recent numeric values
+          var testSeen = {};
+          for (var pi = 0; pi < priorRows.length; pi++) {
+            var pr = priorRows[pi];
+            if (!testSeen[pr.test_name]) testSeen[pr.test_name] = [];
+            if (testSeen[pr.test_name].length < 2) testSeen[pr.test_name].push(pr.value_numeric);
+          }
+          // priorMap[test_name] = second most recent value (index 1)
+          for (var tn in testSeen) {
+            if (testSeen[tn].length >= 2) priorMap[tn] = testSeen[tn][1];
+          }
+        } catch (e2) { /* ignore */ }
+
+        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Recent Lab Results' }));
+        el.appendChild(UI.table(
+          [
+            { label: 'Test', key: 'test_name' },
+            {
+              label: 'Value',
+              key: 'value',
+              format: function(val, row) {
+                var trend = '';
+                var cur = row.value_numeric;
+                var prior = priorMap[row.test_name];
+                if (cur !== null && cur !== undefined && prior !== undefined) {
+                  if (cur > prior * 1.05) trend = ' \u2191';
+                  else if (cur < prior * 0.95) trend = ' \u2193';
+                  else trend = ' \u2192';
+                }
+                return (val || '') + trend;
+              }
+            },
+            { label: 'Unit', key: 'unit' },
+            { label: 'Date', key: 'result_date' },
+            { label: 'Source', key: 'source' }
+          ],
+          labs
+        ));
+      }
+    } catch (e) { /* lab_results table may not exist */ }
+
+    // Last 3 encounters
+    try {
+      var encounters = db.query(
+        'SELECT encounter_date, encounter_type, facility, source FROM encounters ' +
+        'ORDER BY encounter_date DESC LIMIT 3'
+      );
+      if (encounters.length > 0) {
+        el.appendChild(UI.el('h3', { className: 'print-section-title', textContent: 'Recent Encounters' }));
+        el.appendChild(UI.table(
+          [
+            { label: 'Date', key: 'encounter_date' },
+            { label: 'Type', key: 'encounter_type' },
+            { label: 'Facility', key: 'facility' },
+            { label: 'Source', key: 'source' }
+          ],
+          encounters
+        ));
+      }
+    } catch (e) { /* encounters table may not exist */ }
+  },
+
   ask_ai: function(el, db) {
     // Only render chat if system prompt is embedded (--ai-chat flag was used at export time)
     var promptEl = document.getElementById('chartfold-system-prompt');

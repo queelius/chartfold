@@ -600,6 +600,21 @@ table tr:last-child td {
   body { background: white; }
 }
 
+.print-section-title {
+  font-size: 14px;
+  margin: 12px 0 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #ccc;
+}
+
+@media print {
+  .print-section-title {
+    font-size: 12px;
+    margin: 8px 0 2px;
+  }
+  .chat-send-btn { display: none !important; }
+}
+
 /* === Mobile responsive === */
 @media (max-width: 768px) {
   .hamburger {
