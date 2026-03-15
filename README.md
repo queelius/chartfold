@@ -10,9 +10,10 @@ Patient-facing tool for consolidating personal health data from multiple EHR (El
 - **SQLite database** — 17 clinical tables with full audit trail
 - **MCP server** — 25 tools for LLM-assisted analysis with Claude
 - **Export formats** — Self-contained HTML SPA, Arkiv (JSONL + README.md + schema.yaml)
-- **AI chat** — Ask questions about your record in the HTML SPA via Claude (optional, requires proxy)
+- **AI chat** — Ask questions about your record in the HTML SPA via Claude, with inline charts (optional, requires proxy)
+- **Visit prep** — See what's new since your last visit, directly in the SPA
+- **Print summary** — One-page printable view for your doctor
 - **Personal notes** — Tag and annotate any clinical record
-- **Visit preparation** — Generate visit diffs and clinical summaries
 
 ## Installation
 
@@ -92,7 +93,15 @@ Requirements:
 - A CORS proxy that forwards requests to the Anthropic Messages API (injects your API key and sets the model server-side)
 - The proxy URL can also be configured in the SPA via the "Proxy settings" link
 
-The system prompt includes the full database schema, summary statistics, and any analyses marked `status: "current"` in their frontmatter. The chat interface supports multi-turn conversation with an agent loop — the LLM can issue multiple SQL queries per question to build a complete answer.
+The system prompt includes the full database schema, summary statistics, and any analyses marked `status: "current"` in their frontmatter. The chat interface supports multi-turn conversation with an agent loop — the LLM can issue multiple SQL queries per question and render inline charts for trend visualization.
+
+### Visit Prep
+
+The SPA includes a "Visit Prep" section that auto-detects your most recent encounter date and shows everything new since then: lab results, encounters, medications, imaging, clinical notes, conditions, procedures, pathology, and genetic variants. The date is editable for custom ranges.
+
+### Print Summary
+
+The "Print Summary" section generates a one-page printable view with patient demographics, active conditions, active medications, recent labs with trend indicators, and last 3 encounters. Click "Print" or use Ctrl+P to print or save as PDF.
 
 ### Personal Notes
 
@@ -241,7 +250,7 @@ Raw EHR files (XML/FHIR)
 ## Testing
 
 ```bash
-# Run all tests (1100+ tests)
+# Run all tests (1120+ tests)
 python -m pytest tests/
 
 # Run a single test file
