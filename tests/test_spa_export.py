@@ -1706,6 +1706,16 @@ class TestAiChatIntegration:
         assert "chartfold-db" in html
 
 
+class TestVisitPrep:
+    """Tests for the visit prep section."""
+
+    def test_visit_prep_in_sidebar(self, exported_html):
+        assert "visit_prep" in exported_html
+
+    def test_visit_prep_has_date_input(self, exported_html):
+        assert "encounter_date" in exported_html
+
+
 class TestPrintSummary:
     """Tests for the print summary section."""
 

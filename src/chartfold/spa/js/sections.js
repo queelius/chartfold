@@ -1714,6 +1714,98 @@ const Sections = {
     el.appendChild(wrapper);
   },
 
+  visit_prep: function(el, db) {
+    el.appendChild(UI.sectionHeader('Visit Prep', "What's new since your last visit"));
+
+    // Auto-detect most recent encounter date
+    var defaultDate;
+    try {
+      var row = db.queryOne('SELECT MAX(encounter_date) AS d FROM encounters');
+      defaultDate = (row && row.d) ? row.d : null;
+    } catch (e) { defaultDate = null; }
+
+    if (!defaultDate) {
+      var d = new Date();
+      d.setMonth(d.getMonth() - 6);
+      defaultDate = d.toISOString().slice(0, 10);
+    }
+
+    // Date input
+    var controls = UI.el('div', { style: 'display: flex; align-items: center; gap: 12px; margin-bottom: 16px;' });
+    var dateLabel = UI.el('label', { textContent: 'Show records since:', style: 'font-size: 14px; color: var(--text-secondary);' });
+    var dateInput = UI.el('input', { type: 'date', id: 'encounter_date' });
+    dateInput.value = defaultDate;
+    controls.appendChild(dateLabel);
+    controls.appendChild(dateInput);
+    el.appendChild(controls);
+
+    var resultsEl = UI.el('div', {});
+    el.appendChild(resultsEl);
+
+    function renderDiff(since) {
+      resultsEl.textContent = '';
+
+      var categories = [
+        { title: 'Lab Results',
+          sql: "SELECT test_name, value, unit, result_date, source FROM lab_results WHERE result_date >= '" + since + "' ORDER BY result_date DESC",
+          cols: [{label:'Test',key:'test_name'},{label:'Value',key:'value'},{label:'Unit',key:'unit'},{label:'Date',key:'result_date'},{label:'Source',key:'source'}] },
+        { title: 'Encounters',
+          sql: "SELECT encounter_date, encounter_type, facility, source FROM encounters WHERE encounter_date >= '" + since + "' ORDER BY encounter_date DESC",
+          cols: [{label:'Date',key:'encounter_date'},{label:'Type',key:'encounter_type'},{label:'Facility',key:'facility'},{label:'Source',key:'source'}] },
+        { title: 'Medications',
+          sql: "SELECT name, status, start_date, stop_date, source FROM medications WHERE start_date >= '" + since + "' OR stop_date >= '" + since + "' ORDER BY start_date DESC",
+          cols: [{label:'Name',key:'name'},{label:'Status',key:'status'},{label:'Start',key:'start_date'},{label:'Stop',key:'stop_date'},{label:'Source',key:'source'}] },
+        { title: 'Imaging',
+          sql: "SELECT study_name, study_date, source FROM imaging_reports WHERE study_date >= '" + since + "' ORDER BY study_date DESC",
+          cols: [{label:'Study',key:'study_name'},{label:'Date',key:'study_date'},{label:'Source',key:'source'}] },
+        { title: 'Clinical Notes',
+          sql: "SELECT note_date, note_type, author, SUBSTR(content, 1, 200) AS preview FROM clinical_notes WHERE note_date >= '" + since + "' ORDER BY note_date DESC",
+          cols: [{label:'Date',key:'note_date'},{label:'Type',key:'note_type'},{label:'Author',key:'author'},{label:'Preview',key:'preview'}] },
+        { title: 'Conditions',
+          sql: "SELECT condition_name, onset_date, source FROM conditions WHERE onset_date >= '" + since + "' ORDER BY onset_date DESC",
+          cols: [{label:'Condition',key:'condition_name'},{label:'Onset',key:'onset_date'},{label:'Source',key:'source'}] },
+        { title: 'Procedures',
+          sql: "SELECT name, procedure_date, source FROM procedures WHERE procedure_date >= '" + since + "' ORDER BY procedure_date DESC",
+          cols: [{label:'Procedure',key:'name'},{label:'Date',key:'procedure_date'},{label:'Source',key:'source'}] },
+        { title: 'Pathology',
+          sql: "SELECT report_date, specimen, source FROM pathology_reports WHERE report_date >= '" + since + "' ORDER BY report_date DESC",
+          cols: [{label:'Date',key:'report_date'},{label:'Specimen',key:'specimen'},{label:'Source',key:'source'}] },
+        { title: 'Genetic Variants',
+          sql: "SELECT gene, variant_type, classification, collection_date FROM genetic_variants WHERE collection_date >= '" + since + "' ORDER BY collection_date DESC",
+          cols: [{label:'Gene',key:'gene'},{label:'Type',key:'variant_type'},{label:'Classification',key:'classification'},{label:'Date',key:'collection_date'}] }
+      ];
+
+      var total = 0;
+      for (var i = 0; i < categories.length; i++) {
+        var cat = categories[i];
+        var rows = [];
+        try {
+          rows = db.query(cat.sql);
+        } catch (e) { /* table may not exist */ }
+        if (rows.length > 0) {
+          total += rows.length;
+          var h3 = UI.el('h3', {
+            style: 'margin: 16px 0 8px 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;'
+          });
+          h3.appendChild(UI.el('span', { textContent: cat.title }));
+          h3.appendChild(UI.badge(String(rows.length), 'blue'));
+          resultsEl.appendChild(h3);
+          resultsEl.appendChild(UI.table(cat.cols, rows));
+        }
+      }
+
+      if (total === 0) {
+        resultsEl.appendChild(UI.empty('No new records since ' + since));
+      }
+    }
+
+    renderDiff(defaultDate);
+
+    dateInput.onchange = function() {
+      if (dateInput.value) renderDiff(dateInput.value);
+    };
+  },
+
   print_summary: function(el, db) {
     el.appendChild(UI.sectionHeader('Print Summary', 'One-page summary for your doctor'));
 
