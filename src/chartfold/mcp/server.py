@@ -471,6 +471,127 @@ def get_data_quality_report() -> dict:
 
 
 @mcp.tool()
+def get_clinical_summary_tool(
+    include_notes: bool = False,
+    include_family_history: bool = True,
+    recent_days: int = 180,
+) -> dict:
+    """Get the complete clinical picture in a single call.
+
+    Returns active conditions, all conditions history, allergies, active and
+    historical medications, recent labs (with abnormal flagged separately),
+    recent vitals, all imaging (recent with impressions, older with previews),
+    procedures, pathology reports, and recent encounters.
+
+    Set include_notes=True to get full clinical note text (can be large).
+    Default returns note previews (300 chars) to save context space.
+
+    Args:
+        include_notes: Include full clinical note text (default False = 300-char preview).
+        include_family_history: Include family history (default True).
+        recent_days: How many days back for "recent" data (default 180).
+    """
+    db = _get_db()
+    try:
+        from chartfold.analysis.clinical_summary import get_clinical_summary
+
+        return get_clinical_summary(
+            db,
+            include_notes=include_notes,
+            include_family_history=include_family_history,
+            recent_labs_days=recent_days,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_timeline(
+    start_date: str = "",
+    end_date: str = "",
+    include_notes: bool = False,
+    include_labs: bool = True,
+) -> list[dict]:
+    """Get a unified chronological timeline of all clinical events.
+
+    Merges encounters, procedures, imaging, pathology, labs, and notes into
+    a single date-sorted list. Each event has: date, type, source, summary,
+    and type-specific detail.
+
+    Labs are grouped by (date, source) to avoid flooding — each group shows
+    total count, abnormal count, and individual results.
+
+    Args:
+        start_date: ISO date, events on or after (default: all).
+        end_date: ISO date, events on or before (default: all).
+        include_notes: Include full clinical note text (default False = 300-char preview).
+        include_labs: Include lab results in timeline (default True).
+    """
+    db = _get_db()
+    try:
+        from chartfold.analysis.timeline import get_clinical_timeline
+
+        return get_clinical_timeline(
+            db,
+            start_date=start_date or None,
+            end_date=end_date or None,
+            include_notes=include_notes,
+            include_labs=include_labs,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def write_record(
+    table: str,
+    data: dict,
+) -> dict:
+    """Insert a clinical record into the database.
+
+    Writes a single record to the specified table. The data dict keys must
+    match column names. The 'source' column is required for all clinical tables.
+
+    Supported tables: encounters, lab_results, vitals, medications, conditions,
+    procedures, pathology_reports, imaging_reports, clinical_notes, immunizations,
+    allergies, social_history, family_history.
+
+    Args:
+        table: Target table name.
+        data: Dict of column_name → value. Must include 'source'.
+    """
+    WRITABLE_TABLES = {
+        "encounters", "lab_results", "vitals", "medications", "conditions",
+        "procedures", "pathology_reports", "imaging_reports", "clinical_notes",
+        "immunizations", "allergies", "social_history", "family_history",
+        "genetic_variants", "mental_status",
+    }
+    if table not in WRITABLE_TABLES:
+        return {"error": f"Table '{table}' is not writable. Allowed: {sorted(WRITABLE_TABLES)}"}
+    if not data.get("source"):
+        return {"error": "Record must include a 'source' field."}
+
+    db = _get_db()
+    try:
+        columns = list(data.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        values = [data[c] for c in columns]
+        cursor = db.conn.execute(
+            f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+            values,
+        )
+        db.conn.commit()
+        return {"id": cursor.lastrowid, "table": table, "status": "created"}
+    except sqlite3.IntegrityError as e:
+        return {"error": f"Integrity error: {e}"}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
 def get_source_files(
     table_name: str = "",
     record_id: int = 0,
