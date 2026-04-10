@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from chartfold.config import LabTestConfig
 from chartfold.db import ChartfoldDB
 
 
@@ -85,6 +86,68 @@ def generate_visit_prep(
     )
 
     return prep
+
+
+def _resolve_key_test_trends(
+    db: ChartfoldDB,
+    config_tests: list[LabTestConfig],
+    max_readings: int = 8,
+) -> dict[str, list[dict]]:
+    """Resolve key test trends from config or fallback to most-frequent tests.
+
+    Returns {display_name: [{"date", "value", "numeric", "ref_range", "source"}, ...]}.
+    Results are in chronological order (oldest first).
+    """
+    if config_tests:
+        return _trends_from_config(db, config_tests, max_readings)
+    return _trends_from_frequent(db, max_readings)
+
+
+def _trends_from_config(
+    db: ChartfoldDB,
+    config_tests: list[LabTestConfig],
+    max_readings: int,
+) -> dict[str, list[dict]]:
+    """Build trend data using configured test names and aliases."""
+    trends: dict[str, list[dict]] = {}
+    for test in config_tests:
+        if not test.match:
+            continue
+        placeholders = ", ".join("?" for _ in test.match)
+        params = [m.lower() for m in test.match]
+        rows = db.query(
+            f"SELECT test_name, value, value_numeric, ref_range, result_date, source "
+            f"FROM lab_results WHERE LOWER(test_name) IN ({placeholders}) "
+            f"ORDER BY result_date DESC LIMIT ?",
+            tuple(params + [max_readings]),
+        )
+        if rows:
+            trends[test.name] = [
+                {
+                    "date": r["result_date"],
+                    "value": r["value"],
+                    "numeric": r["value_numeric"],
+                    "ref_range": r["ref_range"],
+                    "source": r["source"],
+                }
+                for r in reversed(rows)  # chronological order
+            ]
+    return trends
+
+
+def _trends_from_frequent(
+    db: ChartfoldDB,
+    max_readings: int,
+    top_n: int = 10,
+) -> dict[str, list[dict]]:
+    """Fall back to the top N most-frequent test names."""
+    frequent = db.query(
+        "SELECT test_name, COUNT(*) as cnt "
+        "FROM lab_results GROUP BY test_name ORDER BY cnt DESC LIMIT ?",
+        (top_n,),
+    )
+    config_tests = [LabTestConfig(name=r["test_name"], match=[r["test_name"]]) for r in frequent]
+    return _trends_from_config(db, config_tests, max_readings)
 
 
 def _score_treatment_context_note(note: dict) -> int:
