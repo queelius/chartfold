@@ -85,3 +85,26 @@ def generate_visit_prep(
     )
 
     return prep
+
+
+def _score_treatment_context_note(note: dict) -> int:
+    """Score a clinical note for likelihood of being a treatment context note.
+
+    Higher scores indicate more comprehensive oncology notes. Returns 0
+    for notes with no relevant signals.
+    """
+    score = 0
+    content = (note.get("content") or "").lower()
+    note_type = (note.get("note_type") or "").lower()
+
+    if "oncolog" in content:
+        score += 3
+    if "treatment" in content and "history" in content:
+        score += 2
+    if "progress" in note_type:
+        score += 1
+
+    # Longer notes are more likely to be comprehensive
+    score += len(content) // 1000
+
+    return score
