@@ -58,15 +58,24 @@ def _readonly_query(query: str) -> list[dict] | str:
     even through a read-only connection.
     """
     # Block ATTACH/DETACH — these bypass read-only mode by opening new databases
+    import re as _re
+
     upper = query.strip().upper()
-    if any(kw in upper for kw in ("ATTACH", "DETACH")):
+    if _re.match(r"\s*(ATTACH|DETACH)\b", upper):
         return "Error: ATTACH/DETACH statements are not allowed."
 
     conn = None
+    MAX_ROWS = 5000
     try:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(query).fetchall()
+        cursor = conn.execute(query)
+        rows = cursor.fetchmany(MAX_ROWS)
+        if len(rows) == MAX_ROWS and cursor.fetchone() is not None:
+            return (
+                f"Error: query returned more than {MAX_ROWS} rows. "
+                f"Add a LIMIT clause or filter your query."
+            )
         return [dict(r) for r in rows]
     except sqlite3.OperationalError as e:
         if "readonly" in str(e).lower() or "attempt to write" in str(e).lower():
@@ -151,14 +160,14 @@ def query_labs(
     """
     db = _get_db()
     try:
-        from chartfold.analysis.lab_trends import query_lab_results
+        from chartfold.analysis.lab_trends import get_lab_trend
 
-        return query_lab_results(
+        return get_lab_trend(
             db,
             test_name=test_name or None,
-            loinc=loinc or None,
-            start_date=start_date or None,
-            end_date=end_date or None,
+            test_loinc=loinc or None,
+            start_date=start_date or "",
+            end_date=end_date or "",
         )
     finally:
         db.close()
@@ -393,6 +402,50 @@ def get_visit_prep(
 
 
 @mcp.tool()
+def get_visit_prep_bundle(
+    visit_date: str = "",
+    lookback_months: int = 6,
+    key_test_readings: int = 8,
+    include_analyses: bool = True,
+    include_notes: bool = True,
+) -> dict:
+    """Get a comprehensive visit preparation context bundle in a single call.
+
+    Returns a structured dict with all data sections for LLM-driven visit prep:
+    lab_trends (key tests with last N readings), new_labs, recent_imaging (full
+    impressions + findings), recent_notes (full content), active_medications,
+    active_conditions, recent_procedures, saved_notes, saved_analyses, and
+    treatment_context_note (auto-identified comprehensive oncology note).
+
+    The LLM receives everything it needs for interactive visit preparation
+    without follow-up queries. Chartfold assembles; the LLM reasons.
+
+    Args:
+        visit_date: Upcoming visit date (ISO). Defaults to today.
+        lookback_months: Months of history to include (default 6).
+        key_test_readings: Number of trend readings per key test (default 8).
+        include_analyses: Include saved analysis documents (default True).
+        include_notes: Include saved personal notes (default True).
+    """
+    db = _get_db()
+    try:
+        from chartfold.analysis.visit_prep import generate_visit_prep_bundle
+
+        config_path = os.environ.get("CHARTFOLD_CONFIG", "")
+        return generate_visit_prep_bundle(
+            db,
+            visit_date=visit_date,
+            lookback_months=lookback_months,
+            key_test_readings=key_test_readings,
+            include_analyses=include_analyses,
+            include_notes=include_notes,
+            config_path=config_path,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
 def get_surgical_timeline(
     pre_op_imaging_days: int = 90,
     post_op_imaging_days: int = 30,
@@ -445,7 +498,7 @@ def match_cross_source_encounters(tolerance_days: int = 0) -> list[dict]:
     """
     db = _get_db()
     try:
-        from chartfold.analysis.cross_source import match_cross_source_encounters as _match
+        from chartfold.analysis.cross_source import match_encounters_by_date as _match
 
         return _match(db, tolerance_days=tolerance_days)
     finally:
@@ -463,9 +516,9 @@ def get_data_quality_report() -> dict:
     """
     db = _get_db()
     try:
-        from chartfold.analysis.data_quality import data_quality_report
+        from chartfold.analysis.data_quality import get_data_quality
 
-        return data_quality_report(db)
+        return get_data_quality(db)
     finally:
         db.close()
 
@@ -573,6 +626,15 @@ def write_record(
 
     db = _get_db()
     try:
+        # Validate column names against actual schema to prevent SQL injection
+        valid_cols = {
+            row[1]
+            for row in db.conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        bad_cols = set(data.keys()) - valid_cols
+        if bad_cols:
+            return {"error": f"Invalid column(s) for {table}: {sorted(bad_cols)}"}
+
         columns = list(data.keys())
         placeholders = ", ".join("?" for _ in columns)
         col_names = ", ".join(columns)
@@ -636,7 +698,7 @@ def get_source_files(
         where = " AND ".join(clauses) if clauses else "1=1"
         return db.query(
             f"SELECT id, source, ref_table, ref_id, encounter_date, "
-            f"filename, asset_type, LENGTH(data) as size_bytes "
+            f"file_name, asset_type, file_size_kb "
             f"FROM source_assets WHERE {where} ORDER BY encounter_date DESC",
             tuple(params),
         )
@@ -656,7 +718,7 @@ def get_asset_summary() -> list[dict]:
     try:
         return db.query(
             "SELECT source, asset_type, COUNT(*) as count, "
-            "SUM(LENGTH(data)) as total_bytes "
+            "SUM(file_size_kb) as total_kb "
             "FROM source_assets GROUP BY source, asset_type ORDER BY source, asset_type"
         )
     finally:

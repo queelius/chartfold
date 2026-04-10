@@ -445,3 +445,27 @@ class TestDeleteAnalysisTool:
     def test_delete_nonexistent(self, mcp_notes_db):
         result = mcp_notes_db.delete_analysis("nope")
         assert result["deleted"] is False
+
+
+class TestVisitPrepBundle:
+    def test_get_visit_prep_bundle_returns_all_sections(self, mcp_db):
+        from chartfold.mcp.server import get_visit_prep_bundle
+
+        result = get_visit_prep_bundle(visit_date="2026-04-02")
+        assert isinstance(result, dict)
+        expected_keys = {
+            "visit_date", "lookback_start", "provider",
+            "lab_trends", "new_labs", "recent_imaging", "recent_notes",
+            "active_medications", "active_conditions", "recent_procedures",
+            "saved_notes", "saved_analyses", "treatment_context_note",
+        }
+        assert set(result.keys()) == expected_keys
+
+    def test_get_visit_prep_bundle_exclude_flags(self, mcp_db):
+        from chartfold.mcp.server import get_visit_prep_bundle
+
+        result = get_visit_prep_bundle(
+            include_analyses=False, include_notes=False
+        )
+        assert result["saved_analyses"] == []
+        assert result["saved_notes"] == []
