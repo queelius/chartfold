@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from chartfold.config import LabTestConfig
+from chartfold.config import LabTestConfig, get_lab_test_configs, load_config
 from chartfold.db import ChartfoldDB
 
 
@@ -148,6 +148,143 @@ def _trends_from_frequent(
     )
     config_tests = [LabTestConfig(name=r["test_name"], match=[r["test_name"]]) for r in frequent]
     return _trends_from_config(db, config_tests, max_readings)
+
+
+def generate_visit_prep_bundle(
+    db: ChartfoldDB,
+    visit_date: str = "",
+    lookback_months: int = 6,
+    key_test_readings: int = 8,
+    include_analyses: bool = True,
+    include_notes: bool = True,
+    config_path: str = "",
+) -> dict:
+    """Generate a comprehensive visit preparation context bundle.
+
+    Returns a structured dict with all data sections that give an LLM
+    everything it needs for interactive visit prep in a single call.
+    """
+    if not visit_date:
+        visit_date = date.today().isoformat()
+
+    try:
+        vdate = date.fromisoformat(visit_date)
+    except ValueError:
+        vdate = date.today()
+        visit_date = vdate.isoformat()
+
+    lookback = (vdate - timedelta(days=lookback_months * 30)).isoformat()
+
+    # Resolve key tests from config
+    config_tests: list[LabTestConfig] = []
+    if config_path:
+        config = load_config(config_path)
+        config_tests = get_lab_test_configs(config)
+
+    # 1. Lab trends
+    lab_trends = _resolve_key_test_trends(db, config_tests, max_readings=key_test_readings)
+
+    # 2. All labs from lookback window
+    new_labs = db.query(
+        "SELECT test_name, value, value_numeric, unit, ref_range, "
+        "interpretation, result_date, source "
+        "FROM lab_results WHERE result_date >= ? "
+        "ORDER BY result_date DESC",
+        (lookback,),
+    )
+
+    # 3. Imaging with full impressions and findings
+    recent_imaging = db.query(
+        "SELECT study_name, modality, study_date, impression, findings, source "
+        "FROM imaging_reports WHERE study_date >= ? "
+        "ORDER BY study_date DESC",
+        (lookback,),
+    )
+
+    # 4. Clinical notes (full content)
+    recent_notes = db.query(
+        "SELECT note_date, note_type, author, content, source "
+        "FROM clinical_notes WHERE note_date >= ? "
+        "ORDER BY note_date DESC",
+        (lookback,),
+    )
+
+    # 5. Active medications
+    active_medications = db.query(
+        "SELECT name, sig, route, start_date, prescriber, source "
+        "FROM medications WHERE LOWER(status) = 'active' "
+        "ORDER BY name"
+    )
+
+    # 6. Active conditions
+    active_conditions = db.query(
+        "SELECT condition_name, icd10_code, onset_date, source "
+        "FROM conditions WHERE LOWER(clinical_status) = 'active' "
+        "ORDER BY condition_name"
+    )
+
+    # 7. Recent procedures
+    recent_procedures = db.query(
+        "SELECT name, procedure_date, provider, facility, source "
+        "FROM procedures WHERE procedure_date >= ? "
+        "ORDER BY procedure_date DESC",
+        (lookback,),
+    )
+
+    # 8. Saved notes (full content with tags)
+    saved_notes: list[dict] = []
+    if include_notes:
+        saved_notes = db.query(
+            "SELECT id, title, content, created_at, updated_at "
+            "FROM notes ORDER BY updated_at DESC"
+        )
+        for note in saved_notes:
+            note["tags"] = db._fetch_tags("note_tags", "note_id", note["id"])
+
+    # 9. Saved analyses (full content with tags)
+    saved_analyses: list[dict] = []
+    if include_analyses:
+        saved_analyses = db.query(
+            "SELECT id, slug, title, category, summary, content, updated_at "
+            "FROM analyses ORDER BY updated_at DESC"
+        )
+        for analysis in saved_analyses:
+            analysis["tags"] = db._fetch_tags("analysis_tags", "analysis_id", analysis["id"])
+
+    # 10. Treatment context note
+    treatment_context_note = _pick_treatment_context_note(recent_notes)
+
+    # Provider from most recent encounter
+    latest_encounter = db.query(
+        "SELECT provider FROM encounters ORDER BY encounter_date DESC LIMIT 1"
+    )
+    provider = latest_encounter[0]["provider"] if latest_encounter else ""
+
+    return {
+        "visit_date": visit_date,
+        "lookback_start": lookback,
+        "provider": provider,
+        "lab_trends": lab_trends,
+        "new_labs": new_labs,
+        "recent_imaging": recent_imaging,
+        "recent_notes": recent_notes,
+        "active_medications": active_medications,
+        "active_conditions": active_conditions,
+        "recent_procedures": recent_procedures,
+        "saved_notes": saved_notes,
+        "saved_analyses": saved_analyses,
+        "treatment_context_note": treatment_context_note,
+    }
+
+
+def _pick_treatment_context_note(notes: list[dict]) -> dict | None:
+    """Pick the most likely treatment context note from a list of clinical notes."""
+    if not notes:
+        return None
+    best = max(notes, key=_score_treatment_context_note)
+    if _score_treatment_context_note(best) <= 0:
+        return None
+    return best
 
 
 def _score_treatment_context_note(note: dict) -> int:
