@@ -88,11 +88,13 @@ def get_latest_labs(db: ChartfoldDB, limit: int = 50) -> list[dict]:
         "SELECT test_name, value, value_numeric, unit, ref_range, "
         "interpretation, result_date, source "
         "FROM lab_results "
-        "WHERE result_date = ("
-        "  SELECT MAX(lr2.result_date) FROM lab_results lr2 "
-        "  WHERE lr2.test_name = lab_results.test_name"
+        "WHERE id IN ("
+        "  SELECT id FROM ("
+        "    SELECT id, ROW_NUMBER() OVER ("
+        "      PARTITION BY test_name ORDER BY result_date DESC, id DESC"
+        "    ) AS rn FROM lab_results"
+        "  ) WHERE rn = 1"
         ") "
-        "GROUP BY test_name "
         "ORDER BY result_date DESC "
         "LIMIT ?",
         (limit,),

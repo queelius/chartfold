@@ -42,17 +42,26 @@ def normalize_date_to_iso(dt_str: str) -> str:
     # Already ISO: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS...
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
     if m:
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        mm, dd = int(m.group(2)), int(m.group(3))
+        if 1 <= mm <= 12 and 1 <= dd <= 31:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        return ""
 
     # MM/DD/YYYY
     m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
     if m:
-        return f"{m.group(3)}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+        mm, dd = int(m.group(1)), int(m.group(2))
+        if 1 <= mm <= 12 and 1 <= dd <= 31:
+            return f"{m.group(3)}-{mm:02d}-{dd:02d}"
+        return ""
 
     # YYYYMMDD with optional time and timezone
     m = re.match(r"(\d{4})(\d{2})(\d{2})", s)
     if m:
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        mm, dd = int(m.group(2)), int(m.group(3))
+        if 1 <= mm <= 12 and 1 <= dd <= 31:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        return ""
 
     # Narrative: "November 23rd, 2021" or "November 23, 2021 2:37pm"
     result = parse_narrative_date(s)
@@ -67,7 +76,7 @@ def parse_iso_date(dt_str: str) -> str:
     if not dt_str:
         return ""
     m = re.match(r"(\d{4}-\d{2}-\d{2})", dt_str)
-    return m.group(1) if m else dt_str[:10]
+    return m.group(1) if m else ""
 
 
 def parse_narrative_date(text: str) -> str:

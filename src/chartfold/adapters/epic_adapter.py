@@ -52,14 +52,18 @@ def _format_provider_list(authors: list | str | None) -> str:
 
 
 def _parser_counts(data: dict) -> dict[str, int]:
-    """Count records in Epic parser output before adapter transformation."""
+    """Count records in Epic parser output before adapter transformation.
+
+    CEA panels are counted via lab_results components only. The data["cea_values"]
+    list is a derived/convenience view over the same underlying data and must not
+    be counted separately.
+    """
     lab_components = sum(len(p.get("components", [])) for p in data.get("lab_results", []))
-    cea_count = len(data.get("cea_values", []))
     return {
         "patients": 1 if data.get("patient") else 0,
         "documents": len(data.get("inventory", [])),
         "encounters": len(data.get("encounter_timeline", [])),
-        "lab_results": lab_components + cea_count,
+        "lab_results": lab_components,
         "imaging_reports": len(data.get("imaging_reports", [])),
         "pathology_reports": len(data.get("pathology_reports", [])),
         "clinical_notes": len(data.get("clinical_notes", [])),
@@ -153,21 +157,9 @@ def epic_to_unified(data: dict, source_name: str | None = None) -> UnifiedRecord
                 )
             )
 
-    # CEA values (also lab results, but pre-extracted)
-    for cea in data.get("cea_values", []):
-        val = cea.get("value", "")
-        records.lab_results.append(
-            LabResult(
-                source=source,
-                source_doc_id="",
-                test_name="CEA",
-                panel_name="CEA",
-                value=val,
-                value_numeric=try_parse_numeric(val),
-                ref_range=cea.get("ref_range", ""),
-                result_date=normalize_date_to_iso(cea.get("date", "")),
-            )
-        )
+    # Note: CEA values are captured via the lab_results panel path above.
+    # The data["cea_values"] list is intentionally not processed here — doing
+    # so would create duplicate LabResult rows for every CEA measurement.
 
     # Imaging reports
     for img in data.get("imaging_reports", []):

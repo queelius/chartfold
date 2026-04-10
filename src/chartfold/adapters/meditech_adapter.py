@@ -256,14 +256,34 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
             )
         )
 
-    # Vitals — FHIR + CCDA
+    # Vitals — FHIR + CCDA (cross-deduplicated)
     _add_fhir_vitals(records, fhir.get("observations", []), source)
+    # Build existing set from FHIR vitals using (type, date, rounded value).
+    # Rounding avoids float precision mismatches between sources.
+    existing_vitals = {
+        (
+            v.vital_type,
+            v.recorded_date,
+            round(v.value, 2) if v.value is not None else None,
+        )
+        for v in records.vitals
+    }
     for vital in deduplicate_vitals(ccda.get("all_vitals", [])):
+        val = vital.get("value")
+        rounded = round(float(val), 2) if val is not None else None
+        key = (vital.get("type", ""), vital.get("date_iso", ""), rounded)
+        if key in existing_vitals:
+            continue
+        existing_vitals.add(key)
         records.vitals.append(
             VitalRecord(
                 source=source,
                 vital_type=vital.get("type", ""),
-                value=vital.get("value"),
+                value=val,
+                # Match the FHIR value_text convention so the DB UNIQUE key
+                # (source, vital_type, recorded_date, value_text) collapses
+                # any rows that slip through cross-dedup.
+                value_text=str(val) if val is not None else "",
                 unit=vital.get("unit", ""),
                 recorded_date=vital.get("date_iso", ""),
             )
@@ -308,8 +328,32 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
     # Social-history observations from FHIR
     _add_fhir_social_history_observations(records, fhir.get("observations", []), source)
 
-    # Social History from CCDA
+    # Build cross-dedup key set from FHIR observations. LOINC is the primary key
+    # when available (both sources use the same LOINC coding system). Falls back
+    # to normalized text comparison for entries without LOINC.
+    fhir_social_keys: set[tuple] = set()
+    for obs in fhir.get("observations", []):
+        if obs.get("category") != "social-history":
+            continue
+        loinc = obs.get("loinc", "")
+        val = str(obs.get("value", "")).lower().strip()
+        date = obs.get("date_iso", "")
+        if loinc:
+            fhir_social_keys.add(("loinc", loinc, val, date))
+        text = obs.get("text", "").lower().strip()
+        if text:
+            fhir_social_keys.add(("text", text, val, date))
+
+    # Social History from CCDA (skip entries already added via FHIR)
     for sh in deduplicate_social_history(ccda.get("all_social_history", [])):
+        loinc = sh.get("loinc", "")
+        category = sh.get("category", "").lower().strip()
+        val = sh.get("value", "").lower().strip()
+        date = sh.get("date_iso", "")
+        if loinc and ("loinc", loinc, val, date) in fhir_social_keys:
+            continue
+        if ("text", category, val, date) in fhir_social_keys:
+            continue
         records.social_history.append(
             SocialHistoryRecord(
                 source=source,

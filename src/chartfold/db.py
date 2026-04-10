@@ -193,14 +193,14 @@ def _get_schema_sql() -> str:
     return schema_path.read_text()
 
 
-def _columns_for(dc_type: type) -> list[str]:
-    """Get column names for a dataclass, excluding 'id' (auto-generated)."""
-    return [f.name for f in fields(dc_type)]
-
-
 def _record_to_row(record) -> dict:
     """Convert a dataclass record to a dict suitable for INSERT."""
     return asdict(record)
+
+
+def _escape_like(s: str) -> str:
+    """Escape LIKE wildcards so they match literally."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _build_upsert_sql(
@@ -289,6 +289,12 @@ class ChartfoldDB:
                 self.conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN metadata TEXT DEFAULT ''"
                 )
+
+        # Add load_log columns introduced after initial schema
+        with contextlib.suppress(sqlite3.OperationalError):
+            self.conn.execute(
+                "ALTER TABLE load_log ADD COLUMN genetic_variants_count INTEGER DEFAULT 0"
+            )
 
     def load_source(
         self, records: UnifiedRecords, replace: bool = False
@@ -467,10 +473,19 @@ class ChartfoldDB:
         return LoadResult(tables=table_stats, content_hash=chash, skipped=False)
 
     def query(self, sql: str, params: tuple = ()) -> list[dict]:
-        """Execute a read-only SQL query and return results as list of dicts."""
-        cursor = self.conn.execute(sql, params)
-        columns = [desc[0] for desc in cursor.description] if cursor.description else []
-        return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+        """Execute a read-only SQL query and return results as list of dicts.
+
+        Uses a separate read-only connection to prevent accidental writes.
+        """
+        import sqlite3 as _sqlite3
+
+        conn = _sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+        try:
+            cursor = conn.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+        finally:
+            conn.close()
 
     def summary(self) -> dict[str, int]:
         """Return row counts for all main tables (auto-discovered from schema)."""
@@ -564,11 +579,13 @@ class ChartfoldDB:
         with self.conn:
             if note_id:
                 # Update existing note
-                self.conn.execute(
+                cursor = self.conn.execute(
                     "UPDATE notes SET title=?, content=?, updated_at=?, ref_table=?, ref_id=? "
                     "WHERE id=?",
                     (title, content, now, ref_table, ref_id, note_id),
                 )
+                if cursor.rowcount == 0:
+                    raise ValueError(f"Note {note_id} not found")
             else:
                 # Create new note
                 cursor = self.conn.execute(
@@ -617,8 +634,11 @@ class ChartfoldDB:
             params.append(tag)
 
         if query:
-            conditions.append("(LOWER(n.title) LIKE ? OR LOWER(n.content) LIKE ?)")
-            params.extend([f"%{query.lower()}%", f"%{query.lower()}%"])
+            conditions.append(
+                "(LOWER(n.title) LIKE ? ESCAPE '\\' OR LOWER(n.content) LIKE ? ESCAPE '\\')"
+            )
+            escaped = _escape_like(query.lower())
+            params.extend([f"%{escaped}%", f"%{escaped}%"])
 
         if ref_table:
             conditions.append("n.ref_table = ?")
@@ -725,10 +745,10 @@ class ChartfoldDB:
 
         if query:
             conditions.append(
-                "(LOWER(a.title) LIKE ? OR LOWER(a.content) LIKE ? "
-                "OR LOWER(a.frontmatter) LIKE ?)"
+                "(LOWER(a.title) LIKE ? ESCAPE '\\' OR LOWER(a.content) LIKE ? ESCAPE '\\' "
+                "OR LOWER(a.frontmatter) LIKE ? ESCAPE '\\')"
             )
-            q = f"%{query.lower()}%"
+            q = f"%{_escape_like(query.lower())}%"
             params.extend([q, q, q])
 
         if category:

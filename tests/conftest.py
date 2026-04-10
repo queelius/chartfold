@@ -141,6 +141,10 @@ def sample_epic_data():
                 "facility": "Anderson Hospital",
             },
         ],
+        # CEA is captured via the lab_results panel path (reflects real Epic
+        # data structure). The data["cea_values"] field still exists for
+        # backward compatibility with the _extract_cea helper but is no longer
+        # consumed by the adapter.
         "cea_values": [
             {"date": "01/15/2025", "value": "5.8", "ref_range": "0.0-3.0"},
         ],
@@ -154,6 +158,16 @@ def sample_epic_data():
                     {"name": "Hemoglobin", "value": "12.5", "ref_range": "13.0-17.0"},
                 ],
                 "result_type": "LAB CBC",
+                "source_doc": "DOC0001",
+            },
+            {
+                "panel": "CEA",
+                "date": "01/15/2025",
+                "time": "10:30 AM CST",
+                "components": [
+                    {"name": "CEA", "value": "5.8", "ref_range": "0.0-3.0"},
+                ],
+                "result_type": "LAB CEA",
                 "source_doc": "DOC0001",
             },
         ],

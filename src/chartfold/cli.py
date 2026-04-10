@@ -108,7 +108,6 @@ def main():
 
     # --- export (with subcommands) ---
     export_parser = sub.add_parser("export", help="Export clinical data in various formats")
-    export_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     export_sub = export_parser.add_subparsers(dest="export_format")
 
     # Common db argument for all export subcommands
@@ -1112,23 +1111,10 @@ def _handle_assets_find(db, args):
     table = args.table
     record_id = args.id
 
-    # Validate table name against known tables
-    valid_tables = [
-        "lab_results",
-        "vitals",
-        "medications",
-        "conditions",
-        "procedures",
-        "pathology_reports",
-        "imaging_reports",
-        "clinical_notes",
-        "immunizations",
-        "allergies",
-        "encounters",
-        "social_history",
-        "family_history",
-        "mental_status",
-    ]
+    # Validate table name against known tables (derived from _TABLE_MAP + patients)
+    from chartfold.db import _TABLE_MAP
+
+    valid_tables = sorted({t for _, t, _ in _TABLE_MAP} | {"patients"})
     if table not in valid_tables:
         print(f"Unknown table: {table}")
         print(f"Valid tables: {', '.join(valid_tables)}")

@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS pathology_reports (
     lymph_nodes TEXT,
     full_text TEXT,
     metadata TEXT DEFAULT '',  -- JSON blob for unmapped source fields
-    FOREIGN KEY (procedure_id) REFERENCES procedures(id),
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE SET NULL,
     UNIQUE(source, report_date, specimen)
 );
 

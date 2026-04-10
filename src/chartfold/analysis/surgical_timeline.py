@@ -48,7 +48,7 @@ def build_surgical_timeline(
         "FROM imaging_reports ORDER BY study_date"
     )
 
-    # Link unlinked pathology reports to procedures
+    # Link unlinked pathology reports to procedures (in-memory only, no DB writes)
     unlinked = [p for p in pathology if not p.get("procedure_id")]
     if unlinked and all_procedures:
         links = link_pathology_to_procedures(
@@ -66,20 +66,11 @@ def build_surgical_timeline(
                 for p in all_procedures
             ],
         )
-        # Apply links
-        for path_id, proc_id in links:
-            db.conn.execute(
-                "UPDATE pathology_reports SET procedure_id = ? WHERE id = ?",
-                (proc_id, path_id),
-            )
-        db.conn.commit()
-
-        # Re-query pathology to get updated procedure_id values
-        pathology = db.query(
-            "SELECT id, report_date, specimen, diagnosis, staging, margins, "
-            "lymph_nodes, full_text, source, procedure_id "
-            "FROM pathology_reports ORDER BY report_date"
-        )
+        # Apply links in-memory for timeline construction
+        link_map = {path_id: proc_id for path_id, proc_id in links}
+        for p in pathology:
+            if p["id"] in link_map:
+                p["procedure_id"] = link_map[p["id"]]
 
     # Paginate procedures
     procedures = all_procedures[offset:] if offset else all_procedures

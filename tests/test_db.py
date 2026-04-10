@@ -40,8 +40,9 @@ class TestSchemaCreation:
         assert result[0]["journal_mode"] == "wal"
 
     def test_foreign_keys_on(self, tmp_db):
-        result = tmp_db.query("PRAGMA foreign_keys")
-        assert result[0]["foreign_keys"] == 1
+        # FK enforcement applies to writes; check the write connection directly
+        result = tmp_db.conn.execute("PRAGMA foreign_keys").fetchone()
+        assert result[0] == 1
 
     def test_idempotent_schema(self, tmp_db):
         """Running init_schema twice should not error."""

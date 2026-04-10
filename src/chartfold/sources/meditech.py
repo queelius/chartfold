@@ -369,7 +369,8 @@ def _extract_meditech_labs(section) -> list[dict]:
                     result_text = row["result"].strip()
                     value = result_text
                     unit = ""
-                    m = re.match(r"([\d.]+)\s+(.+)", result_text)
+                    # Allow operator prefixes like "<", ">", "<=", ">="
+                    m = re.match(r"([<>]=?[\d.]+|[\d.]+)\s+(.+)", result_text)
                     if m:
                         value = m.group(1)
                         unit = m.group(2)
