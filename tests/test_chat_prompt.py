@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from chartfold.db import ChartfoldDB, _UNIQUE_KEYS
-from chartfold.models import LabResult, PatientRecord, UnifiedRecords
-from chartfold.spa.chat_prompt import (
+from health_memex.db import HealthMemexDB, _UNIQUE_KEYS
+from health_memex.models import LabResult, PatientRecord, UnifiedRecords
+from health_memex.spa.chat_prompt import (
     _CLINICAL_TABLES,
     _NON_CLINICAL_TABLES,
     generate_system_prompt,
@@ -19,7 +19,7 @@ from chartfold.spa.chat_prompt import (
 def chat_db(tmp_path):
     """Create a DB with patient, labs from two sources, and analyses."""
     db_path = str(tmp_path / "chat_test.db")
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
 
     # Load patient + labs from epic_anderson
@@ -115,7 +115,7 @@ class TestGenerateSystemPrompt:
 
     def test_handles_empty_db(self, tmp_path):
         db_path = str(tmp_path / "empty.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         db.close()
 
@@ -129,10 +129,22 @@ class TestClinicalTablesList:
 
     def test_contains_expected_clinical_tables(self):
         expected = {
-            "patients", "encounters", "lab_results", "vitals",
-            "medications", "conditions", "procedures", "pathology_reports",
-            "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status", "genetic_variants",
+            "patients",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "genetic_variants",
         }
         assert set(_CLINICAL_TABLES) == expected
 

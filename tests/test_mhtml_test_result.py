@@ -7,13 +7,13 @@ import quopri
 
 import pytest
 
-from chartfold.adapters.mhtml_test_result_adapter import (
+from health_memex.adapters.mhtml_test_result_adapter import (
     _parse_vaf,
     _parser_counts,
     test_result_to_unified as adapt_test_result,
 )
-from chartfold.db import ChartfoldDB
-from chartfold.sources.mhtml_test_result import (
+from health_memex.db import HealthMemexDB
+from health_memex.sources.mhtml_test_result import (
     ParsedTestResult,
     parse_test_result_mhtml,
 )
@@ -274,7 +274,7 @@ def sample_mhtml(tmp_path):
 @pytest.fixture
 def sample_parsed():
     """Return a ParsedTestResult built from sample HTML (no file I/O)."""
-    from chartfold.sources.mhtml_test_result import _extract_from_html
+    from health_memex.sources.mhtml_test_result import _extract_from_html
 
     result = ParsedTestResult()
     _extract_from_html(_SAMPLE_HTML, result)
@@ -377,7 +377,7 @@ class TestTestResultParser:
 
     def test_parse_empty_html(self):
         """Empty HTML should produce empty result."""
-        from chartfold.sources.mhtml_test_result import _extract_from_html
+        from health_memex.sources.mhtml_test_result import _extract_from_html
 
         result = ParsedTestResult()
         _extract_from_html("<html><body></body></html>", result)
@@ -484,7 +484,7 @@ class TestTestResultAdapter:
 
 class TestTestResultDbIntegration:
     def test_load_and_query(self, tmp_path, sample_parsed):
-        db = ChartfoldDB(str(tmp_path / "test.db"))
+        db = HealthMemexDB(str(tmp_path / "test.db"))
         db.init_schema()
 
         records = adapt_test_result(sample_parsed)
@@ -500,14 +500,16 @@ class TestTestResultDbIntegration:
         assert variants[0]["vaf"] == 53.2
         assert variants[1]["gene"] == "TP53"
 
-        labs = db.query("SELECT test_name, value FROM lab_results WHERE source='mychart_tempus' ORDER BY test_name")
+        labs = db.query(
+            "SELECT test_name, value FROM lab_results WHERE source='mychart_tempus' ORDER BY test_name"
+        )
         assert len(labs) == 3
 
         db.close()
 
     def test_upsert_idempotent(self, tmp_path, sample_parsed):
         """Loading the same data twice should skip on second load."""
-        db = ChartfoldDB(str(tmp_path / "test.db"))
+        db = HealthMemexDB(str(tmp_path / "test.db"))
         db.init_schema()
 
         records = adapt_test_result(sample_parsed)
@@ -524,7 +526,7 @@ class TestTestResultDbIntegration:
 
     def test_load_log_records_genetic_variants(self, tmp_path, sample_parsed):
         """Load log should include genetic_variants_count."""
-        db = ChartfoldDB(str(tmp_path / "test.db"))
+        db = HealthMemexDB(str(tmp_path / "test.db"))
         db.init_schema()
 
         records = adapt_test_result(sample_parsed)
@@ -537,9 +539,9 @@ class TestTestResultDbIntegration:
 
     def test_cross_source_coexistence(self, tmp_path, sample_parsed):
         """Test-result data should coexist with other sources."""
-        from chartfold.models import LabResult, UnifiedRecords
+        from health_memex.models import LabResult, UnifiedRecords
 
-        db = ChartfoldDB(str(tmp_path / "test.db"))
+        db = HealthMemexDB(str(tmp_path / "test.db"))
         db.init_schema()
 
         # Load test-result data
@@ -550,7 +552,13 @@ class TestTestResultDbIntegration:
         other = UnifiedRecords(
             source="epic",
             lab_results=[
-                LabResult(source="epic", test_name="CEA", value="5.8", value_numeric=5.8, result_date="2025-07-10"),
+                LabResult(
+                    source="epic",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    result_date="2025-07-10",
+                ),
             ],
         )
         db.load_source(other, replace=False)
@@ -566,7 +574,7 @@ class TestTestResultDbIntegration:
 
     def test_last_load_counts_includes_genetic_variants(self, tmp_path, sample_parsed):
         """last_load_counts should include genetic_variants."""
-        db = ChartfoldDB(str(tmp_path / "test.db"))
+        db = HealthMemexDB(str(tmp_path / "test.db"))
         db.init_schema()
 
         records = adapt_test_result(sample_parsed)

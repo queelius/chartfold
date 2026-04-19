@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "chartfold"
+name = "health-memex"
 dynamic = ["version"]
-description = "Collect and consolidate personal health data from multiple EHR systems into a single queryable database"
+description = "Personal health data archive: consolidate medical records from multiple EHR systems into a single queryable SQLite database"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Alexander Towell", email = "lex@metafunctor.com" },
 ]
-keywords = ["health", "ehr", "clinical", "medical-records", "fhir", "cda", "patient"]
+keywords = ["health", "ehr", "clinical", "medical-records", "fhir", "cda", "memex", "patient"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: End Users/Desktop",
@@ -36,17 +36,17 @@ dev = [
 ]
 
 [project.scripts]
-chartfold = "chartfold.cli:main"
+health-memex = "health_memex.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/queelius/chartfold"
-Repository = "https://github.com/queelius/chartfold"
+Homepage = "https://github.com/queelius/health-memex"
+Repository = "https://github.com/queelius/health-memex"
 
 [tool.hatch.version]
-path = "src/chartfold/__init__.py"
+path = "src/health_memex/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/chartfold"]
+packages = ["src/health_memex"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -80,7 +80,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004", "E501"]  # Test XML fixtures can be long
 "**/__init__.py" = ["F401"]  # Re-exports are intentional
-"src/chartfold/mcp/server.py" = ["E501", "PERF402"]  # MCP decorator strings; list.extend not clearer
+"src/health_memex/mcp/server.py" = ["E501", "PERF402"]  # MCP decorator strings; list.extend not clearer
 
 [tool.mypy]
 python_version = "3.11"
@@ -93,9 +93,9 @@ module = "tests.*"
 ignore_errors = true
 
 [tool.coverage.run]
-source = ["src/chartfold"]
+source = ["src/health_memex"]
 branch = true
-omit = ["src/chartfold/__main__.py"]
+omit = ["src/health_memex/__main__.py"]
 
 [tool.coverage.report]
 exclude_lines = [

@@ -8,8 +8,8 @@ import os
 
 import pytest
 
-from chartfold.analysis_parser import parse_analysis_dir, parse_analysis_file
-from chartfold.db import ChartfoldDB
+from health_memex.analysis_parser import parse_analysis_dir, parse_analysis_file
+from health_memex.db import HealthMemexDB
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ from chartfold.db import ChartfoldDB
 @pytest.fixture
 def analysis_db(tmp_path):
     """Fresh database with schema initialized."""
-    db = ChartfoldDB(str(tmp_path / "test.db"))
+    db = HealthMemexDB(str(tmp_path / "test.db"))
     db.init_schema()
     yield db
     db.close()
@@ -123,7 +123,9 @@ class TestAnalysisParser:
         assert result["title"] == "Medication Review"  # derived from filename
         assert result["content"].startswith("Just some plain text")
 
-    def test_parse_directory(self, tmp_path, sample_md_with_frontmatter, sample_md_without_frontmatter):
+    def test_parse_directory(
+        self, tmp_path, sample_md_with_frontmatter, sample_md_without_frontmatter
+    ):
         results = parse_analysis_dir(tmp_path)
 
         assert len(results) == 2
@@ -320,17 +322,22 @@ class TestAnalysisCRUD:
     def test_delete_nonexistent(self, analysis_db):
         assert analysis_db.delete_analysis("nonexistent") is False
 
-    def test_delete_cascades_tags(self, analysis_db):
+    def test_hard_delete_cascades_tags(self, analysis_db):
+        # Soft delete preserves tags (the row survives); hard delete cascades.
+        aid = analysis_db.save_analysis(
+            slug="tagged", title="Tagged", content="Body", tags=["a", "b"]
+        )
+        analysis_db.delete_analysis(aid, hard=True)
+        tags = analysis_db.query("SELECT * FROM analysis_tags WHERE analysis_id = ?", (aid,))
+        assert tags == []
+
+    def test_soft_delete_preserves_tags(self, analysis_db):
         aid = analysis_db.save_analysis(
             slug="tagged", title="Tagged", content="Body", tags=["a", "b"]
         )
         analysis_db.delete_analysis(aid)
-
-        # Tags should be gone due to CASCADE
-        tags = analysis_db.query(
-            "SELECT * FROM analysis_tags WHERE analysis_id = ?", (aid,)
-        )
-        assert tags == []
+        tags = analysis_db.query("SELECT * FROM analysis_tags WHERE analysis_id = ?", (aid,))
+        assert len(tags) == 2, "Soft delete must preserve tags for restore"
 
     def test_empty_tags_stripped(self, analysis_db):
         analysis_db.save_analysis(
@@ -356,7 +363,7 @@ class TestAnalysesCLI:
         (md_dir / "test-two.md").write_text("# Test Two\n\nBody two.\n")
 
         # Simulate what _load_analyses does
-        from chartfold.analysis_parser import parse_analysis_dir
+        from health_memex.analysis_parser import parse_analysis_dir
 
         analyses = parse_analysis_dir(md_dir)
         for a in analyses:
@@ -377,7 +384,7 @@ class TestAnalysesCLI:
             tags=["cancer"],
         )
 
-        from chartfold.cli import _handle_analyses_list
+        from health_memex.cli import _handle_analyses_list
 
         _handle_analyses_list(analysis_db)
         output = capsys.readouterr().out
@@ -396,7 +403,7 @@ class TestAnalysesCLI:
             source="claude",
         )
 
-        from chartfold.cli import _handle_analyses_show
+        from health_memex.cli import _handle_analyses_show
 
         _handle_analyses_show(analysis_db, "test")
         output = capsys.readouterr().out
@@ -421,7 +428,7 @@ class TestAnalysesRoundTrip:
             tags=["tag1"],
         )
 
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         output_dir = str(tmp_path / "arkiv")
         export_arkiv(analysis_db, output_dir)
@@ -447,8 +454,8 @@ class TestAnalysesRoundTrip:
             source="claude",
         )
 
-        from chartfold.export_arkiv import export_arkiv
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.export_arkiv import export_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         arkiv_dir = str(tmp_path / "arkiv")
         import_db_path = str(tmp_path / "imported.db")
@@ -459,7 +466,7 @@ class TestAnalysesRoundTrip:
         assert result["success"] is True
         assert result["counts"]["analyses"] == 1
 
-        with ChartfoldDB(import_db_path) as imported_db:
+        with HealthMemexDB(import_db_path) as imported_db:
             imported_db.init_schema()
             analysis = imported_db.get_analysis("cancer")
             assert analysis is not None

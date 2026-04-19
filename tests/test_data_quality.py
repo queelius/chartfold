@@ -1,14 +1,14 @@
-"""Tests for chartfold.analysis.data_quality module."""
+"""Tests for health_memex.analysis.data_quality module."""
 
 import pytest
 
-from chartfold.analysis.data_quality import (
+from health_memex.analysis.data_quality import (
     find_duplicate_labs,
     get_data_quality,
     source_coverage_matrix,
 )
-from chartfold.db import ChartfoldDB
-from chartfold.models import (
+from health_memex.db import HealthMemexDB
+from health_memex.models import (
     ConditionRecord,
     LabResult,
     MedicationRecord,
@@ -19,7 +19,7 @@ from chartfold.models import (
 @pytest.fixture
 def quality_db(tmp_path):
     """Database with cross-source data for quality testing."""
-    db = ChartfoldDB(str(tmp_path / "quality.db"))
+    db = HealthMemexDB(str(tmp_path / "quality.db"))
     db.init_schema()
 
     epic = UnifiedRecords(

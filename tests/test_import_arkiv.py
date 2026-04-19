@@ -1,13 +1,13 @@
-"""Tests for chartfold arkiv import."""
+"""Tests for health-memex arkiv import."""
 
 import json
 import os
 
 import yaml
 
-from chartfold.db import ChartfoldDB
-from chartfold.export_arkiv import export_arkiv
-from chartfold.models import (
+from health_memex.db import HealthMemexDB
+from health_memex.export_arkiv import export_arkiv
+from health_memex.models import (
     ConditionRecord,
     EncounterRecord,
     FamilyHistoryRecord,
@@ -41,7 +41,7 @@ def _create_minimal_archive(archive_dir):
 
     record = {
         "mimetype": "application/json",
-        "uri": "chartfold:lab_results/1",
+        "uri": "health-memex:lab_results/1",
         "timestamp": "2025-01-15",
         "metadata": {
             "table": "lab_results",
@@ -59,7 +59,7 @@ def _create_archive_with_fks(archive_dir):
     """Create an archive with FK relationships (procedures -> pathology)."""
     proc_record = {
         "mimetype": "application/json",
-        "uri": "chartfold:procedures/10",
+        "uri": "health-memex:procedures/10",
         "timestamp": "2024-07-01",
         "metadata": {
             "table": "procedures",
@@ -72,12 +72,12 @@ def _create_archive_with_fks(archive_dir):
 
     path_record = {
         "mimetype": "application/json",
-        "uri": "chartfold:pathology_reports/3",
+        "uri": "health-memex:pathology_reports/3",
         "timestamp": "2024-07-03",
         "metadata": {
             "table": "pathology_reports",
             "source": "test_surgical",
-            "procedure_uri": "chartfold:procedures/10",
+            "procedure_uri": "health-memex:procedures/10",
             "report_date": "2024-07-03",
             "specimen": "Right colon",
             "diagnosis": "Adenocarcinoma",
@@ -98,16 +98,14 @@ def _create_archive_with_fks(archive_dir):
     readme = "---\n" + yaml.dump(frontmatter, sort_keys=False) + "---\n\n# Test\n"
     (archive_dir / "README.md").write_text(readme)
     (archive_dir / "procedures.jsonl").write_text(json.dumps(proc_record) + "\n")
-    (archive_dir / "pathology_reports.jsonl").write_text(
-        json.dumps(path_record) + "\n"
-    )
+    (archive_dir / "pathology_reports.jsonl").write_text(json.dumps(path_record) + "\n")
 
 
 def _create_archive_with_notes(archive_dir):
     """Create an archive with notes and tags."""
     note_record = {
         "mimetype": "application/json",
-        "uri": "chartfold:notes/5",
+        "uri": "health-memex:notes/5",
         "timestamp": "2025-01-15T10:00:00",
         "metadata": {
             "table": "notes",
@@ -136,7 +134,7 @@ def _create_archive_with_analyses(archive_dir):
     """Create an archive with analyses and tags."""
     analysis_record = {
         "mimetype": "application/json",
-        "uri": "chartfold:analyses/1",
+        "uri": "health-memex:analyses/1",
         "timestamp": "2025-02-01T12:00:00",
         "metadata": {
             "table": "analyses",
@@ -182,7 +180,7 @@ def _create_archive_with_source_assets(archive_dir):
             "file_size_kb": 1,
             "title": "CT Abdomen",
             "encounter_date": "2025-01-15",
-            "ref_id_uri": "chartfold:imaging_reports/7",
+            "ref_id_uri": "health-memex:imaging_reports/7",
         },
     }
 
@@ -196,9 +194,7 @@ def _create_archive_with_source_assets(archive_dir):
 
     readme = "---\n" + yaml.dump(frontmatter, sort_keys=False) + "---\n\n# Test\n"
     (archive_dir / "README.md").write_text(readme)
-    (archive_dir / "source_assets.jsonl").write_text(
-        json.dumps(asset_record) + "\n"
-    )
+    (archive_dir / "source_assets.jsonl").write_text(json.dumps(asset_record) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -210,11 +206,11 @@ class TestRecordToRow:
     """Test reversing arkiv records back to DB rows."""
 
     def test_basic_lab_record(self):
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:lab_results/42",
+            "uri": "health-memex:lab_results/42",
             "timestamp": "2025-01-15",
             "metadata": {
                 "table": "lab_results",
@@ -240,16 +236,16 @@ class TestRecordToRow:
 
     def test_fk_uri_reversed(self):
         """procedure_uri should be reversed to procedure_id with old ID."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:pathology_reports/3",
+            "uri": "health-memex:pathology_reports/3",
             "timestamp": "2024-07-03",
             "metadata": {
                 "table": "pathology_reports",
                 "source": "test_surgical",
-                "procedure_uri": "chartfold:procedures/10",
+                "procedure_uri": "health-memex:procedures/10",
                 "report_date": "2024-07-03",
                 "specimen": "Right colon",
                 "diagnosis": "Adenocarcinoma",
@@ -264,11 +260,11 @@ class TestRecordToRow:
 
     def test_tags_extracted(self):
         """Tags in metadata should be extracted and returned separately."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:notes/1",
+            "uri": "health-memex:notes/1",
             "metadata": {
                 "table": "notes",
                 "title": "CEA Trend",
@@ -286,11 +282,11 @@ class TestRecordToRow:
 
     def test_no_timestamp_field(self):
         """Records without timestamp should work fine."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:family_history/7",
+            "uri": "health-memex:family_history/7",
             "metadata": {
                 "table": "family_history",
                 "source": "test",
@@ -305,11 +301,11 @@ class TestRecordToRow:
 
     def test_analyses_tags_extracted(self):
         """Tags should also be extracted for analyses table."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:analyses/1",
+            "uri": "health-memex:analyses/1",
             "metadata": {
                 "table": "analyses",
                 "slug": "cancer-timeline",
@@ -329,11 +325,11 @@ class TestRecordToRow:
 
     def test_tags_not_extracted_for_non_tag_tables(self):
         """Tags in non-tag tables should remain as normal metadata."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:lab_results/1",
+            "uri": "health-memex:lab_results/1",
             "metadata": {
                 "table": "lab_results",
                 "source": "test",
@@ -348,8 +344,8 @@ class TestRecordToRow:
         assert "_tags" not in row
 
     def test_uri_without_id(self):
-        """URI that doesn't match chartfold pattern returns None for old_id."""
-        from chartfold.import_arkiv import _record_to_row
+        """URI that doesn't match health-memex pattern returns None for old_id."""
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
@@ -366,17 +362,17 @@ class TestRecordToRow:
 
     def test_ref_id_uri_reversed(self):
         """ref_id_uri should be reversed to ref_table + ref_id for source_assets."""
-        from chartfold.import_arkiv import _record_to_row
+        from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:source_assets/1",
+            "uri": "health-memex:source_assets/1",
             "metadata": {
                 "table": "source_assets",
                 "source": "test",
                 "asset_type": "png",
                 "file_name": "scan.png",
-                "ref_id_uri": "chartfold:imaging_reports/7",
+                "ref_id_uri": "health-memex:imaging_reports/7",
             },
         }
 
@@ -393,7 +389,7 @@ class TestRecordToRow:
 
 class TestValidateArkiv:
     def test_valid_archive(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         result = validate_arkiv(str(tmp_path))
@@ -403,21 +399,21 @@ class TestValidateArkiv:
         assert result["summary"]["lab_results"] == 1
 
     def test_missing_readme(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         result = validate_arkiv(str(tmp_path))
         assert result["valid"] is False
         assert any("README.md" in e for e in result["errors"])
 
     def test_invalid_yaml_frontmatter(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         (tmp_path / "README.md").write_text("---\ninvalid: [unclosed\n---\n")
         result = validate_arkiv(str(tmp_path))
         assert result["valid"] is False
 
     def test_invalid_jsonl(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         (tmp_path / "lab_results.jsonl").write_text("not json\n")
@@ -426,7 +422,7 @@ class TestValidateArkiv:
         assert any("JSON" in e for e in result["errors"])
 
     def test_missing_jsonl_file(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         os.remove(tmp_path / "lab_results.jsonl")
@@ -435,14 +431,14 @@ class TestValidateArkiv:
         assert any("Missing file" in e for e in result["errors"])
 
     def test_no_frontmatter_start(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         (tmp_path / "README.md").write_text("# Just a heading\nNo frontmatter here.")
         result = validate_arkiv(str(tmp_path))
         assert result["valid"] is False
 
     def test_valid_archive_with_schema_yaml(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         result = validate_arkiv(str(tmp_path))
@@ -450,7 +446,7 @@ class TestValidateArkiv:
         # schema.yaml was created by _create_minimal_archive
 
     def test_invalid_schema_yaml(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         (tmp_path / "schema.yaml").write_text("invalid: [unclosed\n")
@@ -459,17 +455,15 @@ class TestValidateArkiv:
         assert any("schema.yaml" in e for e in result["errors"])
 
     def test_empty_jsonl_lines_skipped(self, tmp_path):
-        from chartfold.import_arkiv import validate_arkiv
+        from health_memex.import_arkiv import validate_arkiv
 
         _create_minimal_archive(tmp_path)
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:lab_results/1",
+            "uri": "health-memex:lab_results/1",
             "metadata": {"table": "lab_results", "source": "test", "test_name": "CEA"},
         }
-        (tmp_path / "lab_results.jsonl").write_text(
-            "\n" + json.dumps(record) + "\n\n"
-        )
+        (tmp_path / "lab_results.jsonl").write_text("\n" + json.dumps(record) + "\n\n")
         result = validate_arkiv(str(tmp_path))
         assert result["valid"] is True
         assert result["summary"]["lab_results"] == 1
@@ -482,7 +476,7 @@ class TestValidateArkiv:
 
 class TestImportArkiv:
     def test_import_creates_database(self, tmp_path):
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -491,14 +485,14 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
         assert (tmp_path / "imported.db").exists()
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             labs = db.query("SELECT * FROM lab_results")
             assert len(labs) == 1
             assert labs[0]["test_name"] == "CEA"
             assert labs[0]["value_numeric"] == 5.8
 
     def test_import_validate_only(self, tmp_path):
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -509,36 +503,36 @@ class TestImportArkiv:
         assert not (tmp_path / "imported.db").exists()
 
     def test_import_refuses_overwrite(self, tmp_path):
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
         _create_minimal_archive(archive_dir)
         db_path = str(tmp_path / "existing.db")
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             db.init_schema()
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is False
         assert "already exists" in result["errors"][0]
 
     def test_import_overwrites_when_requested(self, tmp_path):
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
         _create_minimal_archive(archive_dir)
         db_path = str(tmp_path / "existing.db")
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             db.init_schema()
         result = import_arkiv(str(archive_dir), db_path, overwrite=True)
         assert result["success"] is True
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             labs = db.query("SELECT * FROM lab_results")
             assert len(labs) == 1
 
     def test_import_fk_remapping(self, tmp_path):
         """FK relationships should be preserved after import with ID remapping."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -548,7 +542,7 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             # FK join should work
             joined = db.query("""
                 SELECT p.name AS proc_name, pr.diagnosis
@@ -561,7 +555,7 @@ class TestImportArkiv:
 
     def test_import_notes_with_tags(self, tmp_path):
         """Notes should be imported with their tags unfolded."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -571,7 +565,7 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             notes = db.search_notes_personal()
             assert len(notes) == 1
             assert notes[0]["title"] == "CEA Trend"
@@ -579,7 +573,7 @@ class TestImportArkiv:
 
     def test_import_analyses_with_tags(self, tmp_path):
         """Analyses should be imported with their tags unfolded."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -589,7 +583,7 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             analysis = db.get_analysis("cancer-timeline")
             assert analysis is not None
             assert analysis["title"] == "Cancer Timeline"
@@ -597,7 +591,7 @@ class TestImportArkiv:
 
     def test_import_source_assets(self, tmp_path):
         """Source assets should be imported with file_path pointing to media/."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -607,7 +601,7 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             assets = db.query("SELECT * FROM source_assets")
             assert len(assets) == 1
             assert assets[0]["asset_type"] == "png"
@@ -619,7 +613,7 @@ class TestImportArkiv:
 
     def test_import_invalid_archive(self, tmp_path):
         """Importing an invalid archive should fail gracefully."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -631,14 +625,14 @@ class TestImportArkiv:
 
     def test_import_preserves_all_lab_fields(self, tmp_path):
         """All lab result fields should be preserved after import."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
 
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:lab_results/1",
+            "uri": "health-memex:lab_results/1",
             "timestamp": "2025-01-15",
             "metadata": {
                 "table": "lab_results",
@@ -671,7 +665,7 @@ class TestImportArkiv:
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             labs = db.query("SELECT * FROM lab_results")
             assert len(labs) == 1
             lab = labs[0]
@@ -689,14 +683,14 @@ class TestImportArkiv:
 
     def test_import_multiple_tables(self, tmp_path):
         """Importing an archive with multiple tables should work."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
 
         lab_record = {
             "mimetype": "application/json",
-            "uri": "chartfold:lab_results/1",
+            "uri": "health-memex:lab_results/1",
             "metadata": {
                 "table": "lab_results",
                 "source": "test",
@@ -708,7 +702,7 @@ class TestImportArkiv:
         }
         fh_record = {
             "mimetype": "application/json",
-            "uri": "chartfold:family_history/1",
+            "uri": "health-memex:family_history/1",
             "metadata": {
                 "table": "family_history",
                 "source": "test",
@@ -738,7 +732,7 @@ class TestImportArkiv:
         assert result["counts"]["lab_results"] == 1
         assert result["counts"]["family_history"] == 1
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             labs = db.query("SELECT * FROM lab_results")
             fh = db.query("SELECT * FROM family_history")
             assert len(labs) == 1
@@ -746,7 +740,7 @@ class TestImportArkiv:
 
     def test_import_source_asset_ref_id_remapping(self, tmp_path):
         """Source asset ref_id should be remapped through id_map."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         archive_dir = tmp_path / "archive"
         archive_dir.mkdir()
@@ -759,7 +753,7 @@ class TestImportArkiv:
         # Imaging report record (will get a new ID on import)
         imaging_record = {
             "mimetype": "application/json",
-            "uri": "chartfold:imaging_reports/50",
+            "uri": "health-memex:imaging_reports/50",
             "timestamp": "2025-01-15",
             "metadata": {
                 "table": "imaging_reports",
@@ -782,7 +776,7 @@ class TestImportArkiv:
                 "file_name": "scan.png",
                 "file_size_kb": 1,
                 "encounter_date": "2025-01-15",
-                "ref_id_uri": "chartfold:imaging_reports/50",
+                "ref_id_uri": "health-memex:imaging_reports/50",
             },
         }
 
@@ -798,18 +792,14 @@ class TestImportArkiv:
         }
         readme = "---\n" + yaml.dump(frontmatter, sort_keys=False) + "---\n\n# Test\n"
         (archive_dir / "README.md").write_text(readme)
-        (archive_dir / "imaging_reports.jsonl").write_text(
-            json.dumps(imaging_record) + "\n"
-        )
-        (archive_dir / "source_assets.jsonl").write_text(
-            json.dumps(asset_record) + "\n"
-        )
+        (archive_dir / "imaging_reports.jsonl").write_text(json.dumps(imaging_record) + "\n")
+        (archive_dir / "source_assets.jsonl").write_text(json.dumps(asset_record) + "\n")
 
         db_path = str(tmp_path / "imported.db")
         result = import_arkiv(str(archive_dir), db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             assets = db.query("SELECT * FROM source_assets")
             assert len(assets) == 1
             # ref_table should be set
@@ -821,7 +811,7 @@ class TestImportArkiv:
 
     def test_import_partial_archive_missing_fk_parent(self, tmp_path):
         """Child records with FK to missing parent should get NULL FK."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         arkiv_dir = tmp_path / "arkiv"
         arkiv_dir.mkdir()
@@ -847,14 +837,14 @@ class TestImportArkiv:
         path_file = os.path.join(str(arkiv_dir), "pathology_reports.jsonl")
         record = {
             "mimetype": "application/json",
-            "uri": "chartfold:pathology_reports/1",
+            "uri": "health-memex:pathology_reports/1",
             "metadata": {
                 "table": "pathology_reports",
                 "source": "test",
                 "report_date": "2025-03-15",
                 "specimen": "Colon biopsy",
                 "diagnosis": "Adenocarcinoma",
-                "procedure_uri": "chartfold:procedures/999",  # no procedures in archive
+                "procedure_uri": "health-memex:procedures/999",  # no procedures in archive
             },
         }
         with open(path_file, "w") as f:
@@ -865,7 +855,7 @@ class TestImportArkiv:
         assert result["success"] is True
         assert result["counts"]["pathology_reports"] == 1
 
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             reports = db.query("SELECT * FROM pathology_reports")
             assert len(reports) == 1
             assert reports[0]["procedure_id"] is None  # NULL, not stale old ID
@@ -882,11 +872,11 @@ class TestRoundTrip:
 
     def test_round_trip_labs(self, tmp_path):
         """Export labs to arkiv, import back, verify data preserved."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         # Create source DB with labs
         src_db_path = str(tmp_path / "source.db")
-        with ChartfoldDB(src_db_path) as db:
+        with HealthMemexDB(src_db_path) as db:
             db.init_schema()
             records = UnifiedRecords(
                 source="test_source",
@@ -928,7 +918,7 @@ class TestRoundTrip:
         assert result["success"] is True
 
         # Verify
-        with ChartfoldDB(imported_db_path) as db:
+        with HealthMemexDB(imported_db_path) as db:
             labs = db.query("SELECT * FROM lab_results ORDER BY test_name")
             assert len(labs) == 2
             cea = next(lab for lab in labs if lab["test_name"] == "CEA")
@@ -941,11 +931,11 @@ class TestRoundTrip:
 
     def test_round_trip_fk_relationships(self, tmp_path):
         """FK relationships preserved through export -> import cycle."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         # Create source DB with FK relationships
         src_db_path = str(tmp_path / "source.db")
-        with ChartfoldDB(src_db_path) as db:
+        with HealthMemexDB(src_db_path) as db:
             db.init_schema()
             records = UnifiedRecords(
                 source="test_surgical",
@@ -979,7 +969,7 @@ class TestRoundTrip:
         assert result["success"] is True
 
         # Verify FK join works
-        with ChartfoldDB(imported_db_path) as db:
+        with HealthMemexDB(imported_db_path) as db:
             joined = db.query("""
                 SELECT p.name AS proc_name, pr.diagnosis
                 FROM pathology_reports pr
@@ -991,11 +981,11 @@ class TestRoundTrip:
 
     def test_round_trip_notes_with_tags(self, tmp_path):
         """Notes with tags preserved through export -> import cycle."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         # Create source DB with notes
         src_db_path = str(tmp_path / "source.db")
-        with ChartfoldDB(src_db_path) as db:
+        with HealthMemexDB(src_db_path) as db:
             db.init_schema()
             db.save_note(
                 title="CEA Analysis",
@@ -1017,7 +1007,7 @@ class TestRoundTrip:
         assert result["success"] is True
 
         # Verify
-        with ChartfoldDB(imported_db_path) as db:
+        with HealthMemexDB(imported_db_path) as db:
             notes = db.search_notes_personal()
             assert len(notes) == 2
 
@@ -1029,10 +1019,10 @@ class TestRoundTrip:
 
     def test_round_trip_family_history_no_timestamp(self, tmp_path):
         """Tables without timestamp fields should round-trip correctly."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         src_db_path = str(tmp_path / "source.db")
-        with ChartfoldDB(src_db_path) as db:
+        with HealthMemexDB(src_db_path) as db:
             db.init_schema()
             records = UnifiedRecords(
                 source="test",
@@ -1058,7 +1048,7 @@ class TestRoundTrip:
         result = import_arkiv(archive_dir, imported_db_path)
         assert result["success"] is True
 
-        with ChartfoldDB(imported_db_path) as db:
+        with HealthMemexDB(imported_db_path) as db:
             fh = db.query("SELECT * FROM family_history ORDER BY relation")
             assert len(fh) == 2
             assert fh[0]["relation"] == "Father"
@@ -1068,54 +1058,68 @@ class TestRoundTrip:
 
     def test_round_trip_comprehensive(self, tmp_path):
         """Multi-table round-trip with counts, values, FKs, and tags."""
-        from chartfold.import_arkiv import import_arkiv
+        from health_memex.import_arkiv import import_arkiv
 
         src_db_path = str(tmp_path / "source.db")
-        with ChartfoldDB(src_db_path) as db:
+        with HealthMemexDB(src_db_path) as db:
             db.init_schema()
 
             records = UnifiedRecords(
                 source="test_source",
                 lab_results=[
                     LabResult(
-                        source="test_source", test_name="CEA",
-                        value="5.8", value_numeric=5.8, unit="ng/mL",
-                        ref_range="0.0-3.0", interpretation="H",
-                        result_date="2025-01-15", status="final",
+                        source="test_source",
+                        test_name="CEA",
+                        value="5.8",
+                        value_numeric=5.8,
+                        unit="ng/mL",
+                        ref_range="0.0-3.0",
+                        interpretation="H",
+                        result_date="2025-01-15",
+                        status="final",
                     ),
                     LabResult(
-                        source="test_source", test_name="Hemoglobin",
-                        value="12.5", value_numeric=12.5, unit="g/dL",
+                        source="test_source",
+                        test_name="Hemoglobin",
+                        value="12.5",
+                        value_numeric=12.5,
+                        unit="g/dL",
                         result_date="2025-01-15",
                     ),
                 ],
                 encounters=[
                     EncounterRecord(
-                        source="test_source", encounter_date="2025-01-15",
-                        encounter_type="office visit", facility="Test Hospital",
+                        source="test_source",
+                        encounter_date="2025-01-15",
+                        encounter_type="office visit",
+                        facility="Test Hospital",
                     ),
                 ],
                 medications=[
                     MedicationRecord(
-                        source="test_source", name="Capecitabine",
+                        source="test_source",
+                        name="Capecitabine",
                         status="active",
                     ),
                 ],
                 conditions=[
                     ConditionRecord(
-                        source="test_source", condition_name="Colon cancer",
+                        source="test_source",
+                        condition_name="Colon cancer",
                         icd10_code="C18.9",
                     ),
                 ],
                 procedures=[
                     ProcedureRecord(
-                        source="test_source", name="Right hemicolectomy",
+                        source="test_source",
+                        name="Right hemicolectomy",
                         procedure_date="2024-07-01",
                     ),
                 ],
                 family_history=[
                     FamilyHistoryRecord(
-                        source="test_source", relation="Father",
+                        source="test_source",
+                        relation="Father",
                         condition="Heart Disease",
                     ),
                 ],
@@ -1141,8 +1145,16 @@ class TestRoundTrip:
 
             # Record counts before export
             original_counts = {}
-            for table in ["lab_results", "encounters", "medications", "conditions",
-                          "procedures", "pathology_reports", "family_history", "notes"]:
+            for table in [
+                "lab_results",
+                "encounters",
+                "medications",
+                "conditions",
+                "procedures",
+                "pathology_reports",
+                "family_history",
+                "notes",
+            ]:
                 rows = db.query(f"SELECT COUNT(*) as cnt FROM {table}")
                 original_counts[table] = rows[0]["cnt"]
 
@@ -1155,7 +1167,7 @@ class TestRoundTrip:
         assert result["success"] is True
 
         # Verify counts and values
-        with ChartfoldDB(imported_db_path) as idb:
+        with HealthMemexDB(imported_db_path) as idb:
             for table, expected in original_counts.items():
                 rows = idb.query(f"SELECT COUNT(*) as cnt FROM {table}")
                 assert rows[0]["cnt"] == expected, f"{table}: {rows[0]['cnt']} != {expected}"
@@ -1190,7 +1202,7 @@ class TestImportCLI:
     """CLI integration tests for arkiv import."""
 
     def test_cli_import_arkiv(self, tmp_path):
-        """CLI: chartfold import <dir> works end-to-end."""
+        """CLI: health-memex import <dir> works end-to-end."""
         import subprocess
         import sys
 
@@ -1200,15 +1212,16 @@ class TestImportCLI:
 
         db_path = str(tmp_path / "imported.db")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "import",
-             str(archive_dir), "--db", db_path],
-            check=False, capture_output=True, text=True,
+            [sys.executable, "-m", "health_memex", "import", str(archive_dir), "--db", db_path],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert (tmp_path / "imported.db").exists()
 
     def test_cli_import_validate_only(self, tmp_path):
-        """CLI: chartfold import --validate-only works."""
+        """CLI: health-memex import --validate-only works."""
         import subprocess
         import sys
 
@@ -1218,9 +1231,19 @@ class TestImportCLI:
 
         db_path = str(tmp_path / "imported.db")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "import",
-             str(archive_dir), "--db", db_path, "--validate-only"],
-            check=False, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "health_memex",
+                "import",
+                str(archive_dir),
+                "--db",
+                db_path,
+                "--validate-only",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert not (tmp_path / "imported.db").exists()

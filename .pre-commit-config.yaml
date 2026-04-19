@@ -13,9 +13,9 @@ repos:
         additional_dependencies:
           - lxml-stubs
         args: [--ignore-missing-imports]
-        files: ^src/chartfold/
+        files: ^src/health_memex/
         pass_filenames: false
-        entry: mypy src/chartfold/
+        entry: mypy src/health_memex/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

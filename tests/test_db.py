@@ -1,7 +1,7 @@
-"""Tests for chartfold.db SQLite database layer."""
+"""Tests for health_memex.db SQLite database layer."""
 
-from chartfold.db import ChartfoldDB, _build_upsert_sql, _UNIQUE_KEYS
-from chartfold.models import (
+from health_memex.db import HealthMemexDB, _build_upsert_sql, _UNIQUE_KEYS
+from health_memex.models import (
     ImagingReport,
     LabResult,
     SourceAsset,
@@ -53,10 +53,22 @@ class TestSchemaCreation:
     def test_metadata_column_exists_on_clinical_tables(self, tmp_db):
         """All clinical tables should have a metadata column."""
         clinical_tables = [
-            "patients", "documents", "encounters", "lab_results", "vitals",
-            "medications", "conditions", "procedures", "pathology_reports",
-            "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status",
+            "patients",
+            "documents",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
             "genetic_variants",
         ]
         for table in clinical_tables:
@@ -79,8 +91,8 @@ class TestSchemaCreation:
         )
         conn.close()
 
-        # Now open with ChartfoldDB and init_schema — should add metadata column
-        db = ChartfoldDB(db_path)
+        # Now open with HealthMemexDB and init_schema — should add metadata column
+        db = HealthMemexDB(db_path)
         db.init_schema()
         cols = db.query("PRAGMA table_info(procedures)")
         col_names = {c["name"] for c in cols}
@@ -252,9 +264,7 @@ class TestUpsertStableIds:
             ],
         )
         # Get ID before
-        cea_before = loaded_db.query(
-            "SELECT id FROM lab_results WHERE test_name = 'CEA'"
-        )[0]["id"]
+        cea_before = loaded_db.query("SELECT id FROM lab_results WHERE test_name = 'CEA'")[0]["id"]
 
         loaded_db.load_source(updated)
 
@@ -270,9 +280,7 @@ class TestUpsertStableIds:
         new_records = UnifiedRecords(
             source="test_source",
             lab_results=[
-                LabResult(
-                    source="test_source", test_name="WBC", value="7.0", value_numeric=7.0
-                ),
+                LabResult(source="test_source", test_name="WBC", value="7.0", value_numeric=7.0),
             ],
         )
         loaded_db.load_source(new_records, replace=True)
@@ -286,9 +294,7 @@ class TestUpsertStableIds:
         new_records = UnifiedRecords(
             source="test_source",
             lab_results=[
-                LabResult(
-                    source="test_source", test_name="WBC", value="7.0", value_numeric=7.0
-                ),
+                LabResult(source="test_source", test_name="WBC", value="7.0", value_numeric=7.0),
             ],
         )
         loaded_db.load_source(new_records, replace=False)
@@ -399,7 +405,8 @@ class TestBuildUpsertSql:
 
     def test_unique_keys_cover_all_table_map_tables(self):
         """Every table in _TABLE_MAP must have a UNIQUE key defined."""
-        from chartfold.db import _TABLE_MAP
+        from health_memex.db import _TABLE_MAP
+
         for _, table, _ in _TABLE_MAP:
             assert table in _UNIQUE_KEYS, f"Missing UNIQUE key for {table}"
 
@@ -427,16 +434,25 @@ class TestLoadDiffStats:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="CEA", value="5.8",
-                    value_numeric=5.8, result_date="2025-01-15",
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    result_date="2025-01-15",
                 ),
                 LabResult(
-                    source="test_source", test_name="Hemoglobin", value="12.5",
-                    value_numeric=12.5, result_date="2025-01-15",
+                    source="test_source",
+                    test_name="Hemoglobin",
+                    value="12.5",
+                    value_numeric=12.5,
+                    result_date="2025-01-15",
                 ),
                 LabResult(
-                    source="test_source", test_name="WBC", value="7.0",
-                    value_numeric=7.0, result_date="2025-01-15",
+                    source="test_source",
+                    test_name="WBC",
+                    value="7.0",
+                    value_numeric=7.0,
+                    result_date="2025-01-15",
                 ),
             ],
         )
@@ -452,7 +468,9 @@ class TestLoadDiffStats:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="WBC", value="7.0",
+                    source="test_source",
+                    test_name="WBC",
+                    value="7.0",
                     value_numeric=7.0,
                 ),
             ],
@@ -468,7 +486,9 @@ class TestLoadDiffStats:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="WBC", value="7.0",
+                    source="test_source",
+                    test_name="WBC",
+                    value="7.0",
                     value_numeric=7.0,
                 ),
             ],
@@ -504,8 +524,7 @@ class TestContentHash:
         new_records = UnifiedRecords(
             source="test_source",
             lab_results=[
-                LabResult(source="test_source", test_name="WBC", value="7.0",
-                          value_numeric=7.0),
+                LabResult(source="test_source", test_name="WBC", value="7.0", value_numeric=7.0),
             ],
         )
         result = loaded_db.load_source(new_records)
@@ -513,14 +532,16 @@ class TestContentHash:
 
     def test_hash_deterministic(self, sample_unified_records):
         """Same data should always produce the same hash."""
-        from chartfold.db import _content_hash
+        from health_memex.db import _content_hash
+
         h1 = _content_hash(sample_unified_records)
         h2 = _content_hash(sample_unified_records)
         assert h1 == h2
 
     def test_hash_differs_for_different_data(self, sample_unified_records):
         """Different data should produce different hashes."""
-        from chartfold.db import _content_hash
+        from health_memex.db import _content_hash
+
         h1 = _content_hash(sample_unified_records)
 
         modified = UnifiedRecords(
@@ -536,11 +557,11 @@ class TestContentHash:
 class TestContextManager:
     def test_context_manager(self, tmp_path):
         db_path = str(tmp_path / "ctx.db")
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             db.init_schema()
             db.query("SELECT 1")
         # After context exits, connection should be closed
         # Verify by creating new connection
-        with ChartfoldDB(db_path) as db2:
+        with HealthMemexDB(db_path) as db2:
             tables = db2.query("SELECT name FROM sqlite_master WHERE type='table'")
             assert len(tables) > 0

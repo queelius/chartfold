@@ -1,11 +1,11 @@
-"""Tests for chartfold.models dataclasses."""
+"""Tests for health_memex.models dataclasses."""
 
 from __future__ import annotations
 
 from dataclasses import asdict
 from typing import ClassVar
 
-from chartfold.models import (
+from health_memex.models import (
     AllergyRecord,
     ClinicalNote,
     ConditionRecord,

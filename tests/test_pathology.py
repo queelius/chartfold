@@ -3,8 +3,8 @@
 import base64
 
 
-from chartfold.core.fhir import decode_presented_form
-from chartfold.extractors.pathology import (
+from health_memex.core.fhir import decode_presented_form
+from health_memex.extractors.pathology import (
     _days_between,
     _name_similarity,
     link_pathology_to_procedures,

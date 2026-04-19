@@ -2,8 +2,8 @@
 
 from lxml import etree
 
-from chartfold.core.cda import NS, extract_patient_demographics, get_encounter_end_date
-from chartfold.core.fhir import _parse_allergy_intolerance, _parse_procedure
+from health_memex.core.cda import NS, extract_patient_demographics, get_encounter_end_date
+from health_memex.core.fhir import _parse_allergy_intolerance, _parse_procedure
 
 
 class TestGetEncounterEndDate:
@@ -107,9 +107,7 @@ class TestParseAllergyIntolerance:
             "code": {"text": "Penicillin"},
             "reaction": [
                 {
-                    "manifestation": [
-                        {"coding": [{"display": "Rash"}]}
-                    ],
+                    "manifestation": [{"coding": [{"display": "Rash"}]}],
                     "severity": "moderate",
                 }
             ],

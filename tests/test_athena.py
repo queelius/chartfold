@@ -1,9 +1,9 @@
-"""Tests for chartfold.sources.athena parser."""
+"""Tests for health_memex.sources.athena parser."""
 
 from lxml import etree
 
-from chartfold.core.cda import NS
-from chartfold.sources.athena import (
+from health_memex.core.cda import NS
+from health_memex.sources.athena import (
     _extract_clinical_notes,
     _extract_encounters,
     _extract_family_history,
@@ -722,7 +722,9 @@ class TestClinicalNotesExtraction:
 
     def test_no_table_returns_empty(self):
         """Sections without tables return empty list (triggering blob fallback)."""
-        section = _make_section("Reason for Referral", "<paragraph>Some referral text here.</paragraph>")
+        section = _make_section(
+            "Reason for Referral", "<paragraph>Some referral text here.</paragraph>"
+        )
         notes = _extract_clinical_notes(section, "Reason for Referral")
         assert notes == []
 

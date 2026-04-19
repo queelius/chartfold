@@ -1,12 +1,12 @@
-"""Tests for chartfold.mcp.server tools.
+"""Tests for health_memex.mcp.server tools.
 
 Tests the tool functions directly (not via MCP protocol).
 """
 
 import pytest
 
-from chartfold.db import ChartfoldDB
-from chartfold.models import (
+from health_memex.db import HealthMemexDB
+from health_memex.models import (
     ConditionRecord,
     EncounterRecord,
     LabResult,
@@ -19,9 +19,9 @@ from chartfold.models import (
 def mcp_db(tmp_path, monkeypatch):
     """Set up a test database and configure MCP to use it."""
     db_path = str(tmp_path / "mcp_test.db")
-    monkeypatch.setenv("CHARTFOLD_DB", db_path)
+    monkeypatch.setenv("HEALTH_MEMEX_DB", db_path)
 
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
 
     records = UnifiedRecords(
@@ -56,9 +56,10 @@ def mcp_db(tmp_path, monkeypatch):
     db.close()
 
     # Reload the module to pick up new env var
-    import chartfold.mcp.server as srv
+    import health_memex.mcp.server as srv
 
     monkeypatch.setattr(srv, "DB_PATH", db_path)
+    monkeypatch.setattr(srv, "_db", None)  # Reset singleton for fresh connection
     yield srv
 
 
@@ -66,9 +67,9 @@ def mcp_db(tmp_path, monkeypatch):
 def mcp_multi_db(tmp_path, monkeypatch):
     """Multi-source database for cross-source testing."""
     db_path = str(tmp_path / "mcp_multi.db")
-    monkeypatch.setenv("CHARTFOLD_DB", db_path)
+    monkeypatch.setenv("HEALTH_MEMEX_DB", db_path)
 
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
 
     epic = UnifiedRecords(
@@ -141,9 +142,10 @@ def mcp_multi_db(tmp_path, monkeypatch):
     db.load_source(meditech)
     db.close()
 
-    import chartfold.mcp.server as srv
+    import health_memex.mcp.server as srv
 
     monkeypatch.setattr(srv, "DB_PATH", db_path)
+    monkeypatch.setattr(srv, "_db", None)  # Reset singleton for fresh connection
     yield srv
 
 
@@ -275,9 +277,9 @@ class TestGetDatabaseSummary:
 def mcp_notes_db(tmp_path, monkeypatch):
     """Database with a few pre-saved notes for MCP notes tool testing."""
     db_path = str(tmp_path / "mcp_notes.db")
-    monkeypatch.setenv("CHARTFOLD_DB", db_path)
+    monkeypatch.setenv("HEALTH_MEMEX_DB", db_path)
 
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
     db.save_note(title="CEA Trend", content="CEA rising from 3.2 to 5.8", tags=["oncology", "cea"])
     db.save_note(title="Visit Prep Feb", content="Questions for Dr. Tan", tags=["visit-prep"])
@@ -290,9 +292,10 @@ def mcp_notes_db(tmp_path, monkeypatch):
     )
     db.close()
 
-    import chartfold.mcp.server as srv
+    import health_memex.mcp.server as srv
 
     monkeypatch.setattr(srv, "DB_PATH", db_path)
+    monkeypatch.setattr(srv, "_db", None)  # Reset singleton for fresh connection
     yield srv
 
 
@@ -449,23 +452,30 @@ class TestDeleteAnalysisTool:
 
 class TestVisitPrepBundle:
     def test_get_visit_prep_bundle_returns_all_sections(self, mcp_db):
-        from chartfold.mcp.server import get_visit_prep_bundle
+        from health_memex.mcp.server import get_visit_prep_bundle
 
         result = get_visit_prep_bundle(visit_date="2026-04-02")
         assert isinstance(result, dict)
         expected_keys = {
-            "visit_date", "lookback_start", "provider",
-            "lab_trends", "new_labs", "recent_imaging", "recent_notes",
-            "active_medications", "active_conditions", "recent_procedures",
-            "saved_notes", "saved_analyses", "treatment_context_note",
+            "visit_date",
+            "lookback_start",
+            "provider",
+            "lab_trends",
+            "new_labs",
+            "recent_imaging",
+            "recent_notes",
+            "active_medications",
+            "active_conditions",
+            "recent_procedures",
+            "saved_notes",
+            "saved_analyses",
+            "treatment_context_note",
         }
         assert set(result.keys()) == expected_keys
 
     def test_get_visit_prep_bundle_exclude_flags(self, mcp_db):
-        from chartfold.mcp.server import get_visit_prep_bundle
+        from health_memex.mcp.server import get_visit_prep_bundle
 
-        result = get_visit_prep_bundle(
-            include_analyses=False, include_notes=False
-        )
+        result = get_visit_prep_bundle(include_analyses=False, include_notes=False)
         assert result["saved_analyses"] == []
         assert result["saved_notes"] == []

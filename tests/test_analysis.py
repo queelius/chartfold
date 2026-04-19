@@ -1,21 +1,21 @@
-"""Tests for chartfold.analysis modules."""
+"""Tests for health_memex.analysis modules."""
 
 import pytest
 
-from chartfold.analysis.lab_trends import (
+from health_memex.analysis.lab_trends import (
     get_abnormal_labs,
     get_available_tests,
     get_lab_series,
     get_lab_trend,
     get_latest_labs,
 )
-from chartfold.analysis.cross_source import match_encounters_by_date
-from chartfold.analysis.medications import get_active_medications, get_medication_history
-from chartfold.analysis.visit_diff import visit_diff
-from chartfold.analysis.surgical_timeline import build_surgical_timeline
-from chartfold.analysis.visit_prep import generate_visit_prep
-from chartfold.db import ChartfoldDB
-from chartfold.models import (
+from health_memex.analysis.cross_source import match_encounters_by_date
+from health_memex.analysis.medications import get_active_medications, get_medication_history
+from health_memex.analysis.visit_diff import visit_diff
+from health_memex.analysis.surgical_timeline import build_surgical_timeline
+from health_memex.analysis.visit_prep import generate_visit_prep
+from health_memex.db import HealthMemexDB
+from health_memex.models import (
     ClinicalNote,
     ConditionRecord,
     EncounterRecord,
@@ -31,7 +31,7 @@ from chartfold.models import (
 @pytest.fixture
 def analysis_db(tmp_path):
     """Database with analysis-suitable test data."""
-    db = ChartfoldDB(str(tmp_path / "analysis.db"))
+    db = HealthMemexDB(str(tmp_path / "analysis.db"))
     db.init_schema()
 
     records = UnifiedRecords(
@@ -152,7 +152,7 @@ class TestLabTrends:
 @pytest.fixture
 def multi_source_db(tmp_path):
     """Database with lab data from multiple sources for cross-source testing."""
-    db = ChartfoldDB(str(tmp_path / "multi.db"))
+    db = HealthMemexDB(str(tmp_path / "multi.db"))
     db.init_schema()
 
     epic_records = UnifiedRecords(
@@ -223,7 +223,7 @@ def multi_source_db(tmp_path):
 @pytest.fixture
 def synonym_db(tmp_path):
     """Database with different test names for the same test across sources."""
-    db = ChartfoldDB(str(tmp_path / "synonym.db"))
+    db = HealthMemexDB(str(tmp_path / "synonym.db"))
     db.init_schema()
 
     epic_records = UnifiedRecords(
@@ -422,7 +422,7 @@ class TestAvailableTests:
 @pytest.fixture
 def visit_diff_db(tmp_path):
     """Database with varied data for testing visit_diff across date ranges."""
-    db = ChartfoldDB(str(tmp_path / "diff.db"))
+    db = HealthMemexDB(str(tmp_path / "diff.db"))
     db.init_schema()
 
     records = UnifiedRecords(
@@ -795,7 +795,9 @@ class TestMetadataStorage:
                     source="test_meta",
                     name="Test procedure",
                     procedure_date="2025-01-15",
-                    metadata=json.dumps({"encounter_date": "2025-01-15", "code_system": "2.16.840.1.113883.6.96"}),
+                    metadata=json.dumps(
+                        {"encounter_date": "2025-01-15", "code_system": "2.16.840.1.113883.6.96"}
+                    ),
                 ),
             ],
         )
@@ -871,7 +873,7 @@ class TestMetadataStorage:
 @pytest.fixture
 def cross_source_encounter_db(tmp_path):
     """Database with encounters from multiple sources on the same date."""
-    db = ChartfoldDB(str(tmp_path / "cross.db"))
+    db = HealthMemexDB(str(tmp_path / "cross.db"))
     db.init_schema()
 
     epic = UnifiedRecords(

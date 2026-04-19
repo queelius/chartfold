@@ -3,8 +3,8 @@
 import json
 
 
-from chartfold.models import DocumentRecord, SourceAsset, UnifiedRecords
-from chartfold.sources.assets import (
+from health_memex.models import DocumentRecord, SourceAsset, UnifiedRecords
+from health_memex.sources.assets import (
     EXTENSION_TO_TYPE,
     PARSED_EXTENSIONS,
     discover_source_assets,
@@ -337,7 +337,7 @@ class TestAdapterIntegration:
 
     def test_epic_adapter_adds_file_path(self, sample_epic_data, tmp_path):
         """Epic adapter should populate file_path from inventory."""
-        from chartfold.adapters.epic_adapter import epic_to_unified
+        from health_memex.adapters.epic_adapter import epic_to_unified
 
         # Add file_path and input_dir to sample data
         sample_epic_data["input_dir"] = str(tmp_path)
@@ -352,7 +352,7 @@ class TestAdapterIntegration:
 
     def test_meditech_adapter_adds_file_path(self, sample_meditech_data, tmp_path):
         """MEDITECH adapter should populate file_path from ccda_data."""
-        from chartfold.adapters.meditech_adapter import meditech_to_unified
+        from health_memex.adapters.meditech_adapter import meditech_to_unified
 
         # Add file_path and input_dir
         sample_meditech_data["input_dir"] = str(tmp_path)
@@ -366,7 +366,7 @@ class TestAdapterIntegration:
 
     def test_athena_adapter_adds_file_path(self, sample_athena_data, tmp_path):
         """athena adapter should populate file_path."""
-        from chartfold.adapters.athena_adapter import athena_to_unified
+        from health_memex.adapters.athena_adapter import athena_to_unified
 
         sample_athena_data["input_dir"] = str(tmp_path)
         for doc in sample_athena_data["documents"]:

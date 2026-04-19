@@ -1,15 +1,15 @@
-"""Tests for personal notes CRUD in chartfold.db."""
+"""Tests for personal notes CRUD in health_memex.db."""
 
 import pytest
 
-from chartfold.db import ChartfoldDB
+from health_memex.db import HealthMemexDB
 
 
 @pytest.fixture
 def notes_db(tmp_path):
     """Empty database with schema initialized for notes testing."""
     db_path = str(tmp_path / "notes_test.db")
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
     yield db
     db.close()
@@ -237,12 +237,18 @@ class TestDeleteNote:
     def test_delete_nonexistent(self, notes_db):
         assert notes_db.delete_note(99999) is False
 
-    def test_delete_cascades_tags(self, notes_db):
+    def test_hard_delete_cascades_tags(self, notes_db):
+        # Soft delete preserves tags (the row survives); hard delete cascades.
         note_id = notes_db.save_note(title="T", content="C", tags=["a", "b"])
-        notes_db.delete_note(note_id)
-        # Verify tags are gone too
+        notes_db.delete_note(note_id, hard=True)
         tag_rows = notes_db.query("SELECT * FROM note_tags WHERE note_id = ?", (note_id,))
         assert tag_rows == []
+
+    def test_soft_delete_preserves_tags(self, notes_db):
+        note_id = notes_db.save_note(title="T", content="C", tags=["a", "b"])
+        notes_db.delete_note(note_id)
+        tag_rows = notes_db.query("SELECT * FROM note_tags WHERE note_id = ?", (note_id,))
+        assert len(tag_rows) == 2, "Soft delete must preserve tags for restore"
 
 
 class TestSearchOrderedByUpdated:

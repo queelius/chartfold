@@ -1,4 +1,4 @@
-"""Tests for chartfold arkiv export (JSONL + README.md + schema.yaml)."""
+"""Tests for health-memex arkiv export (JSONL + README.md + schema.yaml)."""
 
 import base64
 import json
@@ -7,8 +7,8 @@ import os
 import pytest
 import yaml
 
-from chartfold.db import ChartfoldDB
-from chartfold.export_arkiv import (
+from health_memex.db import HealthMemexDB
+from health_memex.export_arkiv import (
     _FK_FIELDS,
     _MAX_ENUM_VALUES,
     _STRIP_COLS,
@@ -19,7 +19,7 @@ from chartfold.export_arkiv import (
     _export_table_with_tags,
     _row_to_record,
 )
-from chartfold.models import (
+from health_memex.models import (
     FamilyHistoryRecord,
     LabResult,
     PathologyReport,
@@ -37,7 +37,7 @@ from chartfold.models import (
 def tmp_db(tmp_path):
     """Create a temporary SQLite database with schema initialized."""
     db_path = str(tmp_path / "test.db")
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
     yield db
     db.close()
@@ -202,16 +202,33 @@ def db_with_assets(tmp_db, tmp_path):
            (source, asset_type, file_path, file_name, file_size_kb,
             content_type, title, encounter_date, ref_table, ref_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        ("test_source", "png", str(media_src / "scan.png"), "scan.png",
-         1, "image/png", "CT Abdomen", "2025-01-15", "imaging_reports", 7),
+        (
+            "test_source",
+            "png",
+            str(media_src / "scan.png"),
+            "scan.png",
+            1,
+            "image/png",
+            "CT Abdomen",
+            "2025-01-15",
+            "imaging_reports",
+            7,
+        ),
     )
     tmp_db.conn.execute(
         """INSERT INTO source_assets
            (source, asset_type, file_path, file_name, file_size_kb,
             content_type, title)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        ("test_source", "pdf", str(media_src / "report.pdf"), "report.pdf",
-         2, "application/pdf", "Lab Report"),
+        (
+            "test_source",
+            "pdf",
+            str(media_src / "report.pdf"),
+            "report.pdf",
+            2,
+            "application/pdf",
+            "Lab Report",
+        ),
     )
     tmp_db.conn.commit()
     return tmp_db
@@ -254,7 +271,7 @@ class TestRowToRecord:
         record = _row_to_record(lab_row, "lab_results", "result_date")
 
         assert record["mimetype"] == "application/json"
-        assert record["uri"] == "chartfold:lab_results/42"
+        assert record["uri"] == "health-memex:lab_results/42"
         assert record["timestamp"] == "2025-01-15"
         assert record["metadata"]["table"] == "lab_results"
         assert record["metadata"]["source"] == "epic_anderson"
@@ -296,7 +313,7 @@ class TestRowToRecord:
         """family_history has timestamp_field=None, so no timestamp key."""
         record = _row_to_record(family_history_row, "family_history", None)
 
-        assert record["uri"] == "chartfold:family_history/7"
+        assert record["uri"] == "health-memex:family_history/7"
         assert "timestamp" not in record
         assert record["metadata"]["relation"] == "Father"
         assert record["metadata"]["condition"] == "Colon cancer"
@@ -304,11 +321,11 @@ class TestRowToRecord:
         assert "age_at_onset" not in record["metadata"]
 
     def test_row_to_record_fk_converted_to_uri(self, pathology_row):
-        """procedure_id FK should become procedure_uri with chartfold: URI."""
+        """procedure_id FK should become procedure_uri with health-memex: URI."""
         record = _row_to_record(pathology_row, "pathology_reports", "report_date")
 
         assert "procedure_id" not in record["metadata"]
-        assert record["metadata"]["procedure_uri"] == "chartfold:procedures/10"
+        assert record["metadata"]["procedure_uri"] == "health-memex:procedures/10"
         assert record["metadata"]["specimen"] == "Right colon"
 
     def test_row_to_record_fk_null_not_included(self):
@@ -369,9 +386,7 @@ class TestExportTable:
         output_dir = str(tmp_path / "output")
         os.makedirs(output_dir)
 
-        records = _export_table(
-            db_with_labs, "lab_results", "result_date", output_dir
-        )
+        records = _export_table(db_with_labs, "lab_results", "result_date", output_dir)
 
         assert records is not None
         assert len(records) == 2
@@ -387,7 +402,7 @@ class TestExportTable:
 
         first = json.loads(lines[0])
         assert first["mimetype"] == "application/json"
-        assert first["uri"].startswith("chartfold:lab_results/")
+        assert first["uri"].startswith("health-memex:lab_results/")
         assert first["metadata"]["table"] == "lab_results"
 
     def test_export_table_empty_returns_none(self, tmp_db, tmp_path):
@@ -395,9 +410,7 @@ class TestExportTable:
         output_dir = str(tmp_path / "output")
         os.makedirs(output_dir)
 
-        result = _export_table(
-            tmp_db, "lab_results", "result_date", output_dir
-        )
+        result = _export_table(tmp_db, "lab_results", "result_date", output_dir)
 
         assert result is None
         jsonl_path = os.path.join(output_dir, "lab_results.jsonl")
@@ -408,9 +421,7 @@ class TestExportTable:
         output_dir = str(tmp_path / "output")
         os.makedirs(output_dir)
 
-        records = _export_table(
-            db_with_family_history, "family_history", None, output_dir
-        )
+        records = _export_table(db_with_family_history, "family_history", None, output_dir)
 
         assert records is not None
         assert len(records) == 2
@@ -448,18 +459,14 @@ class TestExportTableWithTags:
         assert len(records) == 2
 
         # Find the CEA note
-        cea_records = [
-            r for r in records if "CEA" in r["metadata"].get("title", "")
-        ]
+        cea_records = [r for r in records if "CEA" in r["metadata"].get("title", "")]
         assert len(cea_records) == 1
         cea_rec = cea_records[0]
         assert "tags" in cea_rec["metadata"]
         assert cea_rec["metadata"]["tags"] == ["cea", "oncology"]  # sorted
 
         # Find the visit prep note
-        visit_records = [
-            r for r in records if "Visit" in r["metadata"].get("title", "")
-        ]
+        visit_records = [r for r in records if "Visit" in r["metadata"].get("title", "")]
         assert len(visit_records) == 1
         visit_rec = visit_records[0]
         assert visit_rec["metadata"]["tags"] == ["visit-prep"]
@@ -486,9 +493,7 @@ class TestExportTableWithTags:
         assert len(records) == 2
 
         # Find the cancer timeline analysis
-        cancer_records = [
-            r for r in records if "Cancer" in r["metadata"].get("title", "")
-        ]
+        cancer_records = [r for r in records if "Cancer" in r["metadata"].get("title", "")]
         assert len(cancer_records) == 1
         cancer_rec = cancer_records[0]
         assert cancer_rec["metadata"]["tags"] == ["oncology", "timeline"]  # sorted
@@ -509,7 +514,7 @@ class TestBuildSchema:
         records = [
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:lab_results/1",
+                "uri": "health-memex:lab_results/1",
                 "timestamp": "2025-01-15",
                 "metadata": {
                     "table": "lab_results",
@@ -520,7 +525,7 @@ class TestBuildSchema:
             },
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:lab_results/2",
+                "uri": "health-memex:lab_results/2",
                 "timestamp": "2025-01-15",
                 "metadata": {
                     "table": "lab_results",
@@ -559,7 +564,7 @@ class TestBuildSchema:
         records = [
             {
                 "mimetype": "application/json",
-                "uri": f"chartfold:lab_results/{i}",
+                "uri": f"health-memex:lab_results/{i}",
                 "metadata": {
                     "table": "lab_results",
                     "test_name": f"Test_{i}",
@@ -589,7 +594,7 @@ class TestBuildSchema:
         records = [
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:notes/1",
+                "uri": "health-memex:notes/1",
                 "metadata": {
                     "table": "notes",
                     "tags": ["oncology", "cea"],
@@ -598,7 +603,7 @@ class TestBuildSchema:
             },
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:notes/2",
+                "uri": "health-memex:notes/2",
                 "metadata": {
                     "table": "notes",
                     "tags": ["visit-prep"],
@@ -658,9 +663,7 @@ class TestConstants:
 
     def test_collection_descriptions_covers_all_tables(self):
         """Every table in _TIMESTAMP_FIELDS should have a description."""
-        assert set(_COLLECTION_DESCRIPTIONS.keys()) == set(
-            _TIMESTAMP_FIELDS.keys()
-        )
+        assert set(_COLLECTION_DESCRIPTIONS.keys()) == set(_TIMESTAMP_FIELDS.keys())
 
     def test_fk_fields_procedure_id(self):
         """procedure_id FK should map to procedures table."""
@@ -700,7 +703,7 @@ class TestEdgeCases:
         records = [
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:analyses/1",
+                "uri": "health-memex:analyses/1",
                 "metadata": {
                     "table": "analyses",
                     "frontmatter": {"key": "value"},
@@ -715,12 +718,12 @@ class TestEdgeCases:
         records = [
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:test/1",
+                "uri": "health-memex:test/1",
                 "metadata": {"mixed": 42},
             },
             {
                 "mimetype": "application/json",
-                "uri": "chartfold:test/2",
+                "uri": "health-memex:test/2",
                 "metadata": {"mixed": "hello"},
             },
         ]
@@ -750,9 +753,7 @@ class TestEdgeCases:
         output_dir = str(tmp_path / "output")
         os.makedirs(output_dir)
 
-        records = _export_table(
-            db_with_labs, "lab_results", "result_date", output_dir
-        )
+        records = _export_table(db_with_labs, "lab_results", "result_date", output_dir)
 
         jsonl_path = os.path.join(output_dir, "lab_results.jsonl")
         with open(jsonl_path) as f:
@@ -783,10 +784,10 @@ class TestExportArkiv:
 
     def test_export_arkiv_full(self, tmp_path):
         """Full integration: export creates JSONL files + README.md + schema.yaml."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         records = UnifiedRecords(
             source="test_source",
@@ -844,10 +845,12 @@ class TestExportArkiv:
         parts = content.split("---\n", 2)
         frontmatter = yaml.safe_load(parts[1])
 
-        assert frontmatter["name"] == "Chartfold clinical data export"
-        assert frontmatter["description"] == "Clinical records from Epic, MEDITECH, and athenahealth"
+        assert frontmatter["name"] == "Health Memex clinical data export"
+        assert (
+            frontmatter["description"] == "Clinical records from Epic, MEDITECH, and athenahealth"
+        )
         assert "datetime" in frontmatter
-        assert frontmatter["generator"].startswith("chartfold v")
+        assert frontmatter["generator"].startswith("health-memex v")
 
         content_paths = {c["path"] for c in frontmatter["contents"]}
         assert "lab_results.jsonl" in content_paths
@@ -857,12 +860,15 @@ class TestExportArkiv:
 
         # Check lab description in contents
         lab_entry = next(c for c in frontmatter["contents"] if c["path"] == "lab_results.jsonl")
-        assert lab_entry["description"] == "Laboratory test results with values, reference ranges, and interpretations"
+        assert (
+            lab_entry["description"]
+            == "Laboratory test results with values, reference ranges, and interpretations"
+        )
 
         # Body text after frontmatter
         body = parts[2]
-        assert "Chartfold Clinical Data Export" in body
-        assert "Exported from chartfold database on" in body
+        assert "Health Memex Clinical Data Export" in body
+        assert "Exported from health_memex database on" in body
 
         # Check schema.yaml
         schema_path = os.path.join(output_dir, "schema.yaml")
@@ -877,10 +883,10 @@ class TestExportArkiv:
 
     def test_export_arkiv_exclude_notes(self, tmp_path):
         """include_notes=False omits notes and analyses."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         records = UnifiedRecords(
             source="test_source",
@@ -919,10 +925,10 @@ class TestExportArkiv:
 
     def test_export_arkiv_note_tags_folded(self, tmp_path):
         """Notes in the export have their tags folded in."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         db.save_note(title="Tagged", content="Has tags", tags=["oncology", "cea"])
 
@@ -937,10 +943,10 @@ class TestExportArkiv:
 
     def test_export_arkiv_empty_db(self, tmp_path):
         """Export of empty database creates README.md with empty contents."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
 
         output_dir = str(tmp_path / "arkiv-out")
@@ -974,7 +980,7 @@ class TestExportArkiv:
 class TestSourceAssetExport:
     def test_source_assets_exported_to_media(self, db_with_assets, tmp_path):
         """Default mode copies files to media/ and uses file:// URIs."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         output_dir = str(tmp_path / "arkiv-out")
         export_arkiv(db_with_assets, output_dir)
@@ -995,14 +1001,14 @@ class TestSourceAssetExport:
         assert png_rec["metadata"]["ref_table"] == "imaging_reports"
         # ref_id replaced by ref_id_uri (not both)
         assert "ref_id" not in png_rec["metadata"]
-        assert png_rec["metadata"]["ref_id_uri"] == "chartfold:imaging_reports/7"
+        assert png_rec["metadata"]["ref_id_uri"] == "health-memex:imaging_reports/7"
 
         assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
         assert os.path.exists(os.path.join(output_dir, "media", "report.pdf"))
 
     def test_source_assets_embedded_base64(self, db_with_assets, tmp_path):
         """--embed mode inlines base64 content."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         output_dir = str(tmp_path / "arkiv-out")
         export_arkiv(db_with_assets, output_dir, embed=True)
@@ -1020,7 +1026,7 @@ class TestSourceAssetExport:
 
     def test_source_assets_missing_file_skipped(self, tmp_db, tmp_path):
         """Assets whose source files don't exist are skipped gracefully."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         tmp_db.conn.execute(
             """INSERT INTO source_assets
@@ -1040,7 +1046,7 @@ class TestSourceAssetExport:
 
     def test_source_assets_in_readme_contents(self, db_with_assets, tmp_path):
         """source_assets.jsonl listed in README.md frontmatter contents."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         output_dir = str(tmp_path / "arkiv-out")
         export_arkiv(db_with_assets, output_dir)
@@ -1055,7 +1061,7 @@ class TestSourceAssetExport:
 
     def test_source_assets_filename_collision(self, tmp_db, tmp_path):
         """Colliding file names get disambiguated with ID prefix."""
-        from chartfold.export_arkiv import export_arkiv
+        from health_memex.export_arkiv import export_arkiv
 
         media_src = tmp_path / "source_files"
         media_src.mkdir()
@@ -1071,15 +1077,13 @@ class TestSourceAssetExport:
             """INSERT INTO source_assets
                (source, asset_type, file_path, file_name, file_size_kb, content_type)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("src_a", "pdf", str(src_a / "report.pdf"), "report.pdf",
-             1, "application/pdf"),
+            ("src_a", "pdf", str(src_a / "report.pdf"), "report.pdf", 1, "application/pdf"),
         )
         tmp_db.conn.execute(
             """INSERT INTO source_assets
                (source, asset_type, file_path, file_name, file_size_kb, content_type)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("src_b", "pdf", str(src_b / "report.pdf"), "report.pdf",
-             1, "application/pdf"),
+            ("src_b", "pdf", str(src_b / "report.pdf"), "report.pdf", 1, "application/pdf"),
         )
         tmp_db.conn.commit()
 
@@ -1109,12 +1113,12 @@ class TestCLI:
     """CLI integration tests."""
 
     def test_cli_export_arkiv(self, tmp_path):
-        """CLI: chartfold export arkiv works end-to-end."""
+        """CLI: health-memex export arkiv works end-to-end."""
         import subprocess
         import sys
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         records = UnifiedRecords(
             source="test_source",
@@ -1134,9 +1138,20 @@ class TestCLI:
 
         output_dir = str(tmp_path / "arkiv-out")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "export", "arkiv",
-             "--db", db_path, "--output", output_dir],
-            check=False, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "health_memex",
+                "export",
+                "arkiv",
+                "--db",
+                db_path,
+                "--output",
+                output_dir,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "Exported to" in result.stdout
@@ -1145,12 +1160,12 @@ class TestCLI:
         assert os.path.exists(os.path.join(output_dir, "lab_results.jsonl"))
 
     def test_cli_export_arkiv_embed(self, tmp_path):
-        """CLI: chartfold export arkiv --embed works."""
+        """CLI: health-memex export arkiv --embed works."""
         import subprocess
         import sys
 
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
 
         # Create a real file for the source asset
@@ -1168,9 +1183,21 @@ class TestCLI:
 
         output_dir = str(tmp_path / "arkiv-out")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "export", "arkiv",
-             "--db", db_path, "--output", output_dir, "--embed"],
-            check=False, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "health_memex",
+                "export",
+                "arkiv",
+                "--db",
+                db_path,
+                "--output",
+                output_dir,
+                "--embed",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
 

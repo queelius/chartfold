@@ -1,11 +1,9 @@
-"""Tests for chartfold.adapters — source-to-UnifiedRecords bridges."""
+"""Tests for health_memex.adapters — source-to-UnifiedRecords bridges."""
 
-from chartfold.adapters.athena_adapter import (
-    athena_to_unified,
-    _guess_modality as athena_guess_modality,
-)
-from chartfold.adapters.epic_adapter import epic_to_unified, _guess_modality
-from chartfold.adapters.meditech_adapter import meditech_to_unified, _is_imaging_report_name
+from health_memex.adapters.athena_adapter import athena_to_unified
+from health_memex.adapters.epic_adapter import epic_to_unified
+from health_memex.adapters.meditech_adapter import meditech_to_unified, _is_imaging_report_name
+from health_memex.core.utils import guess_modality
 
 
 class TestEpicAdapter:
@@ -110,7 +108,6 @@ class TestEpicAdapter:
         assert "Colonoscopy" in records.procedures[0].name
         assert records.procedures[0].snomed_code == "73761001"
 
-
     def test_patient_demographics(self, sample_epic_data):
         records = epic_to_unified(sample_epic_data)
         assert records.patient is not None
@@ -144,22 +141,22 @@ class TestEpicAdapter:
 
 class TestGuessModality:
     def test_ct(self):
-        assert _guess_modality("CT CHEST ABDOMEN PELVIS W CONTRAST") == "CT"
+        assert guess_modality("CT CHEST ABDOMEN PELVIS W CONTRAST") == "CT"
 
     def test_mri(self):
-        assert _guess_modality("MRI BRAIN W/WO CONTRAST") == "MRI"
+        assert guess_modality("MRI BRAIN W/WO CONTRAST") == "MRI"
 
     def test_pet(self):
-        assert _guess_modality("PET/CT WHOLE BODY") == "PET"
+        assert guess_modality("PET/CT WHOLE BODY") == "PET"
 
     def test_xray(self):
-        assert _guess_modality("XR CHEST 2 VIEW") == "XR"
+        assert guess_modality("XR CHEST 2 VIEW") == "XR"
 
     def test_us(self):
-        assert _guess_modality("US ABDOMEN COMPLETE") == "US"
+        assert guess_modality("US ABDOMEN COMPLETE") == "US"
 
     def test_unknown(self):
-        assert _guess_modality("SOME OTHER STUDY") == ""
+        assert guess_modality("SOME OTHER STUDY") == ""
 
 
 class TestMeditechAdapter:
@@ -271,7 +268,11 @@ class TestMeditechAdapter:
         records = meditech_to_unified(sample_meditech_data)
         assert len(records.mental_status) >= 1
         ccda_ms = next(
-            (ms for ms in records.mental_status if "interest" in ms.question.lower() or "pleasure" in ms.question.lower()),
+            (
+                ms
+                for ms in records.mental_status
+                if "interest" in ms.question.lower() or "pleasure" in ms.question.lower()
+            ),
             None,
         )
         assert ccda_ms is not None
@@ -281,18 +282,14 @@ class TestMeditechAdapter:
         """FHIR DiagnosticReports with Radiology category become imaging reports."""
         records = meditech_to_unified(sample_meditech_data)
         assert len(records.imaging_reports) >= 1
-        ct = next(
-            (r for r in records.imaging_reports if "CT" in r.study_name.upper()), None
-        )
+        ct = next((r for r in records.imaging_reports if "CT" in r.study_name.upper()), None)
         assert ct is not None
         assert ct.study_date == "2025-01-10"
 
     def test_fhir_allergy_intolerances(self, sample_meditech_data):
         """FHIR AllergyIntolerance resources become allergy records."""
         records = meditech_to_unified(sample_meditech_data)
-        sulfa = next(
-            (a for a in records.allergies if "sulfa" in a.allergen.lower()), None
-        )
+        sulfa = next((a for a in records.allergies if "sulfa" in a.allergen.lower()), None)
         assert sulfa is not None
         assert sulfa.reaction == "Hives"
         assert sulfa.severity == "moderate"
@@ -300,9 +297,7 @@ class TestMeditechAdapter:
     def test_fhir_procedures(self, sample_meditech_data):
         """FHIR Procedure resources become procedure records."""
         records = meditech_to_unified(sample_meditech_data)
-        hemi = next(
-            (p for p in records.procedures if "hemicolectomy" in p.name.lower()), None
-        )
+        hemi = next((p for p in records.procedures if "hemicolectomy" in p.name.lower()), None)
         assert hemi is not None
         assert hemi.snomed_code == "44441009"
         assert hemi.procedure_date == "2024-07-01"
@@ -540,28 +535,28 @@ class TestAthenaImagingAdapter:
         assert not any("XR," in n for n in proc_names)
 
     def test_modality_ct(self):
-        assert athena_guess_modality("CT, abdomen + pelvis") == "CT"
+        assert guess_modality("CT, abdomen + pelvis") == "CT"
 
     def test_modality_mri(self):
-        assert athena_guess_modality("MRI procedure (PROC)") == "MRI"
+        assert guess_modality("MRI procedure (PROC)") == "MRI"
 
     def test_modality_us(self):
-        assert athena_guess_modality("US, chest wall") == "US"
+        assert guess_modality("US, chest wall") == "US"
 
     def test_modality_xr(self):
-        assert athena_guess_modality("XR, chest") == "XR"
+        assert guess_modality("XR, chest") == "XR"
 
     def test_modality_pet(self):
-        assert athena_guess_modality("PET, limited") == "PET"
+        assert guess_modality("PET, limited") == "PET"
 
     def test_modality_ecg(self):
-        assert athena_guess_modality("electrocardiogram") == "ECG"
+        assert guess_modality("electrocardiogram") == "ECG"
 
     def test_modality_nuclear(self):
-        assert athena_guess_modality("NM, bone scan, whole body") == "NM"
+        assert guess_modality("NM, bone scan, whole body") == "NM"
 
     def test_modality_unknown(self):
-        assert athena_guess_modality("some unknown study") == ""
+        assert guess_modality("some unknown study") == ""
 
 
 class TestMeditechAdapterCCDAMerge:
@@ -592,8 +587,18 @@ class TestMeditechAdapterCCDAMerge:
     def test_ccda_medications_merge_with_fhir(self, sample_meditech_data):
         """CCDA medications not in FHIR are added; dedup by name."""
         sample_meditech_data["ccda_data"]["all_medications"] = [
-            {"name": "Aspirin 81mg", "status": "active", "sig": "Once daily", "instructions": "Once daily"},
-            {"name": "Capecitabine 500mg", "status": "active", "sig": "", "instructions": ""},  # dup
+            {
+                "name": "Aspirin 81mg",
+                "status": "active",
+                "sig": "Once daily",
+                "instructions": "Once daily",
+            },
+            {
+                "name": "Capecitabine 500mg",
+                "status": "active",
+                "sig": "",
+                "instructions": "",
+            },  # dup
         ]
         records = meditech_to_unified(sample_meditech_data)
         med_names = [m.name for m in records.medications]
@@ -602,31 +607,31 @@ class TestMeditechAdapterCCDAMerge:
 
     def test_fhir_diagnostic_report_pathology(self, sample_meditech_data):
         """Pathology-category DiagnosticReports become pathology_reports."""
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "Colon biopsy",
-            "category": "Pathology",
-            "date_iso": "2024-07-01",
-            "full_text": "Adenocarcinoma, moderately differentiated.",
-        })
-        records = meditech_to_unified(sample_meditech_data)
-        path = next(
-            (p for p in records.pathology_reports if "Colon" in (p.specimen or "")), None
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "Colon biopsy",
+                "category": "Pathology",
+                "date_iso": "2024-07-01",
+                "full_text": "Adenocarcinoma, moderately differentiated.",
+            }
         )
+        records = meditech_to_unified(sample_meditech_data)
+        path = next((p for p in records.pathology_reports if "Colon" in (p.specimen or "")), None)
         assert path is not None
         assert "Adenocarcinoma" in path.full_text
 
     def test_fhir_diagnostic_report_clinical_note_fallback(self, sample_meditech_data):
         """DiagnosticReports without known category fall back to clinical notes."""
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "Consult Note",
-            "category": "other",
-            "date_iso": "2025-01-12",
-            "full_text": "Patient discussed treatment options.",
-        })
-        records = meditech_to_unified(sample_meditech_data)
-        cn = next(
-            (n for n in records.clinical_notes if "Consult" in n.note_type), None
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "Consult Note",
+                "category": "other",
+                "date_iso": "2025-01-12",
+                "full_text": "Patient discussed treatment options.",
+            }
         )
+        records = meditech_to_unified(sample_meditech_data)
+        cn = next((n for n in records.clinical_notes if "Consult" in n.note_type), None)
         assert cn is not None
         assert "treatment options" in cn.content
 
@@ -635,63 +640,67 @@ class TestMeditechAdapterCCDAMerge:
         baseline = meditech_to_unified(sample_meditech_data)
         baseline_notes = len(baseline.clinical_notes)
 
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "CBC",
-            "category": "LAB",
-            "date_iso": "2024-06-01",
-            "full_text": "",
-        })
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "Comprehensive Metabolic Panel",
-            "category": "lab",
-            "date_iso": "2024-06-01",
-            "full_text": "",
-        })
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "CBC",
+                "category": "LAB",
+                "date_iso": "2024-06-01",
+                "full_text": "",
+            }
+        )
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "Comprehensive Metabolic Panel",
+                "category": "lab",
+                "date_iso": "2024-06-01",
+                "full_text": "",
+            }
+        )
         records = meditech_to_unified(sample_meditech_data)
         # LAB reports should not appear as clinical notes
         assert len(records.clinical_notes) == baseline_notes
 
     def test_fhir_diagnostic_report_radiology_non_imaging_becomes_note(self, sample_meditech_data):
         """Non-imaging reports categorized as 'Radiology' become clinical notes, not imaging."""
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "Office Visit",
-            "category": "Radiology",
-            "date_iso": "2025-01-12",
-            "full_text": "Follow-up visit, patient doing well.",
-        })
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "Office Visit",
+                "category": "Radiology",
+                "date_iso": "2025-01-12",
+                "full_text": "Follow-up visit, patient doing well.",
+            }
+        )
         records = meditech_to_unified(sample_meditech_data)
         # Should NOT appear as imaging
-        assert not any(
-            r.study_name == "Office Visit" for r in records.imaging_reports
-        )
+        assert not any(r.study_name == "Office Visit" for r in records.imaging_reports)
         # Should appear as a clinical note instead
-        cn = next(
-            (n for n in records.clinical_notes if "Office Visit" in n.note_type), None
-        )
+        cn = next((n for n in records.clinical_notes if "Office Visit" in n.note_type), None)
         assert cn is not None
         assert cn.content == "Follow-up visit, patient doing well."
 
     def test_fhir_diagnostic_report_radiology_imaging_stays_imaging(self, sample_meditech_data):
         """Actual imaging reports with 'Radiology' category remain as imaging reports."""
-        sample_meditech_data["fhir_data"]["diagnostic_reports"].append({
-            "text": "MRI Brain",
-            "category": "Radiology",
-            "date_iso": "2025-01-13",
-            "full_text": "No acute intracranial abnormality.",
-        })
-        records = meditech_to_unified(sample_meditech_data)
-        mri = next(
-            (r for r in records.imaging_reports if r.study_name == "MRI Brain"), None
+        sample_meditech_data["fhir_data"]["diagnostic_reports"].append(
+            {
+                "text": "MRI Brain",
+                "category": "Radiology",
+                "date_iso": "2025-01-13",
+                "full_text": "No acute intracranial abnormality.",
+            }
         )
+        records = meditech_to_unified(sample_meditech_data)
+        mri = next((r for r in records.imaging_reports if r.study_name == "MRI Brain"), None)
         assert mri is not None
         assert "No acute" in mri.full_text
 
     def test_fhir_allergy_empty_allergen_skipped(self, sample_meditech_data):
         """Allergy records with empty allergen are skipped."""
-        sample_meditech_data["fhir_data"]["allergy_intolerances"].append({
-            "allergen": "",
-            "reaction": "Unknown",
-        })
+        sample_meditech_data["fhir_data"]["allergy_intolerances"].append(
+            {
+                "allergen": "",
+                "reaction": "Unknown",
+            }
+        )
         records = meditech_to_unified(sample_meditech_data)
         # Should only have the original Sulfa drugs, not the empty one
         assert all(a.allergen for a in records.allergies)
@@ -760,12 +769,17 @@ class TestEpicAdapterEdgeCases:
 
     def test_extract_snomed_code_non_snomed(self, sample_epic_data):
         """Procedures with non-SNOMED code system return empty snomed_code."""
-        from chartfold.adapters.epic_adapter import _extract_snomed_code
-        assert _extract_snomed_code({"code_system": "2.16.840.1.113883.6.12", "code_value": "99213"}) == ""
+        from health_memex.adapters.epic_adapter import _extract_snomed_code
+
+        assert (
+            _extract_snomed_code({"code_system": "2.16.840.1.113883.6.12", "code_value": "99213"})
+            == ""
+        )
 
     def test_format_provider_list_non_list(self):
         """Non-list authors return empty string."""
-        from chartfold.adapters.epic_adapter import _format_provider_list
+        from health_memex.adapters.epic_adapter import _format_provider_list
+
         assert _format_provider_list("Dr. Smith") == ""
         assert _format_provider_list(None) == ""
 

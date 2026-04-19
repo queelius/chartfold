@@ -1,8 +1,8 @@
-"""Tests for chartfold.config module."""
+"""Tests for health_memex.config module."""
 
 import pytest
 
-from chartfold.config import (
+from health_memex.config import (
     FALLBACK_KEY_TESTS,
     KNOWN_ABBREVIATIONS,
     LabTestConfig,
@@ -11,14 +11,14 @@ from chartfold.config import (
     get_lab_test_configs,
     load_config,
 )
-from chartfold.db import ChartfoldDB
-from chartfold.models import LabResult, UnifiedRecords
+from health_memex.db import HealthMemexDB
+from health_memex.models import LabResult, UnifiedRecords
 
 
 @pytest.fixture
 def config_db(tmp_path):
     """Database with lab data for config generation."""
-    db = ChartfoldDB(str(tmp_path / "config.db"))
+    db = HealthMemexDB(str(tmp_path / "config.db"))
     db.init_schema()
 
     records = UnifiedRecords(
@@ -82,7 +82,7 @@ def config_db(tmp_path):
 @pytest.fixture
 def alias_db(tmp_path):
     """Database with cross-source lab data for name grouping."""
-    db = ChartfoldDB(str(tmp_path / "alias.db"))
+    db = HealthMemexDB(str(tmp_path / "alias.db"))
     db.init_schema()
 
     epic_records = UnifiedRecords(
@@ -338,7 +338,7 @@ class TestGroupTestNames:
 
     def test_abbreviation_grouping_without_loinc(self, tmp_path):
         """KNOWN_ABBREVIATIONS groups names even without shared LOINC."""
-        db = ChartfoldDB(str(tmp_path / "abbrev.db"))
+        db = HealthMemexDB(str(tmp_path / "abbrev.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
@@ -370,7 +370,7 @@ class TestGroupTestNames:
 
     def test_reverse_lookup(self, tmp_path):
         """If a known alias is in key_tests, the abbreviation is grouped in."""
-        db = ChartfoldDB(str(tmp_path / "reverse.db"))
+        db = HealthMemexDB(str(tmp_path / "reverse.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
@@ -402,7 +402,7 @@ class TestGroupTestNames:
 
     def test_non_standard_loinc_codes_ignored(self, tmp_path):
         """Internal codes like IMO0002 should not create false groupings."""
-        db = ChartfoldDB(str(tmp_path / "bad_loinc.db"))
+        db = HealthMemexDB(str(tmp_path / "bad_loinc.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
@@ -478,7 +478,7 @@ class TestGenerateConfig:
         assert isinstance(data["lab_tests"][0]["match"], list)
 
     def test_empty_db_uses_fallbacks(self, tmp_path):
-        db = ChartfoldDB(str(tmp_path / "empty.db"))
+        db = HealthMemexDB(str(tmp_path / "empty.db"))
         db.init_schema()
 
         out = str(tmp_path / "fallback.toml")
@@ -533,7 +533,7 @@ class TestGenerateConfig:
 
     def test_alias_dedup_merges_counts(self, tmp_path):
         """Cross-source name variants are merged before selecting top-N."""
-        db = ChartfoldDB(str(tmp_path / "dedup.db"))
+        db = HealthMemexDB(str(tmp_path / "dedup.db"))
         db.init_schema()
         # BUN (19 results) and Blood Urea Nitrogen (17 results)
         # should merge into one slot, not two
@@ -594,7 +594,7 @@ class TestGenerateConfig:
 
     def test_fallback_tests_always_included(self, tmp_path):
         """Clinically important tests from FALLBACK_KEY_TESTS are always included."""
-        db = ChartfoldDB(str(tmp_path / "fallback_include.db"))
+        db = HealthMemexDB(str(tmp_path / "fallback_include.db"))
         db.init_schema()
         # Create many high-frequency tests that push CEA out of top-N
         results = []
@@ -716,7 +716,7 @@ class TestKnownAbbreviations:
 
     def test_abbreviation_grouping_metabolic(self, tmp_path):
         """Metabolic panel abbreviations group correctly."""
-        db = ChartfoldDB(str(tmp_path / "metabolic.db"))
+        db = HealthMemexDB(str(tmp_path / "metabolic.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
@@ -748,7 +748,7 @@ class TestKnownAbbreviations:
 
     def test_abbreviation_grouping_liver(self, tmp_path):
         """Liver function abbreviations group ALT/SGPT."""
-        db = ChartfoldDB(str(tmp_path / "liver.db"))
+        db = HealthMemexDB(str(tmp_path / "liver.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",
@@ -780,7 +780,7 @@ class TestKnownAbbreviations:
 
     def test_abbreviation_grouping_coag(self, tmp_path):
         """Coagulation abbreviations group PTT/aPTT."""
-        db = ChartfoldDB(str(tmp_path / "coag.db"))
+        db = HealthMemexDB(str(tmp_path / "coag.db"))
         db.init_schema()
         records = UnifiedRecords(
             source="test",

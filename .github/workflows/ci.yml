@@ -45,7 +45,7 @@ jobs:
           pip install mypy lxml-stubs
 
       - name: Type check with mypy
-        run: mypy src/chartfold/
+        run: mypy src/health_memex/
 
   test:
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          python -m pytest tests/ --cov=chartfold --cov-report=term-missing --cov-report=xml
+          python -m pytest tests/ --cov=health_memex --cov-report=term-missing --cov-report=xml
         if: matrix.python-version == '3.11'
 
       - name: Upload coverage to Codecov

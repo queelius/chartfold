@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from chartfold.db import ChartfoldDB
-from chartfold.spa.export import (
+from health_memex.db import HealthMemexDB
+from health_memex.spa.export import (
     _load_config_json,
     _load_images_json,
     export_spa,
@@ -23,7 +23,7 @@ from chartfold.spa.export import (
 def spa_db(tmp_path):
     """Create a minimal DB with some test data."""
     db_path = tmp_path / "test.db"
-    db = ChartfoldDB(str(db_path))
+    db = HealthMemexDB(str(db_path))
     db.init_schema()
     db.conn.execute(
         "INSERT INTO lab_results (source, test_name, value, result_date) VALUES (?, ?, ?, ?)",
@@ -37,7 +37,7 @@ def spa_db(tmp_path):
 @pytest.fixture
 def spa_output(tmp_path):
     """Return a path for the SPA HTML output."""
-    return str(tmp_path / "output" / "chartfold.html")
+    return str(tmp_path / "output" / "health_memex.html")
 
 
 @pytest.fixture
@@ -73,17 +73,17 @@ class TestSpaExport:
 
     def test_contains_embedded_db(self, exported_html):
         """HTML contains a script tag with the embedded database."""
-        assert 'id="chartfold-db"' in exported_html
+        assert 'id="health-memex-db"' in exported_html
 
     def test_embedded_db_is_decodable(self, exported_html):
         """The embedded database can be decoded, decompressed, and is valid SQLite."""
-        # Extract the base64 content from the chartfold-db script tag
+        # Extract the base64 content from the health-memex-db script tag
         match = re.search(
-            r'<script id="chartfold-db" type="application/gzip\+base64">(.*?)</script>',
+            r'<script id="health-memex-db" type="application/gzip\+base64">(.*?)</script>',
             exported_html,
             re.DOTALL,
         )
-        assert match is not None, "Could not find chartfold-db script tag"
+        assert match is not None, "Could not find health-memex-db script tag"
 
         db_b64 = match.group(1).strip()
         db_compressed = base64.b64decode(db_b64)
@@ -107,11 +107,11 @@ class TestSpaExport:
 
     def test_contains_config_script(self, exported_html):
         """HTML contains the config script tag."""
-        assert 'id="chartfold-config"' in exported_html
+        assert 'id="health-memex-config"' in exported_html
 
     def test_contains_images_script(self, exported_html):
         """HTML contains the images script tag."""
-        assert 'id="chartfold-images"' in exported_html
+        assert 'id="health-memex-images"' in exported_html
 
     def test_contains_db_js_code(self, exported_html):
         """HTML contains the DB module code from db.js."""
@@ -126,7 +126,7 @@ class TestSpaExport:
     def test_default_empty_config(self, exported_html):
         """Without a config path, the config JSON is empty object."""
         match = re.search(
-            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-config" type="application/json">(.*?)</script>',
             exported_html,
             re.DOTALL,
         )
@@ -136,7 +136,7 @@ class TestSpaExport:
     def test_default_empty_images(self, exported_html):
         """Without embed_images, the images JSON is empty object."""
         match = re.search(
-            r'<script id="chartfold-images" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-images" type="application/json">(.*?)</script>',
             exported_html,
             re.DOTALL,
         )
@@ -175,7 +175,7 @@ class TestLoadConfigJson:
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
         match = re.search(
-            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-config" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -185,7 +185,6 @@ class TestLoadConfigJson:
 
 
 # --- Analysis loading tests ---
-
 
 
 # --- Image loading tests ---
@@ -274,7 +273,7 @@ class TestLoadImagesJson:
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
         match = re.search(
-            r'<script id="chartfold-images" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-images" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -303,7 +302,7 @@ class TestLoadImagesJson:
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
         match = re.search(
-            r'<script id="chartfold-images" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-images" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -450,17 +449,15 @@ class TestSectionsJs:
             "mental_status",
         ]
         for table in overview_tables:
-            assert table in exported_html, (
-                f"Overview should reference table '{table}'"
-            )
+            assert table in exported_html, f"Overview should reference table '{table}'"
 
     def test_overview_cards_navigate_on_click(self, exported_html):
         """Overview cards navigate to their section on click."""
         assert "Router.navigate(sec)" in exported_html
 
     def test_overview_reads_config_for_sparklines(self, exported_html):
-        """Overview reads the chartfold-config for key lab test sparklines."""
-        assert "getElementById('chartfold-config')" in exported_html
+        """Overview reads the health-memex-config for key lab test sparklines."""
+        assert "getElementById('health-memex-config')" in exported_html
         assert "key_tests" in exported_html
 
     def test_overview_has_sparkline(self, exported_html):
@@ -519,18 +516,16 @@ class TestSectionsJs:
             "_sectionPreamble(el, db, 'source_assets'",
         ]
         for call in table_calls:
-            assert call in exported_html, (
-                f"Expected _sectionPreamble call not found: {call}"
-            )
+            assert call in exported_html, f"Expected _sectionPreamble call not found: {call}"
 
     def test_sql_console_section_no_count(self, exported_html):
         """SQL console section does not query a count table."""
         assert "UI.sectionHeader('SQL Console'" in exported_html
 
     def test_analysis_section_reads_embedded_json(self, exported_html):
-        """Analysis section reads from the chartfold-analysis embedded data."""
+        """Analysis section reads from the health-memex-analysis embedded data."""
         # The analysis section should reference the embedded JSON
-        assert "getElementById('chartfold-analysis')" in exported_html
+        assert "getElementById('health-memex-analysis')" in exported_html
 
     # --- Conditions section tests ---
 
@@ -693,7 +688,9 @@ class TestChartRendererJs:
 
     def test_chart_renderer_has_set_tooltip_content(self, exported_html):
         """ChartRenderer has a _setTooltipContent helper for safe DOM tooltip rendering."""
-        assert "_setTooltipContent: function(tooltip, label, value, dateStr, source)" in exported_html
+        assert (
+            "_setTooltipContent: function(tooltip, label, value, dateStr, source)" in exported_html
+        )
 
     def test_chart_uses_device_pixel_ratio(self, exported_html):
         """Chart renderer uses devicePixelRatio for high-DPI displays."""
@@ -926,9 +923,7 @@ class TestLabResultsSection:
     def test_lab_results_table_columns(self, exported_html):
         """Lab results table has expected columns."""
         for col in ["Test Name", "Value", "Unit", "Ref Range", "Date", "Source"]:
-            assert col in exported_html, (
-                f"Lab results table should have column '{col}'"
-            )
+            assert col in exported_html, f"Lab results table should have column '{col}'"
 
     def test_lab_results_table_abnormal_badge(self, exported_html):
         """Lab results table shows red badge for abnormal interpretations."""
@@ -982,7 +977,7 @@ class TestExportSpaAdditional:
     def test_empty_database(self, tmp_path):
         """Export succeeds with a schema-only database (no data)."""
         db_path = tmp_path / "empty.db"
-        schema = (Path(__file__).parent.parent / "src" / "chartfold" / "schema.sql").read_text()
+        schema = (Path(__file__).parent.parent / "src" / "health_memex" / "schema.sql").read_text()
         conn = sqlite3.connect(str(db_path))
         conn.executescript(schema)
         conn.close()
@@ -994,7 +989,7 @@ class TestExportSpaAdditional:
             html = f.read()
         assert html.startswith("<!DOCTYPE html>")
         assert html.rstrip().endswith("</html>")
-        assert 'id="chartfold-db"' in html
+        assert 'id="health-memex-db"' in html
 
     def test_gzip_compression_reduces_size(self, spa_db, tmp_path):
         """The gzip-compressed base64 DB is smaller than the raw DB file."""
@@ -1004,7 +999,7 @@ class TestExportSpaAdditional:
             html = f.read()
 
         match = re.search(
-            r'<script id="chartfold-db" type="application/gzip\+base64">(.*?)</script>',
+            r'<script id="health-memex-db" type="application/gzip\+base64">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -1023,7 +1018,7 @@ class TestExportSpaAdditional:
             html = f.read()
         # Config should fall back to empty object
         match = re.search(
-            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-config" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -1041,7 +1036,7 @@ class TestExportSpaAdditional:
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
         match = re.search(
-            r'<script id="chartfold-config" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-config" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -1071,7 +1066,7 @@ class TestExportSpaAdditional:
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
         match = re.search(
-            r'<script id="chartfold-images" type="application/json">(.*?)</script>',
+            r'<script id="health-memex-images" type="application/json">(.*?)</script>',
             html,
             re.DOTALL,
         )
@@ -1168,7 +1163,7 @@ class TestSecurityHardening:
 
     def test_markdown_escapes_double_quotes(self, exported_html):
         """Markdown esc() function must escape double quotes to prevent attribute breakout."""
-        assert '&quot;' in exported_html or "&amp;quot;" in exported_html, (
+        assert "&quot;" in exported_html or "&amp;quot;" in exported_html, (
             "markdown.js esc() must escape double quotes"
         )
 
@@ -1191,7 +1186,7 @@ class TestSecurityHardening:
 
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = []
-        with patch("chartfold.spa.export.sqlite3.connect", return_value=mock_conn):
+        with patch("health_memex.spa.export.sqlite3.connect", return_value=mock_conn):
             _load_images_json(spa_db)
         mock_conn.close.assert_called_once()
 
@@ -1214,7 +1209,7 @@ class TestSecurityHardening:
         # Mock sqlite3.connect to track close() calls
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = sqlite3.OperationalError("no such table: source_assets")
-        with patch("chartfold.spa.export.sqlite3.connect", return_value=mock_conn):
+        with patch("health_memex.spa.export.sqlite3.connect", return_value=mock_conn):
             result = _load_images_json(str(db_path))
         assert json.loads(result) == {}
         mock_conn.close.assert_called_once()
@@ -1227,7 +1222,7 @@ class TestSecurityHardening:
         export_spa(spa_db, out_path, config_path=str(config_path))
         with open(out_path, encoding="utf-8") as f:
             html = f.read()
-        assert '</script><script>alert' not in html, (
+        assert "</script><script>alert" not in html, (
             "Config JSON must escape </script> sequences to prevent injection"
         )
 
@@ -1235,27 +1230,22 @@ class TestSecurityHardening:
         """SQL console must block PRAGMA statements to prevent disabling query_only."""
         assert "PRAGMA" in exported_html.upper() or "pragma" in exported_html.lower()
         # The forbidden regex must include PRAGMA
-        assert "PRAGMA" in exported_html, (
-            "SQL console forbidden regex must include PRAGMA keyword"
-        )
+        assert "PRAGMA" in exported_html, "SQL console forbidden regex must include PRAGMA keyword"
 
     def test_sql_console_blocks_replace(self, exported_html):
         """SQL console must block REPLACE statements (SQLite write operation)."""
         # Check the forbidden keyword regex includes REPLACE
         import re
+
         # Find the forbidden regex pattern in the JS
-        match = re.search(r'var forbidden\s*=\s*/(.+?)/i', exported_html)
+        match = re.search(r"var forbidden\s*=\s*/(.+?)/i", exported_html)
         assert match is not None, "SQL console forbidden regex not found"
         pattern = match.group(1)
-        assert "REPLACE" in pattern, (
-            "SQL console forbidden regex must include REPLACE keyword"
-        )
+        assert "REPLACE" in pattern, "SQL console forbidden regex must include REPLACE keyword"
 
     def test_markdown_escapes_single_quotes(self, exported_html):
         """Markdown esc() must escape single quotes for defense in depth."""
-        assert "&#39;" in exported_html, (
-            "markdown.js esc() must escape single quotes"
-        )
+        assert "&#39;" in exported_html, "markdown.js esc() must escape single quotes"
 
 
 class TestNewSections:
@@ -1345,13 +1335,23 @@ class TestNewSections:
 
     def test_sidebar_has_all_new_sections(self, exported_html):
         """Sidebar includes all 5 new section entries."""
-        for sid in ["social_history", "family_history", "mental_status", "patients", "personal_notes"]:
-            assert f'"id": "{sid}"' in exported_html or f"id: \"{sid}\"" in exported_html or f"'{sid}'" in exported_html
+        for sid in [
+            "social_history",
+            "family_history",
+            "mental_status",
+            "patients",
+            "personal_notes",
+        ]:
+            assert (
+                f'"id": "{sid}"' in exported_html
+                or f'id: "{sid}"' in exported_html
+                or f"'{sid}'" in exported_html
+            )
 
     def test_new_sections_with_data(self, tmp_path):
         """Integration: new sections render when data is present in DB."""
         db_path = tmp_path / "full.db"
-        db = ChartfoldDB(str(db_path))
+        db = HealthMemexDB(str(db_path))
         db.init_schema()
         db.conn.execute(
             "INSERT INTO patients (source, name, date_of_birth, gender, mrn) "
@@ -1364,8 +1364,7 @@ class TestNewSections:
             ("test", "Smoking Status", "Never smoker", "2025-01-15"),
         )
         db.conn.execute(
-            "INSERT INTO family_history (source, relation, condition) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO family_history (source, relation, condition) VALUES (?, ?, ?)",
             ("test", "Father", "Hypertension"),
         )
         db.conn.execute(
@@ -1374,8 +1373,7 @@ class TestNewSections:
             ("test", "PHQ-9", "Little interest?", "Several days", 1, 5, "2025-01-15"),
         )
         db.conn.execute(
-            "INSERT INTO notes (title, content, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
             ("My Note", "Test content", "2025-01-15T12:00:00", "2025-01-15T12:00:00"),
         )
         db.conn.commit()
@@ -1386,7 +1384,7 @@ class TestNewSections:
         html = Path(out).read_text(encoding="utf-8")
 
         # The database embeds these records — verify the DB was embedded
-        assert 'id="chartfold-db"' in html
+        assert 'id="health-memex-db"' in html
         # The section code is present
         assert "patients(el, db)" in html
         assert "social_history(el, db)" in html
@@ -1544,9 +1542,9 @@ class TestLinkedAssetImages:
         assert "SELECT id, file_name, asset_type FROM source_assets" in exported_html
 
     def test_loads_embedded_images_cache(self, exported_html):
-        """_getEmbeddedImages should parse chartfold-images script tag."""
+        """_getEmbeddedImages should parse health-memex-images script tag."""
         assert "_getEmbeddedImages" in exported_html
-        assert "chartfold-images" in exported_html
+        assert "health-memex-images" in exported_html
 
     def test_renders_img_tag_for_image_assets(self, exported_html):
         """Should render <img> tags for assets with embedded image data."""
@@ -1569,8 +1567,8 @@ class TestLinkedAssetImages:
 
     def test_sources_section_uses_shared_cache(self, exported_html):
         """Sources section should use _getEmbeddedImages() not duplicate loading."""
-        # Should only have one getElementById('chartfold-images') — in the cache function
-        count = exported_html.count("getElementById('chartfold-images')")
+        # Should only have one getElementById('health-memex-images') — in the cache function
+        count = exported_html.count("getElementById('health-memex-images')")
         assert count == 1
 
 
@@ -1584,23 +1582,25 @@ class TestAiChatExport:
     def ai_chat_html(self, spa_db, spa_output):
         """Export SPA with AI chat enabled and return the HTML content."""
         export_spa(
-            spa_db, spa_output, ai_chat=True,
+            spa_db,
+            spa_output,
+            ai_chat=True,
             proxy_url="https://proxy.example.com/v1/messages",
         )
         return Path(spa_output).read_text()
 
     def test_default_export_has_no_chat_script_tags(self, exported_html):
         """Without ai_chat flag, no chat data script tags should appear."""
-        assert 'id="chartfold-system-prompt"' not in exported_html
-        assert 'id="chartfold-chat-config"' not in exported_html
+        assert 'id="health-memex-system-prompt"' not in exported_html
+        assert 'id="health-memex-chat-config"' not in exported_html
 
     def test_ai_chat_includes_system_prompt(self, ai_chat_html):
-        assert 'id="chartfold-system-prompt"' in ai_chat_html
+        assert 'id="health-memex-system-prompt"' in ai_chat_html
         assert "CREATE TABLE" in ai_chat_html
         assert "medical data analyst" in ai_chat_html.lower()
 
     def test_ai_chat_includes_config(self, ai_chat_html):
-        assert 'id="chartfold-chat-config"' in ai_chat_html
+        assert 'id="health-memex-chat-config"' in ai_chat_html
         assert "proxy.example.com" in ai_chat_html
 
     def test_ai_chat_includes_chat_js(self, ai_chat_html):
@@ -1614,8 +1614,8 @@ class TestAiChatExport:
         """ai_chat=True without proxy_url still works."""
         export_spa(spa_db, spa_output, ai_chat=True)
         html = Path(spa_output).read_text()
-        assert 'id="chartfold-system-prompt"' in html
-        assert 'id="chartfold-chat-config"' in html
+        assert 'id="health-memex-system-prompt"' in html
+        assert 'id="health-memex-chat-config"' in html
 
     def test_ai_chat_has_container_reattach(self, ai_chat_html):
         """Chat JS should check for existing _container before rebuilding."""
@@ -1647,15 +1647,14 @@ class TestAiChatIntegration:
         """End-to-end: DB with analyses -> export with ai_chat -> all pieces present."""
         # Create DB with clinical data + analyses
         db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
+        db = HealthMemexDB(db_path)
         db.init_schema()
         db.conn.execute(
             "INSERT INTO patients (source, name, date_of_birth) VALUES (?, ?, ?)",
             ("epic", "Test Patient", "1970-01-01"),
         )
         db.conn.execute(
-            "INSERT INTO lab_results (source, test_name, value, result_date) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO lab_results (source, test_name, value, result_date) VALUES (?, ?, ?, ?)",
             ("epic", "CEA", "4.5", "2025-06-01"),
         )
         db.conn.execute(
@@ -1687,13 +1686,13 @@ class TestAiChatIntegration:
         html = Path(out_path).read_text()
 
         # System prompt embedded with schema and analyses
-        assert 'id="chartfold-system-prompt"' in html
+        assert 'id="health-memex-system-prompt"' in html
         assert "CREATE TABLE" in html
         assert "Case Summary" in html
         assert "colon cancer" in html
 
         # Chat config embedded
-        assert 'id="chartfold-chat-config"' in html
+        assert 'id="health-memex-chat-config"' in html
         assert "proxy.example.com" in html
 
         # Chat JS included
@@ -1709,7 +1708,7 @@ class TestAiChatIntegration:
 
         # Existing features still work
         assert "sql-wasm" in html
-        assert "chartfold-db" in html
+        assert "health-memex-db" in html
 
 
 class TestVisitPrep:

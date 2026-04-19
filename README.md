@@ -1,34 +1,34 @@
-# chartfold
+# health-memex
 
-Patient-facing tool for consolidating personal health data from multiple EHR (Electronic Health Record) systems into a single SQLite database. Query, analyze, and export your aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or self-contained HTML SPA.
+Personal health data archive: consolidate medical records from multiple EHR systems into a single queryable SQLite database. Part of the [`*-memex` ecosystem](https://github.com/queelius/memex).
 
-**Goal:** Patient empowerment through data ownership — enabling time-series analysis, intelligent querying with tools like Claude Code, and organized preparation for medical visits.
+Query, analyze, and export your aggregated clinical data via CLI, MCP server (for LLM-assisted analysis), or self-contained HTML SPA.
 
 ## Features
 
-- **Multi-EHR data consolidation** — Import from Epic MyChart, MEDITECH Expanse, and athenahealth
-- **SQLite database** — 17 clinical tables with full audit trail
-- **MCP server** — 25 tools for LLM-assisted analysis with Claude
-- **Export formats** — Self-contained HTML SPA, Arkiv (JSONL + README.md + schema.yaml)
-- **AI chat** — Ask questions about your record in the HTML SPA via Claude, with inline charts (optional, requires proxy)
-- **Visit prep** — See what's new since your last visit, directly in the SPA
-- **Print summary** — One-page printable view for your doctor
-- **Personal notes** — Tag and annotate any clinical record
+- **Multi-EHR data consolidation**: Import from Epic MyChart, MEDITECH Expanse, and athenahealth
+- **SQLite database**: 17 clinical tables with full audit trail
+- **MCP server**: 31 tools for LLM-assisted analysis with Claude
+- **Export formats**: Self-contained HTML SPA, Arkiv (JSONL + README.md + schema.yaml)
+- **AI chat**: Ask questions about your record in the HTML SPA via Claude, with inline charts (optional, requires proxy)
+- **Visit prep**: See what's new since your last visit, directly in the SPA
+- **Print summary**: One-page printable view for your doctor
+- **Personal notes**: Tag and annotate any clinical record
 
 ## Installation
 
 ```bash
-pip install chartfold
+pip install health-memex
 
 # With MCP server support (for Claude integration)
-pip install "chartfold[mcp]"
+pip install "health-memex[mcp]"
 ```
 
 ### Development Setup
 
 ```bash
-git clone https://github.com/queelius/chartfold.git
-cd chartfold
+git clone https://github.com/queelius/health-memex.git
+cd health-memex
 pip install -e ".[dev,mcp]"
 ```
 
@@ -38,12 +38,12 @@ pip install -e ".[dev,mcp]"
 
 ```bash
 # Load from individual sources
-chartfold load epic ~/exports/epic/
-chartfold load meditech ~/exports/meditech/
-chartfold load athena ~/exports/athena/
+health-memex load epic ~/exports/epic/
+health-memex load meditech ~/exports/meditech/
+health-memex load athena ~/exports/athena/
 
 # Or load all at once
-chartfold load all \
+health-memex load all \
   --epic-dir ~/exports/epic/ \
   --meditech-dir ~/exports/meditech/ \
   --athena-dir ~/exports/athena/
@@ -53,67 +53,57 @@ chartfold load all \
 
 ```bash
 # View database summary
-chartfold summary
+health-memex summary
 
 # Run SQL queries
-chartfold query "SELECT test_name, value, result_date FROM lab_results ORDER BY result_date DESC LIMIT 10"
+health-memex query "SELECT test_name, value, result_date FROM lab_results ORDER BY result_date DESC LIMIT 10"
 
 # What's new since your last visit
-chartfold diff 2025-01-01
+health-memex diff 2025-01-01
 ```
 
 ### Export Your Data
 
 ```bash
 # Self-contained HTML SPA with embedded SQLite (all data stays client-side)
-chartfold export html --output summary.html
-chartfold export html --output summary.html --embed-images --config chartfold.toml
-chartfold export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
+health-memex export html --output summary.html
+health-memex export html --output summary.html --embed-images --config health_memex.toml
+health-memex export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
 
-# Arkiv universal record format — primary backup/restore (round-trip capable)
-chartfold export arkiv --output ./arkiv/
-chartfold export arkiv --output ./arkiv/ --embed          # inline base64 assets
-chartfold export arkiv --output ./arkiv/ --exclude-notes
+# Arkiv universal record format (primary backup/restore, round-trip capable)
+health-memex export arkiv --output ./arkiv/
+health-memex export arkiv --output ./arkiv/ --embed
 
 # Import from arkiv archive
-chartfold import ./arkiv/ --db new_chartfold.db
-chartfold import ./arkiv/ --validate-only
-chartfold import ./arkiv/ --db existing.db --overwrite
+health-memex import ./arkiv/ --db new.db
+health-memex import ./arkiv/ --validate-only
 ```
 
-### AI Chat (Optional)
-
-The HTML SPA export can include an AI chat interface that lets you ask natural-language questions about your medical record. The LLM runs SQL queries against the embedded database — all patient data stays in your browser.
+### MCP Server
 
 ```bash
-chartfold export html --output summary.html --ai-chat --proxy-url https://proxy.example.com/v1/messages
+# Start MCP server (matches ecosystem pattern: memex mcp, btk mcp)
+health-memex mcp --db health_memex.db
 ```
 
-Requirements:
-- A CORS proxy that forwards requests to the Anthropic Messages API (injects your API key and sets the model server-side)
-- The proxy URL can also be configured in the SPA via the "Proxy settings" link
+### Claude Code Configuration
 
-The system prompt includes the full database schema, summary statistics, and any analyses marked `status: "current"` in their frontmatter. The chat interface supports multi-turn conversation with an agent loop — the LLM can issue multiple SQL queries per question and render inline charts for trend visualization.
-
-### Visit Prep
-
-The SPA includes a "Visit Prep" section that auto-detects your most recent encounter date and shows everything new since then: lab results, encounters, medications, imaging, clinical notes, conditions, procedures, pathology, and genetic variants. The date is editable for custom ranges.
-
-### Print Summary
-
-The "Print Summary" section generates a one-page printable view with patient demographics, active conditions, active medications, recent labs with trend indicators, and last 3 encounters. Click "Print" or use Ctrl+P to print or save as PDF.
+```json
+{
+  "mcpServers": {
+    "health-memex": {
+      "command": "python",
+      "args": ["-m", "health_memex", "mcp", "--db", "/path/to/health_memex.db"]
+    }
+  }
+}
+```
 
 ### Personal Notes
 
 ```bash
-# List recent notes
-chartfold notes list --limit 20
-
-# Search by tag or query
-chartfold notes search --tag oncology --query "CEA"
-
-# Search by reference (notes linked to specific records)
-chartfold notes search --ref-table lab_results
+health-memex notes list --limit 20
+health-memex notes search --tag oncology --query "CEA"
 ```
 
 ## Supported EHR Sources
@@ -125,18 +115,9 @@ chartfold notes search --ref-table lab_results
 | **MEDITECH Expanse** | CCDA XML + FHIR JSON | Dual-format bulk exports (merged and deduplicated) |
 | **athenahealth** | FHIR R4 XML | Ambulatory summary exports |
 
-### Expected Input Directory Structures
-
-```
-Epic:      input_dir/DOC0001.XML, DOC0002.XML, ...
-MEDITECH:  input_dir/US Core FHIR Resources.json
-           input_dir/CCDA/<uuid>.xml
-athena:    input_dir/Document_XML/*AmbulatorySummary*.xml
-```
-
 ## Database Schema
 
-chartfold stores data in 17 clinical tables:
+17 clinical tables, all dates ISO `YYYY-MM-DD`, every record carries a `source` field:
 
 | Category | Tables |
 |----------|--------|
@@ -148,148 +129,19 @@ chartfold stores data in 17 clinical tables:
 | **Genomics** | `genetic_variants` |
 | **Notes** | `clinical_notes` |
 | **History** | `immunizations`, `social_history`, `family_history`, `mental_status` |
-| **System** | `load_log` (audit), `notes`, `note_tags` (personal), `source_assets`, `analyses`, `analysis_tags` |
-
-All dates are stored as ISO `YYYY-MM-DD` strings. Every record carries a `source` field for provenance tracking.
-
-## MCP Server
-
-chartfold includes an MCP (Model Context Protocol) server with 25 tools for LLM-assisted health data analysis:
-
-```bash
-chartfold serve-mcp --db chartfold.db
-```
-
-### Available Tools
-
-| Category | Tools |
-|----------|-------|
-| **SQL & Schema** | `run_sql`, `get_schema`, `get_database_summary` |
-| **Labs** | `query_labs`, `get_lab_series_tool`, `get_available_tests_tool`, `get_abnormal_labs_tool` |
-| **Medications** | `get_medications`, `reconcile_medications_tool` |
-| **Clinical** | `get_timeline`, `search_notes`, `get_pathology_report` |
-| **Visit Prep** | `get_visit_diff`, `get_visit_prep`, `get_surgical_timeline` |
-| **Cross-source** | `match_cross_source_encounters`, `get_data_quality_report` |
-| **Source Assets** | `get_source_files`, `get_asset_summary` |
-| **Personal Notes** | `save_note`, `get_note`, `search_notes_personal`, `delete_note` |
-| **Analyses** | `save_analysis`, `get_analysis`, `search_analyses`, `list_analyses`, `delete_analysis` |
-
-Clinical data is read-only (`?mode=ro` enforced at the SQLite engine level). Write operations are limited to personal notes and structured analyses.
-
-### Claude Code Configuration
-
-Drop a `.mcp.json` in any directory where you run Claude Code:
-
-```json
-{
-  "mcpServers": {
-    "chartfold": {
-      "command": "python",
-      "args": ["-m", "chartfold", "serve-mcp", "--db", "/path/to/chartfold.db"]
-    }
-  }
-}
-```
-
-### Claude Desktop Configuration
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "chartfold": {
-      "command": "python",
-      "args": ["-m", "chartfold", "serve-mcp", "--db", "/path/to/chartfold.db"]
-    }
-  }
-}
-```
+| **System** | `load_log`, `notes`/`note_tags`, `analyses`/`analysis_tags`, `source_assets` |
 
 ## Configuration
 
-Generate a personalized config from your data:
-
 ```bash
-chartfold init-config
+health-memex init-config
 ```
 
-This creates `chartfold.toml` with lab tests to chart based on what's in your database:
-
-```toml
-[[lab_tests]]
-name = "CEA"
-match = ["CEA", "Carcinoembryonic Antigen"]
-
-[[lab_tests]]
-name = "Hemoglobin"
-match = ["Hemoglobin", "Hgb", "HGB"]
-```
-
-## Architecture
-
-chartfold uses a three-stage pipeline for each EHR source:
-
-```
-Raw EHR files (XML/FHIR)
-    ↓
-[Source Parser]  → source-specific dict
-    ↓
-[Adapter]        → UnifiedRecords (normalized dataclasses)
-    ↓
-[DB Loader]      → SQLite tables
-```
-
-### Key Design Decisions
-
-- **Idempotent loading** — Re-running `load` for a source replaces its data
-- **Cross-source deduplication** — Adapters deduplicate records using composite keys
-- **Date normalization** — All dates normalized to ISO format at adapter stage
-- **Provenance tracking** — Every record tracks its source for cross-source analysis
-
-## Testing
-
-```bash
-# Run all tests (1120+ tests)
-python -m pytest tests/
-
-# Run a single test file
-python -m pytest tests/test_adapters.py
-
-# Run with coverage
-python -m pytest tests/ --cov=chartfold --cov-report=term-missing
-```
-
-## Project Structure
-
-```
-src/chartfold/
-├── sources/        # EHR-specific parsers (epic.py, meditech.py, athena.py, mhtml_*.py)
-├── adapters/       # Normalize to UnifiedRecords (epic_adapter.py, etc.)
-├── analysis/       # Query helpers (lab_trends.py, medications.py, etc.)
-├── extractors/     # Specialized parsers (labs.py, pathology.py)
-├── core/           # Shared utilities (cda.py, fhir.py, utils.py)
-├── mcp/            # MCP server (server.py)
-├── spa/            # HTML SPA export with embedded SQLite (sql.js) and optional AI chat
-├── db.py           # Database interface
-├── models.py       # Dataclass models
-├── config.py       # Configuration management
-├── cli.py          # Command-line interface
-├── export_arkiv.py # Arkiv export (JSONL + README.md + schema.yaml)
-└── import_arkiv.py # Arkiv import with validation and FK remapping
-```
-
-## Adding a New EHR Source
-
-1. Create `sources/newsource.py` with `process_*_export(input_dir)` returning a dict
-2. Create `adapters/newsource_adapter.py` with `*_to_unified(data) -> UnifiedRecords`
-3. Add a `SourceConfig` in `sources/base.py`
-4. Wire into `cli.py` (add subcommand)
-5. Add tests in `tests/`
+Generates `health_memex.toml` with lab tests to chart based on what's in your database.
 
 ## Requirements
 
-- Python 3.11+ (uses `tomllib` from stdlib)
+- Python 3.11+
 - Dependencies: `lxml`, `pyyaml`
 - Optional: `mcp` (FastMCP) for MCP server
 

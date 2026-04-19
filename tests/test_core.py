@@ -1,12 +1,12 @@
-"""Tests for chartfold.core modules."""
+"""Tests for health_memex.core modules."""
 
 import json
 
 import pytest
 
-from chartfold.sources.base import detect_source, resolve_epic_dir
+from health_memex.sources.base import detect_source, resolve_epic_dir
 
-from chartfold.core.cda import (
+from health_memex.core.cda import (
     NS,
     format_date,
     get_encounter_date,
@@ -15,8 +15,8 @@ from chartfold.core.cda import (
     parse_doc,
     section_text,
 )
-from chartfold.core.fhir import parse_fhir_bundle
-from chartfold.core.utils import (
+from health_memex.core.fhir import parse_fhir_bundle
+from health_memex.core.utils import (
     categorize_asset_title,
     deduplicate_by_key,
     derive_source_name,
@@ -458,7 +458,7 @@ class TestFHIRParsing:
 
 class TestCEAExtractors:
     def test_extract_cea_from_fhir(self):
-        from chartfold.extractors.labs import extract_cea_from_fhir
+        from health_memex.extractors.labs import extract_cea_from_fhir
 
         observations = [
             {
@@ -486,7 +486,7 @@ class TestCEAExtractors:
         assert result[0]["source"] == "FHIR"
 
     def test_extract_cea_from_labs(self):
-        from chartfold.extractors.labs import extract_cea_from_labs
+        from health_memex.extractors.labs import extract_cea_from_labs
 
         labs = [
             {
@@ -510,7 +510,7 @@ class TestCEAExtractors:
         assert result[0]["source"] == "CCDA"
 
     def test_extract_cea_dedup(self):
-        from chartfold.extractors.labs import extract_cea_from_labs
+        from health_memex.extractors.labs import extract_cea_from_labs
 
         labs = [
             {"test": "Carcinoembryonic Antigen", "date_iso": "2021-11-23", "value": "1.4"},

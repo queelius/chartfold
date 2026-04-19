@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from chartfold.core.cda import NS
-from chartfold.sources.meditech import (
+from health_memex.core.cda import NS
+from health_memex.sources.meditech import (
     _extract_meditech_allergies,
     _extract_meditech_family_history,
     _extract_meditech_immunizations,

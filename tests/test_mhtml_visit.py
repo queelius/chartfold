@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from chartfold.adapters.mhtml_visit_adapter import (
-    _infer_modality,
+from health_memex.adapters.mhtml_visit_adapter import (
     _parser_counts,
     mychart_to_unified,
     save_images,
 )
-from chartfold.db import ChartfoldDB
-from chartfold.sources.mhtml_visit import (
+from health_memex.core.utils import guess_modality
+from health_memex.db import HealthMemexDB
+from health_memex.sources.mhtml_visit import (
     ParsedVisit,
     StudyRef,
     _extract_uuid_from_url,
@@ -63,12 +63,10 @@ def _make_mhtml(html_body: str, images: dict[str, bytes] | None = None) -> bytes
 
 # Two distinct tiny valid 1x1 PNGs (different pixels → different content hash)
 _TINY_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
-    "nGNgYPgPAAEDAQAIicLsAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPgPAAEDAQAIicLsAAAABJRU5ErkJggg=="
 )
 _TINY_PNG_2 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4"
-    "nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 )
 
 _SAMPLE_HTML = """<!DOCTYPE html>
@@ -141,19 +139,19 @@ class TestHelpers:
         assert _extract_uuid_from_url("https://example.com/foo") == ""
 
     def test_infer_modality_mri(self):
-        assert _infer_modality("MRI Abdomen Pelvis") == "MRI"
+        assert guess_modality("MRI Abdomen Pelvis") == "MRI"
 
     def test_infer_modality_pet(self):
-        assert _infer_modality("PET/FDG") == "PET"
+        assert guess_modality("PET/FDG") == "PET"
 
     def test_infer_modality_ct(self):
-        assert _infer_modality("CT Chest") == "CT"
+        assert guess_modality("CT Chest") == "CT"
 
     def test_infer_modality_mri_ct_combo(self):
-        assert _infer_modality("MRI/CT") == "MRI"
+        assert guess_modality("MRI/CT") == "MRI"
 
     def test_infer_modality_unknown(self):
-        assert _infer_modality("Something Weird") == ""
+        assert guess_modality("Something Weird") == ""
 
 
 # --- Parser tests ---
@@ -362,7 +360,7 @@ class TestMychartAdapter:
 class TestMychartDbIntegration:
     def test_granular_load_does_not_delete(self, tmp_db, parsed_visit):
         """replace=False should not affect existing data from other sources."""
-        from chartfold.models import ImagingReport, UnifiedRecords
+        from health_memex.models import ImagingReport, UnifiedRecords
 
         # First load some epic data
         epic = UnifiedRecords(
@@ -433,7 +431,7 @@ class TestMychartDbIntegration:
         visit2 = ParsedVisit(
             visit_date="2026-01-15",
             images={
-                "uuid-visit2-img-a": _TINY_PNG,   # Same bytes as visit1's img-a
+                "uuid-visit2-img-a": _TINY_PNG,  # Same bytes as visit1's img-a
                 "uuid-visit2-img-b": _TINY_PNG_2,  # Same bytes as visit1's img-b
             },
             study_refs=[
@@ -464,7 +462,7 @@ class TestMychartDbIntegration:
 class TestPostLoadLinking:
     def test_links_assets_to_imaging_reports(self, tmp_db, parsed_visit):
         """_link_assets_to_imaging should set ref_table/ref_id on source_assets."""
-        from chartfold.cli import _link_assets_to_imaging
+        from health_memex.cli import _link_assets_to_imaging
 
         records = mychart_to_unified(parsed_visit, source="mychart", image_dir="/tmp")
         tmp_db.load_source(records, replace=False)
@@ -487,7 +485,7 @@ class TestPostLoadLinking:
 
     def test_linked_ref_ids_match_correct_reports(self, tmp_db, parsed_visit):
         """ref_id should point to the correct imaging_report by study_name."""
-        from chartfold.cli import _link_assets_to_imaging
+        from health_memex.cli import _link_assets_to_imaging
 
         records = mychart_to_unified(parsed_visit, source="mychart", image_dir="/tmp")
         tmp_db.load_source(records, replace=False)
@@ -508,7 +506,7 @@ class TestPostLoadLinking:
 
     def test_idempotent_linking(self, tmp_db, parsed_visit):
         """Running _link_assets_to_imaging twice should not change anything."""
-        from chartfold.cli import _link_assets_to_imaging
+        from health_memex.cli import _link_assets_to_imaging
 
         records = mychart_to_unified(parsed_visit, source="mychart", image_dir="/tmp")
         tmp_db.load_source(records, replace=False)
@@ -522,8 +520,8 @@ class TestPostLoadLinking:
 
     def test_no_linking_without_imaging_reports(self, tmp_db):
         """Assets without matching imaging_reports should not be linked."""
-        from chartfold.cli import _link_assets_to_imaging
-        from chartfold.models import SourceAsset, UnifiedRecords
+        from health_memex.cli import _link_assets_to_imaging
+        from health_memex.models import SourceAsset, UnifiedRecords
 
         records = UnifiedRecords(
             source="mychart",
@@ -547,11 +545,11 @@ class TestPostLoadLinking:
 
 class TestAutoDetectMhtml:
     def test_auto_loads_mhtml_file(self, tmp_path, sample_mhtml):
-        """chartfold load auto <file.mhtml> should auto-detect and load mychart."""
-        from chartfold.cli import _load_auto
+        """health-memex load auto <file.mhtml> should auto-detect and load mychart."""
+        from health_memex.cli import _load_auto
 
         db_path = str(tmp_path / "test.db")
-        with ChartfoldDB(db_path) as db:
+        with HealthMemexDB(db_path) as db:
             db.init_schema()
             _load_auto(db, sample_mhtml)
 

@@ -1,9 +1,9 @@
-"""Shared test fixtures for chartfold tests."""
+"""Shared test fixtures for health-memex tests."""
 
 import pytest
 
-from chartfold.db import ChartfoldDB
-from chartfold.models import (
+from health_memex.db import HealthMemexDB
+from health_memex.models import (
     ConditionRecord,
     DocumentRecord,
     EncounterRecord,
@@ -21,7 +21,7 @@ from chartfold.models import (
 def tmp_db(tmp_path):
     """Create a temporary SQLite database with schema initialized."""
     db_path = str(tmp_path / "test.db")
-    db = ChartfoldDB(db_path)
+    db = HealthMemexDB(db_path)
     db.init_schema()
     yield db
     db.close()

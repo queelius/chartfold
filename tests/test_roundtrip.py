@@ -7,12 +7,12 @@ These tests verify that record counts are preserved (or intentionally reduced
 via deduplication) at each stage transition.
 """
 
-from chartfold.adapters.epic_adapter import epic_to_unified, _parser_counts as epic_parser_counts
-from chartfold.adapters.meditech_adapter import (
+from health_memex.adapters.epic_adapter import epic_to_unified, _parser_counts as epic_parser_counts
+from health_memex.adapters.meditech_adapter import (
     meditech_to_unified,
     _parser_counts as meditech_parser_counts,
 )
-from chartfold.adapters.athena_adapter import (
+from health_memex.adapters.athena_adapter import (
     athena_to_unified,
     _parser_counts as athena_parser_counts,
 )
@@ -22,7 +22,7 @@ class TestUnifiedRecordsCounts:
     """Test that UnifiedRecords.counts() returns accurate counts."""
 
     def test_counts_empty(self):
-        from chartfold.models import UnifiedRecords
+        from health_memex.models import UnifiedRecords
 
         records = UnifiedRecords(source="test")
         counts = records.counts()
@@ -397,16 +397,16 @@ class TestStageComparison:
     @staticmethod
     def _make_result(table_stats):
         """Build a LoadResult from a simple {table: total} dict."""
-        from chartfold.db import LoadResult
+        from health_memex.db import LoadResult
+
         tables = {
-            k: {"new": v, "existing": 0, "removed": 0, "total": v}
-            for k, v in table_stats.items()
+            k: {"new": v, "existing": 0, "removed": 0, "total": v} for k, v in table_stats.items()
         }
         return LoadResult(tables=tables, content_hash="test", skipped=False)
 
     def test_matching_counts_no_flags(self, capsys):
         """When all stages match, no flags should be printed."""
-        from chartfold.cli import _print_load_result
+        from health_memex.cli import _print_load_result
 
         counts = {"lab_results": 10, "medications": 5}
         result = self._make_result(counts)
@@ -417,7 +417,7 @@ class TestStageComparison:
 
     def test_dedup_flagged(self, capsys):
         """Parser > adapter should show (dedup) flag."""
-        from chartfold.cli import _print_load_result
+        from health_memex.cli import _print_load_result
 
         parser = {"lab_results": 10}
         adapter = {"lab_results": 8}
@@ -428,7 +428,7 @@ class TestStageComparison:
 
     def test_expand_flagged(self, capsys):
         """Parser < adapter should show (expand) flag."""
-        from chartfold.cli import _print_load_result
+        from health_memex.cli import _print_load_result
 
         parser = {"lab_results": 5}
         adapter = {"lab_results": 10}
@@ -439,7 +439,7 @@ class TestStageComparison:
 
     def test_all_zero_rows_hidden(self, capsys):
         """Rows where all counts are 0 should not be displayed."""
-        from chartfold.cli import _print_load_result
+        from health_memex.cli import _print_load_result
 
         parser = {"lab_results": 0, "medications": 5}
         adapter = {"lab_results": 0, "medications": 5}
@@ -451,8 +451,8 @@ class TestStageComparison:
 
     def test_empty_counts_prints_nothing(self, capsys):
         """All-empty input should produce no output."""
-        from chartfold.cli import _print_load_result
-        from chartfold.db import LoadResult
+        from health_memex.cli import _print_load_result
+        from health_memex.db import LoadResult
 
         result = LoadResult(tables={}, content_hash="test", skipped=False)
         _print_load_result(result, {}, {})
@@ -460,8 +460,8 @@ class TestStageComparison:
 
     def test_diff_shows_new_count(self, capsys):
         """Diff column should show +N for new records."""
-        from chartfold.cli import _print_load_result
-        from chartfold.db import LoadResult
+        from health_memex.cli import _print_load_result
+        from health_memex.db import LoadResult
 
         tables = {
             "lab_results": {"new": 3, "existing": 7, "removed": 0, "total": 10},
@@ -474,8 +474,8 @@ class TestStageComparison:
 
     def test_diff_shows_removed_count(self, capsys):
         """Diff column should show -N for removed records."""
-        from chartfold.cli import _print_load_result
-        from chartfold.db import LoadResult
+        from health_memex.cli import _print_load_result
+        from health_memex.db import LoadResult
 
         tables = {
             "lab_results": {"new": 0, "existing": 8, "removed": 2, "total": 8},
@@ -487,8 +487,8 @@ class TestStageComparison:
 
     def test_summary_line(self, capsys):
         """Summary line should show totals."""
-        from chartfold.cli import _print_load_result
-        from chartfold.db import LoadResult
+        from health_memex.cli import _print_load_result
+        from health_memex.db import LoadResult
 
         tables = {
             "lab_results": {"new": 3, "existing": 7, "removed": 0, "total": 10},

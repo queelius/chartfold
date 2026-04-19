@@ -3,8 +3,8 @@
 import pytest
 from lxml import etree
 
-from chartfold.core.cda import NS
-from chartfold.sources.epic import (
+from health_memex.core.cda import NS
+from health_memex.sources.epic import (
     _classify_result,
     _extract_cea,
     _extract_epic_result_items,
