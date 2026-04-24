@@ -159,13 +159,27 @@ def main():
 
     # --- import ---
     import_parser = sub.add_parser("import", help="Import data from arkiv archive")
-    import_parser.add_argument("input_dir", help="Path to arkiv archive directory")
+    import_parser.add_argument(
+        "input_dir",
+        help="Path to arkiv archive (directory, .zip, .tar.gz, or .tgz)",
+    )
     import_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
     import_parser.add_argument(
         "--validate-only", action="store_true", help="Validate without importing"
     )
     import_parser.add_argument(
-        "--overwrite", action="store_true", help="Overwrite existing database"
+        "--overwrite",
+        action="store_true",
+        help="Unlink existing database and create fresh (mutually exclusive with --merge)",
+    )
+    import_parser.add_argument(
+        "--merge",
+        action="store_true",
+        help=(
+            "UPSERT records into an existing database by natural key. "
+            "Safe to run repeatedly against the same DB. "
+            "Mutually exclusive with --overwrite."
+        ),
     )
 
     # --- init-config ---
@@ -720,6 +734,7 @@ def _handle_import(args):
         args.db,
         validate_only=args.validate_only,
         overwrite=args.overwrite,
+        merge=args.merge,
     )
 
     if result["success"]:

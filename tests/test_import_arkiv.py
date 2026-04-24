@@ -1418,3 +1418,207 @@ class TestBundleImport:
         with HealthMemexDB(dest_db) as db:
             labs = db.query("SELECT * FROM lab_results")
             assert len(labs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: --merge (C7)
+# ---------------------------------------------------------------------------
+
+
+class TestMergeImport:
+    """--merge: UPSERT into an existing DB by natural key."""
+
+    def _populate_db(self, db_path, labs=None, procedures=None):
+        """Populate a DB with the given records under a fixed source."""
+        with HealthMemexDB(db_path) as db:
+            db.init_schema()
+            records = UnifiedRecords(
+                source="test_merge",
+                lab_results=list(labs or []),
+                procedures=list(procedures or []),
+            )
+            db.load_source(records, replace=False)
+
+    def test_merge_creates_db_when_missing(self, tmp_path):
+        """--merge should create the DB if it doesn't yet exist."""
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        dest_db = str(tmp_path / "new.db")
+        assert not os.path.exists(dest_db)
+
+        result = import_arkiv(str(archive_dir), dest_db, merge=True)
+        assert result["success"] is True, result.get("errors")
+        assert os.path.isfile(dest_db)
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT * FROM lab_results")
+            assert len(labs) == 1
+
+    def test_merge_preserves_existing_rows(self, tmp_path):
+        """--merge must not wipe rows that already exist in the DB."""
+        from health_memex.import_arkiv import import_arkiv
+
+        # Existing DB: one pre-existing lab under a different source
+        dest_db = str(tmp_path / "existing.db")
+        self._populate_db(
+            dest_db,
+            labs=[
+                LabResult(
+                    test_name="WBC",
+                    value="6.2",
+                    value_numeric=6.2,
+                    result_date="2024-01-05",
+                    source="pre_existing",
+                ),
+            ],
+        )
+
+        # Archive: a different lab
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        result = import_arkiv(str(archive_dir), dest_db, merge=True)
+        assert result["success"] is True, result.get("errors")
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT test_name, source FROM lab_results ORDER BY test_name")
+            test_names = sorted(r["test_name"] for r in labs)
+            assert "WBC" in test_names, "existing row was wiped by merge"
+            assert "CEA" in test_names, "new row was not imported"
+
+    def test_merge_is_idempotent_on_reimport(self, tmp_path):
+        """Running --merge twice with the same archive must not duplicate rows."""
+        from health_memex.import_arkiv import import_arkiv
+
+        # Build an archive by exporting from a populated source DB
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(
+            src_db,
+            labs=[
+                LabResult(
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    result_date="2025-01-15",
+                    source="test_merge",
+                ),
+            ],
+            procedures=[
+                ProcedureRecord(
+                    name="Colonoscopy",
+                    procedure_date="2024-11-02",
+                    source="test_merge",
+                ),
+            ],
+        )
+        archive_path = str(tmp_path / "archive.zip")
+        with HealthMemexDB(src_db) as db:
+            export_arkiv(db, archive_path)
+
+        dest_db = str(tmp_path / "dest.db")
+
+        # First merge: should create + populate
+        r1 = import_arkiv(archive_path, dest_db, merge=True)
+        assert r1["success"] is True, r1.get("errors")
+
+        # Second merge: should be a no-op row-count-wise
+        r2 = import_arkiv(archive_path, dest_db, merge=True)
+        assert r2["success"] is True, r2.get("errors")
+
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT COUNT(*) AS n FROM lab_results")
+            procs = db.query("SELECT COUNT(*) AS n FROM procedures")
+            assert labs[0]["n"] == 1, "lab row duplicated on re-merge"
+            assert procs[0]["n"] == 1, "procedure row duplicated on re-merge"
+
+    def test_merge_remaps_fks_on_conflict(self, tmp_path):
+        """A re-merged pathology report must still point at the correct procedure."""
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_archive_with_fks(archive_dir)
+
+        dest_db = str(tmp_path / "dest.db")
+        r1 = import_arkiv(str(archive_dir), dest_db, merge=True)
+        assert r1["success"] is True, r1.get("errors")
+
+        r2 = import_arkiv(str(archive_dir), dest_db, merge=True)
+        assert r2["success"] is True, r2.get("errors")
+
+        with HealthMemexDB(dest_db) as db:
+            joined = db.query(
+                """
+                SELECT p.name AS proc_name, pr.diagnosis
+                FROM pathology_reports pr
+                JOIN procedures p ON pr.procedure_id = p.id
+                """
+            )
+            assert len(joined) == 1, "FK relationship broken after merge"
+
+    def test_merge_and_overwrite_are_mutually_exclusive(self, tmp_path):
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        result = import_arkiv(
+            str(archive_dir),
+            str(tmp_path / "x.db"),
+            overwrite=True,
+            merge=True,
+        )
+        assert result["success"] is False
+        assert "mutually exclusive" in result["errors"][0].lower()
+
+    def test_default_still_refuses_existing_db(self, tmp_path):
+        """Without --merge or --overwrite, an existing DB should still be rejected."""
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        dest_db = str(tmp_path / "existing.db")
+        with HealthMemexDB(dest_db) as db:
+            db.init_schema()
+
+        result = import_arkiv(str(archive_dir), dest_db)
+        assert result["success"] is False
+        msg = result["errors"][0]
+        assert "--merge" in msg and "--overwrite" in msg
+
+    def test_cli_merge_flag_works(self, tmp_path):
+        """CLI: health-memex import --merge round-trips successfully."""
+        import subprocess
+        import sys
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        dest_db = str(tmp_path / "cli.db")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "health_memex",
+                "import",
+                str(archive_dir),
+                "--db",
+                dest_db,
+                "--merge",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, f"stderr: {proc.stderr}"
+        assert os.path.isfile(dest_db)
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT * FROM lab_results")
+            assert len(labs) == 1

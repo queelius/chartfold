@@ -32,7 +32,9 @@ from typing import Any, Iterator
 import yaml
 
 from health_memex.db import (
+    _UNIQUE_KEYS,
     HealthMemexDB,
+    _build_upsert_sql,
     _discover_fk_graph,
     _discover_tables,
     _topological_sort,
@@ -137,6 +139,38 @@ def _get_table_columns(db: HealthMemexDB, table: str) -> set[str]:
     """Get column names for a table (excluding 'id')."""
     rows = db.query(f"PRAGMA table_info({table})")
     return {r["name"] for r in rows if r["name"] != "id"}
+
+
+def _lookup_id_by_unique(
+    conn, table: str, unique_cols: tuple[str, ...], row: dict[str, Any]
+) -> int | None:
+    """Find the ``id`` of a row that matches *row* on every unique-key column.
+
+    Used after an UPSERT to recover the surviving row's id for FK remapping,
+    since ``lastrowid`` is undefined when ON CONFLICT DO UPDATE fires.
+    Returns ``None`` if no row matches (e.g. the unique-key contained a
+    NULL that SQLite treats as distinct and the INSERT branch fell through
+    to a DO UPDATE that didn't happen).
+    """
+    conds: list[str] = []
+    vals: list[Any] = []
+    for col in unique_cols:
+        val = row.get(col)
+        if val is None:
+            conds.append(f"{col} IS NULL")
+        else:
+            conds.append(f"{col} = ?")
+            vals.append(val)
+    where = " AND ".join(conds)
+    cur = conn.execute(f"SELECT id FROM {table} WHERE {where}", vals)
+    r = cur.fetchone()
+    if r is None:
+        return None
+    # conn.row_factory may or may not be set; handle both tuple + Row.
+    try:
+        return r["id"]
+    except (IndexError, TypeError, KeyError):
+        return r[0]
 
 
 def _parse_frontmatter(readme_text: str) -> dict[str, Any] | None:
@@ -491,6 +525,7 @@ def import_arkiv(
     db_path: str,
     validate_only: bool = False,
     overwrite: bool = False,
+    merge: bool = False,
 ) -> dict[str, Any]:
     """Import an arkiv archive (directory or bundle) into a health-memex DB.
 
@@ -498,15 +533,32 @@ def import_arkiv(
     are extracted into a TemporaryDirectory for the duration of the import
     so ``media/`` assets resolve against a real filesystem path.
 
+    Three mutually-exclusive modes govern how the target DB is treated:
+
+    - default (all three flags false): refuse if the DB exists
+    - ``overwrite=True``: unlink the existing DB and create fresh
+    - ``merge=True``: open the existing DB (or create it), UPSERT records
+      by natural key so re-importing the same archive is idempotent
+
     Args:
         archive_dir: Path to the arkiv archive (directory or bundle).
         db_path: Path for the target SQLite database.
         validate_only: If True, only validate without importing.
-        overwrite: If True, overwrite existing database.
+        overwrite: If True, unlink and recreate the target database.
+        merge: If True, UPSERT records into the existing database using
+            natural-key (_UNIQUE_KEYS) conflict detection. Safe to run
+            repeatedly against the same DB.
 
     Returns:
         {"success": bool, "errors": list[str], "counts": dict[str, int]}
     """
+    if overwrite and merge:
+        return {
+            "success": False,
+            "errors": ["--overwrite and --merge are mutually exclusive."],
+            "counts": {},
+        }
+
     try:
         with _resolve_archive_dir(archive_dir) as resolved:
             return _import_arkiv_dir(
@@ -514,6 +566,7 @@ def import_arkiv(
                 db_path,
                 validate_only=validate_only,
                 overwrite=overwrite,
+                merge=merge,
             )
     except (zipfile.BadZipFile, tarfile.TarError, ValueError, OSError) as e:
         return {
@@ -528,6 +581,7 @@ def _import_arkiv_dir(
     db_path: str,
     validate_only: bool = False,
     overwrite: bool = False,
+    merge: bool = False,
 ) -> dict[str, Any]:
     """Import an already-extracted archive directory.
 
@@ -559,10 +613,13 @@ def _import_arkiv_dir(
 
     # Step 2: Check if DB exists
     db_exists = Path(db_path).exists()
-    if db_exists and not overwrite:
+    if db_exists and not (overwrite or merge):
         return {
             "success": False,
-            "errors": [f"Database already exists: {db_path}. Use --overwrite to replace."],
+            "errors": [
+                f"Database already exists: {db_path}. "
+                "Use --overwrite to replace or --merge to add records."
+            ],
             "counts": {},
         }
 
@@ -610,7 +667,11 @@ def _import_arkiv_dir(
     # Parse source asset records
     source_asset_rows = _parse_source_asset_records(source_asset_raw_records)
 
-    # Step 4: Create fresh DB
+    # Step 4: Prepare target DB
+    # - overwrite: unlink existing so init_schema creates fresh
+    # - merge: leave existing in place; init_schema is idempotent and no-ops
+    #   on existing tables
+    # - default (neither flag): db_exists is False at this point
     if db_exists and overwrite:
         Path(db_path).unlink()
 
@@ -677,13 +738,25 @@ def _import_arkiv_dir(
                 col_names = ", ".join(cols)
                 placeholders = ", ".join("?" for _ in cols)
 
-                cursor = db.conn.execute(
-                    f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
-                    list(filtered.values()),
-                )
+                if merge and table in _UNIQUE_KEYS:
+                    # UPSERT by natural key. `lastrowid` is undefined for
+                    # the DO UPDATE path in SQLite, so we look up the
+                    # surviving row by its unique key afterward to get a
+                    # stable id for FK remapping.
+                    unique_cols = _UNIQUE_KEYS[table]
+                    upsert_sql = _build_upsert_sql(table, cols, unique_cols)
+                    db.conn.execute(upsert_sql, list(filtered.values()))
+                    new_id = _lookup_id_by_unique(
+                        db.conn, table, unique_cols, filtered
+                    )
+                else:
+                    cursor = db.conn.execute(
+                        f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+                        list(filtered.values()),
+                    )
+                    new_id = cursor.lastrowid
 
-                new_id = cursor.lastrowid
-                if old_id is not None:
+                if old_id is not None and new_id is not None:
                     id_map[table][old_id] = new_id
 
                 # Step 7: Unfold tags
