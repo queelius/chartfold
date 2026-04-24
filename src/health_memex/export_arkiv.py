@@ -6,6 +6,22 @@ parent record's metadata.
 
 The archive manifest is written as README.md (YAML frontmatter) + schema.yaml,
 following the arkiv specification.
+
+Bundle formats (C5a workspace contract):
+    Output path extension drives packaging:
+      - ``.zip``              -> single-file zip archive
+      - ``.tar.gz`` / ``.tgz`` -> single-file gzip tarball
+      - anything else         -> directory (historical behavior)
+
+All three layouts carry the same records.jsonl shards + README.md +
+schema.yaml + any media/ assets.
+
+Security notice for operators:
+    Arkiv archives contain PHI in plaintext (JSONL + YAML). Keep them
+    encrypted at rest (full-disk encryption, GPG, or a password-
+    protected zip) and NEVER publish or email them without the
+    recipient's understanding. The exporter does not encrypt; that is
+    the operator's responsibility.
 """
 
 from __future__ import annotations
@@ -15,6 +31,9 @@ import importlib.metadata
 import json
 import os
 import shutil
+import tarfile
+import tempfile
+import zipfile
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -472,21 +491,89 @@ def _export_source_assets(
 # ---------------------------------------------------------------------------
 
 
+def _detect_bundle_format(path: str) -> str:
+    """Infer output format from *path*'s extension.
+
+    Returns one of ``"zip"``, ``"tar.gz"``, ``"dir"``. Matches the same
+    rule used by every other *-memex archive exporter.
+    """
+    lower = path.lower()
+    if lower.endswith(".zip"):
+        return "zip"
+    if lower.endswith(".tar.gz") or lower.endswith(".tgz"):
+        return "tar.gz"
+    return "dir"
+
+
+def _pack_zip(source_dir: str, out_path: str) -> None:
+    """Write *source_dir*'s contents into a .zip at *out_path*."""
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for dirpath, _dirnames, filenames in os.walk(source_dir):
+            for name in filenames:
+                abs_path = os.path.join(dirpath, name)
+                rel = os.path.relpath(abs_path, source_dir)
+                zf.write(abs_path, rel)
+
+
+def _pack_tar_gz(source_dir: str, out_path: str) -> None:
+    """Write *source_dir*'s contents into a .tar.gz at *out_path*."""
+    with tarfile.open(out_path, "w:gz") as tf:
+        # arcname="" flattens the top-level so entries look like
+        # "records.jsonl" rather than "<tmpdir>/records.jsonl".
+        tf.add(source_dir, arcname="")
+
+
 def export_arkiv(
     db: HealthMemexDB,
     output_dir: str,
     include_notes: bool = True,
     embed: bool = False,
 ) -> str:
-    """Export database to arkiv format (JSONL + README.md + schema.yaml).
+    """Export database to arkiv bundle (directory / .zip / .tar.gz).
 
     Args:
         db: Database connection.
-        output_dir: Directory to write output files.
+        output_dir: Destination path. If it ends in ``.zip`` or
+            ``.tar.gz``/``.tgz``, a single-file archive is written
+            containing records.jsonl + README.md + schema.yaml + media/.
+            Any other path is treated as a directory (historical
+            behavior).
         include_notes: Include personal notes and analyses.
         embed: Base64-encode source asset content inline in arkiv records.
 
-    Returns the output directory path.
+    Returns the output path (the archive file or the directory, depending
+    on the format inferred from the extension).
+    """
+    fmt = _detect_bundle_format(output_dir)
+
+    if fmt == "dir":
+        work_dir = output_dir
+        os.makedirs(work_dir, exist_ok=True)
+        _write_bundle_contents(db, work_dir, include_notes=include_notes, embed=embed)
+        return work_dir
+
+    # Archive path: write to a staging dir, then pack.
+    archive_path = output_dir
+    os.makedirs(os.path.dirname(os.path.abspath(archive_path)) or ".", exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="health_memex_arkiv_") as staging:
+        _write_bundle_contents(db, staging, include_notes=include_notes, embed=embed)
+        if fmt == "zip":
+            _pack_zip(staging, archive_path)
+        elif fmt == "tar.gz":
+            _pack_tar_gz(staging, archive_path)
+    return archive_path
+
+
+def _write_bundle_contents(
+    db: HealthMemexDB,
+    output_dir: str,
+    include_notes: bool,
+    embed: bool,
+) -> None:
+    """Fill *output_dir* with records.jsonl + README.md + schema.yaml + media/.
+
+    Pulled out of ``export_arkiv`` so both the direct-to-directory and
+    pack-and-archive paths share the same body.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -565,5 +652,3 @@ def export_arkiv(
     schema_path = os.path.join(output_dir, "schema.yaml")
     with open(schema_path, "w", encoding="utf-8") as f:
         yaml.dump(schema_data, f, default_flow_style=False, sort_keys=False)
-
-    return output_dir

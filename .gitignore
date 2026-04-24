@@ -33,3 +33,7 @@ site/
 
 # Development directory (local only)
 dev/
+
+# MCP tool artifacts / agent scratch dirs (never commit)
+.playwright-mcp/
+.serena/

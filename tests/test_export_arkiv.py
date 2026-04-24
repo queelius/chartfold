@@ -18,6 +18,7 @@ from health_memex.export_arkiv import (
     _export_table,
     _export_table_with_tags,
     _row_to_record,
+    export_arkiv,
 )
 from health_memex.models import (
     FamilyHistoryRecord,
@@ -1206,3 +1207,110 @@ class TestCLI:
         with open(jsonl_path) as f:
             rec = json.loads(f.readline())
         assert "content" in rec
+
+
+# ---------------------------------------------------------------------------
+# C5a: bundle formats (directory / .zip / .tar.gz)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectBundleFormat:
+    def test_no_extension_is_dir(self):
+        from health_memex.export_arkiv import _detect_bundle_format
+
+        assert _detect_bundle_format("out") == "dir"
+        assert _detect_bundle_format("/tmp/archive") == "dir"
+
+    def test_zip_extension(self):
+        from health_memex.export_arkiv import _detect_bundle_format
+
+        assert _detect_bundle_format("out.zip") == "zip"
+        assert _detect_bundle_format("OUT.ZIP") == "zip"
+
+    def test_tar_gz_extensions(self):
+        from health_memex.export_arkiv import _detect_bundle_format
+
+        assert _detect_bundle_format("out.tar.gz") == "tar.gz"
+        assert _detect_bundle_format("out.tgz") == "tar.gz"
+        assert _detect_bundle_format("OUT.TAR.GZ") == "tar.gz"
+
+
+class TestBundleExport:
+    """Export with .zip / .tar.gz extensions produces a single-file archive."""
+
+    def test_zip_bundle(self, db_with_labs, tmp_path):
+        import zipfile
+
+        out = tmp_path / "archive.zip"
+        result_path = export_arkiv(db_with_labs, str(out))
+        assert result_path == str(out)
+        assert out.is_file()
+
+        with zipfile.ZipFile(out) as zf:
+            names = set(zf.namelist())
+        assert "README.md" in names
+        assert "schema.yaml" in names
+        assert "lab_results.jsonl" in names
+
+    def test_tar_gz_bundle(self, db_with_labs, tmp_path):
+        import tarfile
+
+        out = tmp_path / "archive.tar.gz"
+        result_path = export_arkiv(db_with_labs, str(out))
+        assert result_path == str(out)
+        assert out.is_file()
+
+        with tarfile.open(out, "r:gz") as tf:
+            names = set(tf.getnames())
+        assert "README.md" in names
+        assert "schema.yaml" in names
+        assert "lab_results.jsonl" in names
+
+    def test_tgz_extension_accepted(self, db_with_labs, tmp_path):
+        import tarfile
+
+        out = tmp_path / "archive.tgz"
+        export_arkiv(db_with_labs, str(out))
+        with tarfile.open(out, "r:gz") as tf:
+            assert "README.md" in tf.getnames()
+
+    def test_directory_still_works(self, db_with_labs, tmp_path):
+        """Plain paths (no archive extension) write a directory as before."""
+        out = tmp_path / "archive-dir"
+        result_path = export_arkiv(db_with_labs, str(out))
+        assert result_path == str(out)
+        assert out.is_dir()
+        assert (out / "README.md").is_file()
+        assert (out / "schema.yaml").is_file()
+        assert (out / "lab_results.jsonl").is_file()
+
+    def test_bundle_includes_media_assets(self, db_with_assets, tmp_path):
+        """Source assets exported into media/ show up inside the bundle."""
+        import zipfile
+
+        out = tmp_path / "archive.zip"
+        export_arkiv(db_with_assets, str(out))
+        with zipfile.ZipFile(out) as zf:
+            names = set(zf.namelist())
+        # At least one media/ entry and the source_assets.jsonl manifest.
+        assert any(n.startswith("media/") for n in names)
+        assert "source_assets.jsonl" in names
+
+    def test_bundle_records_match_directory(self, db_with_labs, tmp_path):
+        """.zip and .tar.gz contain byte-identical records.jsonl content."""
+        import tarfile
+        import zipfile
+
+        dir_out = tmp_path / "dir-out"
+        zip_out = tmp_path / "archive.zip"
+        tar_out = tmp_path / "archive.tar.gz"
+        export_arkiv(db_with_labs, str(dir_out))
+        export_arkiv(db_with_labs, str(zip_out))
+        export_arkiv(db_with_labs, str(tar_out))
+
+        dir_bytes = (dir_out / "lab_results.jsonl").read_bytes()
+        with zipfile.ZipFile(zip_out) as zf:
+            zip_bytes = zf.read("lab_results.jsonl")
+        with tarfile.open(tar_out, "r:gz") as tf:
+            tar_bytes = tf.extractfile("lab_results.jsonl").read()
+        assert dir_bytes == zip_bytes == tar_bytes
