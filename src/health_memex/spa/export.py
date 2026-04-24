@@ -9,13 +9,33 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+import shutil
 import sqlite3
+import tempfile
 import tomllib
 from pathlib import Path
 
 from health_memex.core.utils import IMAGE_MIME_TYPES
 
 _SPA_DIR = Path(__file__).parent
+
+# sql.js is not compiled with FTS5 support; shipping the shadow tables just
+# bloats the bundle and would make the browser's ``CREATE VIRTUAL TABLE``
+# step fail. The SPA falls back to ``LIKE`` for text search.
+_FTS5_TABLES: tuple[str, ...] = (
+    "clinical_notes_fts",
+    "pathology_fts",
+    "imaging_fts",
+)
+
+# Triggers that feed the FTS5 shadow tables. They reference the virtual
+# tables above and must be dropped before the tables are dropped, or the
+# drops will fail when SQLite tries to re-validate the trigger body.
+_FTS5_TRIGGERS: tuple[str, ...] = (
+    "clinical_notes_ai", "clinical_notes_ad", "clinical_notes_au",
+    "pathology_ai", "pathology_ad", "pathology_au",
+    "imaging_ai", "imaging_ad", "imaging_au",
+)
 
 # JS files must be concatenated in dependency order.
 # chat.js is inserted between base (data/UI layer) and tail (sections/routing/init)
@@ -34,6 +54,32 @@ _JS_FILES_TAIL = [
 ]
 
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _strip_fts5_and_vacuum(db_path: Path) -> None:
+    """Strip FTS5 shadow tables and VACUUM *db_path* in place.
+
+    Steps (each in its own connection to avoid cross-transaction issues):
+
+    1. Set ``PRAGMA journal_mode=DELETE`` so no ``-wal``/``-shm`` sidecars
+       are left next to the exported DB.
+    2. Drop the FTS5 update triggers (which reference the virtual tables).
+    3. Drop the FTS5 virtual tables themselves.
+    4. VACUUM in a fresh connection (VACUUM cannot run inside a
+       transaction with other statements in flight).
+
+    Always operate on a copy; never pass the primary DB here. The
+    operations are destructive with respect to full-text search.
+    """
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("PRAGMA journal_mode=DELETE")
+        for trig in _FTS5_TRIGGERS:
+            conn.execute(f"DROP TRIGGER IF EXISTS {trig}")
+        for fts in _FTS5_TABLES:
+            conn.execute(f"DROP TABLE IF EXISTS {fts}")
+        conn.commit()
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("VACUUM")
 
 
 def _escape_for_script_tag(content: str) -> str:
@@ -122,8 +168,22 @@ def export_spa(
     Returns:
         The output file path as a string.
     """
-    # 1. Read and compress the database
-    db_bytes = Path(db_path).read_bytes()
+    # 1. Copy the DB to a temp file, strip FTS5 shadow tables, set
+    #    journal_mode=DELETE, VACUUM, then read + gzip those bytes.
+    #    The original DB at db_path is never mutated.
+    with tempfile.NamedTemporaryFile(
+        prefix="health_memex_spa_", suffix=".db", delete=False
+    ) as tmp:
+        tmp_db = Path(tmp.name)
+    try:
+        shutil.copyfile(db_path, tmp_db)
+        _strip_fts5_and_vacuum(tmp_db)
+        db_bytes = tmp_db.read_bytes()
+    finally:
+        try:
+            tmp_db.unlink()
+        except FileNotFoundError:
+            pass
     db_compressed = gzip.compress(db_bytes, compresslevel=9)
     db_gzip_b64 = base64.b64encode(db_compressed).decode("ascii")
 

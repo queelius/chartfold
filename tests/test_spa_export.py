@@ -1732,3 +1732,160 @@ class TestPrintSummary:
 
     def test_print_has_window_print(self, exported_html):
         assert "window.print()" in exported_html
+
+
+# ---------------------------------------------------------------------------
+# Tests: FTS5 strip + journal_mode=DELETE (C6b)
+# ---------------------------------------------------------------------------
+
+
+def _extract_embedded_db_bytes(html: str) -> bytes:
+    """Extract and decompress the DB embedded in an exported SPA."""
+    m = re.search(
+        r'<script id="health-memex-db" type="application/gzip\+base64">(.+?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert m, "exported HTML has no embedded DB"
+    compressed = base64.b64decode(m.group(1))
+    return gzip.decompress(compressed)
+
+
+class TestSpaFtsStrip:
+    """C6b: the SPA's embedded DB must have FTS5 stripped and DELETE journal."""
+
+    def _seed_with_fts_content(self, db_path: str) -> None:
+        """Insert a clinical note so the FTS5 shadow table has non-empty rows."""
+        db = HealthMemexDB(db_path)
+        db.init_schema()
+        db.conn.execute(
+            "INSERT INTO clinical_notes "
+            "(source, note_date, note_type, author, content) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test_source", "2025-01-01", "progress", "Dr. Tester", "patient tolerated procedure well"),
+        )
+        db.conn.execute(
+            "INSERT INTO pathology_reports (source, report_date, specimen, diagnosis, full_text) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("test_source", "2025-01-02", "biopsy", "benign", "microscopic review unremarkable"),
+        )
+        db.conn.commit()
+        db.close()
+
+    def test_embedded_db_has_no_fts5_tables(self, tmp_path, spa_output):
+        """The exported DB must not ship FTS5 virtual tables or shadow tables."""
+        db_path = str(tmp_path / "seeded.db")
+        self._seed_with_fts_content(db_path)
+
+        export_spa(db_path, spa_output)
+        html = Path(spa_output).read_text(encoding="utf-8")
+
+        db_bytes = _extract_embedded_db_bytes(html)
+        extracted = tmp_path / "extracted.db"
+        extracted.write_bytes(db_bytes)
+
+        with sqlite3.connect(str(extracted)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+            names = {r["name"] for r in rows}
+
+        for virtual in ("clinical_notes_fts", "pathology_fts", "imaging_fts"):
+            assert virtual not in names, f"{virtual} still in embedded DB"
+        # sql.js-incompatible shadow names too
+        shadow_leftovers = [n for n in names if n.endswith(("_data", "_idx", "_docsize", "_config", "_content"))]
+        assert not shadow_leftovers, f"FTS5 shadow tables remain: {shadow_leftovers}"
+
+    def test_embedded_db_has_no_fts_triggers(self, tmp_path, spa_output):
+        """FTS update triggers must be dropped alongside the virtual tables."""
+        db_path = str(tmp_path / "seeded.db")
+        self._seed_with_fts_content(db_path)
+
+        export_spa(db_path, spa_output)
+        db_bytes = _extract_embedded_db_bytes(
+            Path(spa_output).read_text(encoding="utf-8")
+        )
+        extracted = tmp_path / "extracted.db"
+        extracted.write_bytes(db_bytes)
+
+        with sqlite3.connect(str(extracted)) as conn:
+            rows = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()
+            trigger_names = {r[0] for r in rows}
+
+        for trig in (
+            "clinical_notes_ai", "clinical_notes_ad", "clinical_notes_au",
+            "pathology_ai", "pathology_ad", "pathology_au",
+            "imaging_ai", "imaging_ad", "imaging_au",
+        ):
+            assert trig not in trigger_names, f"orphan FTS trigger {trig} remains"
+
+    def test_embedded_db_uses_delete_journal_mode(self, tmp_path, spa_output):
+        """PRAGMA journal_mode on the embedded DB must be DELETE (no WAL)."""
+        db_path = str(tmp_path / "seeded.db")
+        self._seed_with_fts_content(db_path)
+
+        export_spa(db_path, spa_output)
+        db_bytes = _extract_embedded_db_bytes(
+            Path(spa_output).read_text(encoding="utf-8")
+        )
+        extracted = tmp_path / "extracted.db"
+        extracted.write_bytes(db_bytes)
+
+        with sqlite3.connect(str(extracted)) as conn:
+            row = conn.execute("PRAGMA journal_mode").fetchone()
+            assert row[0] == "delete", f"expected journal_mode=delete, got {row[0]}"
+
+    def test_clinical_data_survives_strip(self, tmp_path, spa_output):
+        """Stripping FTS must not harm the underlying clinical tables."""
+        db_path = str(tmp_path / "seeded.db")
+        self._seed_with_fts_content(db_path)
+
+        export_spa(db_path, spa_output)
+        db_bytes = _extract_embedded_db_bytes(
+            Path(spa_output).read_text(encoding="utf-8")
+        )
+        extracted = tmp_path / "extracted.db"
+        extracted.write_bytes(db_bytes)
+
+        with sqlite3.connect(str(extracted)) as conn:
+            conn.row_factory = sqlite3.Row
+            notes = conn.execute(
+                "SELECT content FROM clinical_notes"
+            ).fetchall()
+            paths = conn.execute(
+                "SELECT diagnosis FROM pathology_reports"
+            ).fetchall()
+            assert len(notes) == 1
+            assert "tolerated procedure" in notes[0]["content"]
+            assert len(paths) == 1
+            assert paths[0]["diagnosis"] == "benign"
+
+    def test_primary_db_is_not_mutated(self, tmp_path, spa_output):
+        """export_spa must never modify the caller's database file."""
+        db_path = str(tmp_path / "seeded.db")
+        self._seed_with_fts_content(db_path)
+
+        # Capture the FTS table list before export
+        with sqlite3.connect(db_path) as conn:
+            before = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+
+        export_spa(db_path, spa_output)
+
+        with sqlite3.connect(db_path) as conn:
+            after = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+
+        assert "clinical_notes_fts" in after, "FTS5 stripped from primary DB!"
+        assert before == after, "export_spa mutated the primary DB"
