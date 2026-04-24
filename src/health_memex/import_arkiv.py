@@ -3,16 +3,31 @@
 Reverses the export performed by export_arkiv.py: parses JSONL records,
 remaps FK references, unfolds tags, and inserts into a fresh SQLite database
 in topological (FK-dependency) order.
+
+Accepted input layouts (C5b workspace contract, auto-detected by extension):
+
+- directory containing ``README.md`` + ``schema.yaml`` + ``*.jsonl`` shards
+- ``.zip`` bundle of the same layout
+- ``.tar.gz`` / ``.tgz`` bundle of the same layout
+
+Archive bundles are extracted into a process-scoped TemporaryDirectory and
+the existing directory-based pipeline runs against the extracted tree. Any
+``media/`` assets are resolved relative to that extracted root exactly like
+they would be from a directory input.
 """
 
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import re
+import tarfile
+import tempfile
+import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import yaml
 
@@ -273,12 +288,118 @@ def _import_source_assets(
 
 
 # ---------------------------------------------------------------------------
+# Bundle detection and extraction (C5b)
+# ---------------------------------------------------------------------------
+
+
+def _detect_bundle_format(path: str) -> str:
+    """Infer the format of an arkiv archive from its path.
+
+    Returns one of ``"dir"``, ``"zip"``, ``"tar.gz"``. Mirrors the rule used
+    by ``export_arkiv._detect_bundle_format``: directories are directories,
+    ``.zip`` is zip, ``.tar.gz`` / ``.tgz`` is gzip tarball. Any other file
+    extension falls through to ``"dir"`` for the caller to error on (there
+    is no sensible "unknown archive" interpretation).
+    """
+    p = Path(path)
+    if p.is_dir():
+        return "dir"
+    lower = str(p).lower()
+    if lower.endswith(".zip"):
+        return "zip"
+    if lower.endswith(".tar.gz") or lower.endswith(".tgz"):
+        return "tar.gz"
+    return "dir"
+
+
+def _safe_extract_zip(zip_path: str, dest_dir: str) -> None:
+    """Extract a zip archive into *dest_dir*, rejecting path traversal."""
+    real_dest = os.path.realpath(dest_dir)
+    with zipfile.ZipFile(zip_path) as zf:
+        for name in zf.namelist():
+            target = os.path.realpath(os.path.join(dest_dir, name))
+            if target != real_dest and not target.startswith(real_dest + os.sep):
+                raise ValueError(
+                    f"Refusing to extract unsafe path from zip: {name!r}"
+                )
+        zf.extractall(dest_dir)
+
+
+def _safe_extract_tar_gz(tar_path: str, dest_dir: str) -> None:
+    """Extract a gzip tarball into *dest_dir*.
+
+    Rejects path traversal and non-regular members (symlinks, devices,
+    hardlinks). tarfile.extractall is famously unsafe by default; we walk
+    the member list first and validate before extracting anything.
+    """
+    real_dest = os.path.realpath(dest_dir)
+    with tarfile.open(tar_path, "r:gz") as tf:
+        for member in tf.getmembers():
+            if not (member.isfile() or member.isdir()):
+                raise ValueError(
+                    f"Refusing to extract non-regular tar member: {member.name!r}"
+                )
+            target = os.path.realpath(os.path.join(dest_dir, member.name))
+            if target != real_dest and not target.startswith(real_dest + os.sep):
+                raise ValueError(
+                    f"Refusing to extract unsafe path from tarball: {member.name!r}"
+                )
+        # Python 3.12+: "data" filter rejects absolute paths, symlinks, and
+        # members with suspicious ownership, as a defence-in-depth in
+        # addition to our own walk above.
+        tf.extractall(dest_dir, filter="data")
+
+
+def _find_archive_root(extracted_dir: str) -> str:
+    """Locate the directory containing ``README.md`` after extraction.
+
+    The exporter packs with ``arcname=""`` (tar) and ``relpath`` (zip), so
+    README.md lives at the archive root. We still descend into a single
+    top-level subdirectory when present so we tolerate bundles packed by
+    other tools (or by a user who zipped the parent folder).
+    """
+    if os.path.isfile(os.path.join(extracted_dir, "README.md")):
+        return extracted_dir
+    entries = [e for e in os.listdir(extracted_dir) if not e.startswith(".")]
+    if len(entries) == 1:
+        child = os.path.join(extracted_dir, entries[0])
+        if os.path.isdir(child) and os.path.isfile(os.path.join(child, "README.md")):
+            return child
+    return extracted_dir
+
+
+@contextlib.contextmanager
+def _resolve_archive_dir(archive_path: str) -> Iterator[str]:
+    """Yield a directory path containing the arkiv layout.
+
+    If *archive_path* is a directory, yields it unchanged. If it is a
+    ``.zip`` / ``.tar.gz`` / ``.tgz`` bundle, extracts into a
+    TemporaryDirectory and yields that. The temp dir is cleaned up on
+    context exit.
+    """
+    fmt = _detect_bundle_format(archive_path)
+    if fmt == "dir":
+        yield archive_path
+        return
+
+    with tempfile.TemporaryDirectory(prefix="health_memex_arkiv_import_") as tmp:
+        if fmt == "zip":
+            _safe_extract_zip(archive_path, tmp)
+        elif fmt == "tar.gz":
+            _safe_extract_tar_gz(archive_path, tmp)
+        yield _find_archive_root(tmp)
+
+
+# ---------------------------------------------------------------------------
 # validate_arkiv
 # ---------------------------------------------------------------------------
 
 
 def validate_arkiv(archive_dir: str) -> dict[str, Any]:
-    """Validate an arkiv archive without importing.
+    """Validate an arkiv archive (directory or bundle) without importing.
+
+    Accepts a directory path, ``.zip``, ``.tar.gz``, or ``.tgz``. Bundles
+    are extracted to a temporary directory for the duration of validation.
 
     Checks:
     - README.md exists and has valid YAML frontmatter
@@ -288,6 +409,19 @@ def validate_arkiv(archive_dir: str) -> dict[str, Any]:
     Returns:
         {"valid": bool, "errors": list[str], "summary": dict[str, int]}
     """
+    try:
+        with _resolve_archive_dir(archive_dir) as resolved:
+            return _validate_arkiv_dir(resolved)
+    except (zipfile.BadZipFile, tarfile.TarError, ValueError, OSError) as e:
+        return {
+            "valid": False,
+            "errors": [f"Could not open archive {archive_dir!r}: {e}"],
+            "summary": {},
+        }
+
+
+def _validate_arkiv_dir(archive_dir: str) -> dict[str, Any]:
+    """Validate an already-extracted archive directory. See validate_arkiv."""
     errors: list[str] = []
     summary: dict[str, int] = {}
 
@@ -358,7 +492,44 @@ def import_arkiv(
     validate_only: bool = False,
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Import an arkiv archive into a fresh health-memex database.
+    """Import an arkiv archive (directory or bundle) into a health-memex DB.
+
+    Accepts a directory path, ``.zip``, ``.tar.gz``, or ``.tgz``. Bundles
+    are extracted into a TemporaryDirectory for the duration of the import
+    so ``media/`` assets resolve against a real filesystem path.
+
+    Args:
+        archive_dir: Path to the arkiv archive (directory or bundle).
+        db_path: Path for the target SQLite database.
+        validate_only: If True, only validate without importing.
+        overwrite: If True, overwrite existing database.
+
+    Returns:
+        {"success": bool, "errors": list[str], "counts": dict[str, int]}
+    """
+    try:
+        with _resolve_archive_dir(archive_dir) as resolved:
+            return _import_arkiv_dir(
+                resolved,
+                db_path,
+                validate_only=validate_only,
+                overwrite=overwrite,
+            )
+    except (zipfile.BadZipFile, tarfile.TarError, ValueError, OSError) as e:
+        return {
+            "success": False,
+            "errors": [f"Could not open archive {archive_dir!r}: {e}"],
+            "counts": {},
+        }
+
+
+def _import_arkiv_dir(
+    archive_dir: str,
+    db_path: str,
+    validate_only: bool = False,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """Import an already-extracted archive directory.
 
     Pipeline:
     1. Validate the archive
@@ -369,18 +540,9 @@ def import_arkiv(
     6. Insert rows in FK order with ID remapping
     7. Unfold tags from _tags -> tag table inserts
     8. Handle source_assets separately
-
-    Args:
-        archive_dir: Path to the arkiv archive directory.
-        db_path: Path for the target SQLite database.
-        validate_only: If True, only validate without importing.
-        overwrite: If True, overwrite existing database.
-
-    Returns:
-        {"success": bool, "errors": list[str], "counts": dict[str, int]}
     """
     # Step 1: Validate
-    validation = validate_arkiv(archive_dir)
+    validation = _validate_arkiv_dir(archive_dir)
     if not validation["valid"]:
         return {
             "success": False,

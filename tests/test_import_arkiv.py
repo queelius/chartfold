@@ -1247,3 +1247,174 @@ class TestImportCLI:
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert not (tmp_path / "imported.db").exists()
+
+
+# ---------------------------------------------------------------------------
+# Tests: bundle unwrap (C5b)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectBundleFormat:
+    def test_directory(self, tmp_path):
+        from health_memex.import_arkiv import _detect_bundle_format
+
+        assert _detect_bundle_format(str(tmp_path)) == "dir"
+
+    def test_zip(self, tmp_path):
+        from health_memex.import_arkiv import _detect_bundle_format
+
+        (tmp_path / "x.zip").write_bytes(b"")
+        assert _detect_bundle_format(str(tmp_path / "x.zip")) == "zip"
+
+    def test_tar_gz(self, tmp_path):
+        from health_memex.import_arkiv import _detect_bundle_format
+
+        (tmp_path / "x.tar.gz").write_bytes(b"")
+        assert _detect_bundle_format(str(tmp_path / "x.tar.gz")) == "tar.gz"
+
+    def test_tgz(self, tmp_path):
+        from health_memex.import_arkiv import _detect_bundle_format
+
+        (tmp_path / "x.tgz").write_bytes(b"")
+        assert _detect_bundle_format(str(tmp_path / "x.tgz")) == "tar.gz"
+
+
+class TestBundleImport:
+    """End-to-end: export to bundle, then import it back."""
+
+    def _populate_db(self, db_path):
+        """Create a small DB with labs + a procedure+pathology FK pair."""
+        with HealthMemexDB(db_path) as db:
+            db.init_schema()
+            records = UnifiedRecords(
+                source="test_bundle",
+                lab_results=[
+                    LabResult(
+                        test_name="CEA",
+                        value="5.8",
+                        value_numeric=5.8,
+                        result_date="2025-01-15",
+                        source="test_bundle",
+                    ),
+                ],
+                procedures=[
+                    ProcedureRecord(
+                        name="Colonoscopy",
+                        procedure_date="2024-11-02",
+                        source="test_bundle",
+                    ),
+                ],
+            )
+            db.load_source(records, replace=False)
+
+    def test_import_from_zip_bundle(self, tmp_path):
+        from health_memex.import_arkiv import import_arkiv
+
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(src_db)
+
+        zip_path = str(tmp_path / "archive.zip")
+        with HealthMemexDB(src_db) as db:
+            export_arkiv(db, zip_path)
+        assert os.path.isfile(zip_path)
+
+        dest_db = str(tmp_path / "dest.db")
+        result = import_arkiv(zip_path, dest_db)
+        assert result["success"] is True, result.get("errors")
+        assert os.path.isfile(dest_db)
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT * FROM lab_results WHERE test_name='CEA'")
+            assert len(labs) == 1
+            procs = db.query("SELECT * FROM procedures WHERE name='Colonoscopy'")
+            assert len(procs) == 1
+
+    def test_import_from_tar_gz_bundle(self, tmp_path):
+        from health_memex.import_arkiv import import_arkiv
+
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(src_db)
+
+        tgz_path = str(tmp_path / "archive.tar.gz")
+        with HealthMemexDB(src_db) as db:
+            export_arkiv(db, tgz_path)
+        assert os.path.isfile(tgz_path)
+
+        dest_db = str(tmp_path / "dest.db")
+        result = import_arkiv(tgz_path, dest_db)
+        assert result["success"] is True, result.get("errors")
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT * FROM lab_results WHERE test_name='CEA'")
+            assert len(labs) == 1
+
+    def test_import_from_tgz_extension(self, tmp_path):
+        from health_memex.import_arkiv import import_arkiv
+
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(src_db)
+
+        tgz_path = str(tmp_path / "archive.tgz")
+        with HealthMemexDB(src_db) as db:
+            export_arkiv(db, tgz_path)
+
+        dest_db = str(tmp_path / "dest.db")
+        result = import_arkiv(tgz_path, dest_db)
+        assert result["success"] is True, result.get("errors")
+
+    def test_validate_from_zip_bundle(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(src_db)
+
+        zip_path = str(tmp_path / "archive.zip")
+        with HealthMemexDB(src_db) as db:
+            export_arkiv(db, zip_path)
+
+        result = validate_arkiv(zip_path)
+        assert result["valid"] is True
+        assert result["summary"].get("lab_results", 0) >= 1
+
+    def test_validate_rejects_non_archive_file(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        bogus = tmp_path / "not_an_archive.txt"
+        bogus.write_text("hello")
+        result = validate_arkiv(str(bogus))
+        assert result["valid"] is False
+
+    def test_validate_rejects_bad_zip(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        bogus = tmp_path / "corrupt.zip"
+        bogus.write_bytes(b"not a real zip")
+        result = validate_arkiv(str(bogus))
+        assert result["valid"] is False
+        assert result["errors"], "expected an error message"
+
+    def test_zip_path_traversal_rejected(self, tmp_path):
+        """A zip with .. entries must not escape the extraction dir."""
+        import zipfile as _zipfile
+
+        from health_memex.import_arkiv import validate_arkiv
+
+        malicious = tmp_path / "evil.zip"
+        with _zipfile.ZipFile(malicious, "w") as zf:
+            zf.writestr("../evil_README.md", "escaped!")
+
+        result = validate_arkiv(str(malicious))
+        assert result["valid"] is False
+
+    def test_directory_input_still_works(self, tmp_path):
+        """Directory inputs continue to work after the bundle refactor."""
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+
+        dest_db = str(tmp_path / "dest.db")
+        result = import_arkiv(str(archive_dir), dest_db)
+        assert result["success"] is True
+        with HealthMemexDB(dest_db) as db:
+            labs = db.query("SELECT * FROM lab_results")
+            assert len(labs) == 1
