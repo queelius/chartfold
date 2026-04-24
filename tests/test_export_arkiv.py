@@ -1314,3 +1314,52 @@ class TestBundleExport:
         with tarfile.open(tar_out, "r:gz") as tf:
             tar_bytes = tf.extractfile("lab_results.jsonl").read()
         assert dir_bytes == zip_bytes == tar_bytes
+
+
+class TestPhiNotice:
+    """PHI-notice wiring in the CLI."""
+
+    def _seed(self, path):
+        from health_memex.db import HealthMemexDB
+
+        with HealthMemexDB(path) as db:
+            db.init_schema()
+
+    def test_cli_export_arkiv_prints_phi_notice_to_stderr(self, tmp_path):
+        import subprocess
+        import sys
+
+        db_path = str(tmp_path / "seed.db")
+        self._seed(db_path)
+        out_path = str(tmp_path / "out")
+
+        proc = subprocess.run(
+            [
+                sys.executable, "-m", "health_memex",
+                "export", "arkiv",
+                "--db", db_path,
+                "--output", out_path,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        # Path confirmation still goes to stdout.
+        assert out_path in proc.stdout
+        # PHI reminder goes to stderr so scripts piping stdout see it.
+        assert "Protected Health Information" in proc.stderr
+        assert "PHI" in proc.stderr
+
+    def test_export_help_text_mentions_phi(self):
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "health_memex", "export", "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0
+        assert "PHI" in proc.stdout

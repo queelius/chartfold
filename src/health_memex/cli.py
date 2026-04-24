@@ -117,7 +117,11 @@ def main():
 
     # export html
     html_parser = export_sub.add_parser(
-        "html", help="Export as self-contained HTML SPA with embedded SQLite"
+        "html",
+        help=(
+            "Export as self-contained HTML SPA with embedded SQLite. "
+            "WARNING: output contains PHI in plaintext; protect at rest."
+        ),
     )
     html_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     html_parser.add_argument(
@@ -142,7 +146,12 @@ def main():
 
     # export arkiv
     arkiv_parser = export_sub.add_parser(
-        "arkiv", help="Export as arkiv universal record format (JSONL + manifest)"
+        "arkiv",
+        help=(
+            "Export as arkiv universal record format (JSONL + manifest). "
+            "Supports directory, .zip, .tar.gz, .tgz output paths. "
+            "WARNING: output contains PHI in plaintext; protect at rest."
+        ),
     )
     arkiv_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
     arkiv_parser.add_argument(
@@ -724,6 +733,24 @@ def _handle_export(args):
             )
 
     print(f"Exported to {path}")
+    _print_phi_notice(path)
+
+
+# The PHI notice is intentionally succinct. It's a reminder that the
+# exported file is Protected Health Information: treat it like a
+# password file, not like source code. Printed to stderr so it still
+# surfaces when the user pipes stdout into scripts.
+def _print_phi_notice(path: str) -> None:
+    import sys as _sys
+
+    _sys.stderr.write(
+        "\n"
+        "NOTE: This export contains Protected Health Information (PHI)\n"
+        f"   in plaintext at: {path}\n"
+        "   Protect at rest: full-disk encryption, GPG, or password-\n"
+        "   protected zip. Do not publish, email, or upload to a service\n"
+        "   that does not need it.\n"
+    )
 
 
 def _handle_import(args):

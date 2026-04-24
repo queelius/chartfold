@@ -145,6 +145,34 @@ Generates `health_memex.toml` with lab tests to chart based on what's in your da
 - Dependencies: `lxml`, `pyyaml`
 - Optional: `mcp` (FastMCP) for MCP server
 
+## Handling PHI responsibly
+
+health-memex is a **personal** archive. The SQLite database, the arkiv
+bundle (`records.jsonl` plus `README.md`, `schema.yaml`, and `media/`), and
+the HTML SPA all contain Protected Health Information (PHI) in plaintext.
+Treat every exported artifact like a password file.
+
+**Minimum precautions:**
+
+- Keep the primary database on an encrypted volume (FileVault, LUKS,
+  BitLocker, or similar).
+- When sharing an arkiv bundle or an HTML SPA, wrap it in a
+  password-protected `.zip` or GPG-encrypt it. `health-memex export` does
+  **not** encrypt. That is the operator's responsibility.
+- Never email a raw export, upload it to a generic file-sharing site,
+  publish it on a public web server, or paste its contents into an
+  arbitrary chat service.
+- If you enable the `--ai-chat` feature in the SPA, remember that the
+  chat routes your questions (which may quote lab values, diagnoses,
+  and medication lists) through whatever proxy URL you configured. Use a
+  proxy you control.
+- When you no longer need an export, shred or secure-delete it rather
+  than dropping it in the trash.
+
+`health-memex` prints a PHI reminder to stderr after every export. The
+reminder is deliberate; please do not suppress it in scripts unless you
+know the destination path is already protected.
+
 ## License
 
 MIT
