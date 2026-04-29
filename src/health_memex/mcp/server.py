@@ -151,6 +151,67 @@ def get_database_summary() -> dict:
     return {"table_counts": db.summary(), "load_history": db.sources()}
 
 
+# Tables that ``get_record`` can resolve. Mirrors the arkiv export
+# convention (``health-memex:{table}/{id}``) so URI kind == SQL table.
+# Derived from ``_UNIQUE_KEYS`` (the canonical clinical-table list) plus
+# ``notes`` and ``analyses`` which carry their own ``archived_at`` but
+# live outside the clinical-records pipeline.
+_RECORD_KINDS: frozenset[str] = frozenset(
+    {*_UNIQUE_KEYS.keys(), "notes", "analyses"}
+)
+
+
+@mcp.tool()
+def get_record(kind: str, id: str) -> dict:
+    """Resolve a health-memex://{kind}/{id} URI to one record.
+
+    The federation layer's ``LocalProcessResolver`` calls this tool to
+    dereference cross-archive URIs. For ad-hoc use, prefer the kind-
+    specific tools (``query_labs``, ``get_pathology_report``, etc.)
+    which return richer, multi-row views.
+
+    Args:
+        kind: Table name (e.g. ``"lab_results"``, ``"encounters"``,
+            ``"notes"``). Must match the arkiv URI convention used by
+            export_arkiv.py.
+        id: Autoincrement integer id of the row, passed as a string
+            (URIs carry ids as strings). Non-integer values return an
+            ``invalid_id`` error rather than a SQL error.
+
+    Returns:
+        On success: ``{"kind": kind, "id": <int>, "record": {...row}}``.
+        On invalid kind: ``{"error": "unknown_kind", "kind": kind, ...}``.
+        On non-integer id: ``{"error": "invalid_id", "id": id}``.
+        On missing row: ``{"error": "not_found", "kind": kind, "id": <int>}``.
+
+    Returning structured errors (rather than raising) lets the
+    federation surface the failure type cleanly via ``LookupResult``.
+    Re-imports change autoincrement ids; URIs into health-memex are
+    NOT durable across DB rebuilds. See docs/uri-scheme.md for the
+    durable-id action item (V2b).
+    """
+    if kind not in _RECORD_KINDS:
+        return {
+            "error": "unknown_kind",
+            "kind": kind,
+            "valid_kinds": sorted(_RECORD_KINDS),
+        }
+    try:
+        record_id = int(id)
+    except (TypeError, ValueError):
+        return {"error": "invalid_id", "id": id}
+
+    rows = _readonly_query(
+        f"SELECT * FROM {kind} WHERE id = {record_id}"
+    )
+    # _readonly_query returns str on error, list[dict] on success
+    if isinstance(rows, str):
+        return {"error": "sql_error", "detail": rows}
+    if not rows:
+        return {"error": "not_found", "kind": kind, "id": record_id}
+    return {"kind": kind, "id": record_id, "record": rows[0]}
+
+
 # ---------------------------------------------------------------------------
 # Clinical query tools
 # ---------------------------------------------------------------------------

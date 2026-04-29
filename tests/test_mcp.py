@@ -269,6 +269,78 @@ class TestGetDatabaseSummary:
 
 
 # ---------------------------------------------------------------------------
+# get_record (federation entrypoint)
+# ---------------------------------------------------------------------------
+
+
+class TestGetRecord:
+    """Single-record lookup by URI kind+id; powers the federation
+    layer's URI resolver."""
+
+    def test_lab_result_round_trip(self, mcp_db):
+        """A real row returns {kind, id, record} with the row payload."""
+        result = mcp_db.get_record("lab_results", "1")
+        assert result["kind"] == "lab_results"
+        assert result["id"] == 1
+        assert result["record"]["test_name"] == "CEA"
+        assert result["record"]["value"] == "5.8"
+        assert result["record"]["source"] == "test"
+
+    def test_unknown_kind(self, mcp_db):
+        """An unrecognised kind returns a structured error listing the
+        valid kinds so the operator can self-diagnose typos."""
+        result = mcp_db.get_record("not_a_real_table", "1")
+        assert result["error"] == "unknown_kind"
+        assert result["kind"] == "not_a_real_table"
+        assert "lab_results" in result["valid_kinds"]
+        # Notes/analyses are valid kinds even though they're outside
+        # _UNIQUE_KEYS (they live in the marginalia layer).
+        assert "notes" in result["valid_kinds"]
+        assert "analyses" in result["valid_kinds"]
+
+    def test_invalid_id_format(self, mcp_db):
+        """Non-integer ids return a structured error rather than a SQL
+        error. Health-memex ids are autoincrement integers."""
+        result = mcp_db.get_record("lab_results", "not-an-int")
+        assert result["error"] == "invalid_id"
+        assert result["id"] == "not-an-int"
+
+    def test_not_found(self, mcp_db):
+        """A valid kind + integer id that doesn't exist returns
+        ``not_found`` (not a SQL error)."""
+        result = mcp_db.get_record("lab_results", "999999")
+        assert result["error"] == "not_found"
+        assert result["kind"] == "lab_results"
+        assert result["id"] == 999999
+
+    def test_kind_is_treated_literally(self, mcp_db):
+        """SQL-injection-style kinds are rejected at the allowlist gate
+        before reaching the query, so attempts like
+        ``lab_results; DROP TABLE x`` come back as unknown_kind."""
+        result = mcp_db.get_record("lab_results; DROP TABLE x", "1")
+        assert result["error"] == "unknown_kind"
+
+    def test_each_clinical_kind_resolvable(self, mcp_multi_db):
+        """A smoke test that every kind in the allowlist runs against
+        the real schema without a SQL error. Most return not_found
+        (the test fixture only loads a few rows), which is fine — we
+        just want to verify no unknown-table errors slip through."""
+        from health_memex.mcp.server import _RECORD_KINDS
+
+        for kind in _RECORD_KINDS:
+            result = mcp_multi_db.get_record(kind, "1")
+            assert result.get("error") != "sql_error", (
+                f"kind {kind!r} produced a SQL error: {result.get('detail')}"
+            )
+
+    def test_id_passed_as_int_string(self, mcp_db):
+        """The id parameter is typed as str (URIs carry strings) but
+        the response coerces to int."""
+        result = mcp_db.get_record("lab_results", "1")
+        assert isinstance(result["id"], int)
+
+
+# ---------------------------------------------------------------------------
 # Personal notes CRUD
 # ---------------------------------------------------------------------------
 
