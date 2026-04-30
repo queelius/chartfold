@@ -52,8 +52,14 @@ _REVERSE_FK: dict[str, tuple[str, str]] = {
 
 _SYNTHETIC_KEYS = {"table"}
 
-_URI_PATTERN = re.compile(r"^health-memex:(\w+)/(\d+)$")
-_LEGACY_URI_PATTERN = re.compile(r"^chartfold:(\w+)/(\d+)$")  # pre-rename archives
+# URIs in modern arkiv exports use unique_id (16 hex chars). Older
+# exports used autoincrement integers, and notes/analyses still do
+# (no natural key). The pattern accepts both: \w+ matches digits,
+# hex strings, and any reasonable id form. The handler dispatches on
+# format at lookup time. Same pattern is matched for both
+# health-memex: and the legacy chartfold: prefix.
+_URI_PATTERN = re.compile(r"^health-memex:(\w[\w-]*)/(\w+)$")
+_LEGACY_URI_PATTERN = re.compile(r"^chartfold:(\w[\w-]*)/(\w+)$")
 
 
 def _match_uri(uri: str) -> re.Match | None:
@@ -72,29 +78,39 @@ _REVERSE_TAG_CONFIG = _TAG_CONFIG  # same structure works for import
 
 def _record_to_row(
     record: dict[str, Any],
-) -> tuple[str, int | None, dict[str, Any]]:
+) -> tuple[str, str | None, dict[str, Any]]:
     """Convert an arkiv record back to a DB row dict.
 
     Reverses _row_to_record():
-    1. Extracts table name from metadata.table
-    2. Parses old ID from the URI (health-memex:{table}/{id})
-    3. Reverses FK URIs (procedure_uri -> procedure_id)
-    4. Reverses ref_id_uri for source_assets
-    5. Extracts tags from metadata -> row["_tags"]
-    6. Strips synthetic keys (table)
+    1. Extracts table name from metadata.table.
+    2. Parses the URI's id portion (the row's stable identifier, which
+       is unique_id for clinical tables and autoincrement string for
+       notes/analyses).
+    3. Reverses FK URIs (procedure_uri -> procedure_id, but storing
+       the parent's unique_id string rather than an autoincrement int;
+       the actual remap to autoincrement happens at insert time via
+       _resolve_fk_unique_id).
+    4. Reverses ref_id_uri for source_assets, same pattern.
+    5. Extracts tags from metadata -> row["_tags"].
+    6. Strips synthetic keys (table).
 
     Returns:
-        (table_name, old_id_or_None, row_dict)
+        (table_name, exported_id_or_None, row_dict)
+
+        ``exported_id`` is whatever the URI carried — typically the
+        unique_id (16-hex string) for clinical tables, the
+        autoincrement-string for notes/analyses. The caller doesn't
+        need to interpret it; it's just used as a stable key.
     """
     metadata = record.get("metadata", {})
     table = metadata["table"]
 
-    # Parse old ID from URI
-    old_id: int | None = None
+    # Parse the URI's id portion (no longer constrained to integer)
+    exported_id: str | None = None
     uri = record.get("uri", "")
     m = _match_uri(uri)
     if m:
-        old_id = int(m.group(2))
+        exported_id = m.group(2)
 
     # Build row from metadata, reversing transformations
     row: dict[str, Any] = {}
@@ -104,12 +120,14 @@ def _record_to_row(
         if key in _SYNTHETIC_KEYS:
             continue
 
-        # Reverse FK URIs -> FK ID columns
+        # Reverse FK URIs -> FK column carrying the parent's unique_id
+        # string. _resolve_fk_unique_id at insert time will translate
+        # to the parent's autoincrement id.
         if key in _REVERSE_FK:
             fk_col, _parent_table = _REVERSE_FK[key]
             fk_match = _match_uri(val)
             if fk_match:
-                row[fk_col] = int(fk_match.group(2))
+                row[fk_col] = fk_match.group(2)  # unique_id string
             continue
 
         # Reverse ref_id_uri for source_assets
@@ -117,7 +135,7 @@ def _record_to_row(
             ref_match = _match_uri(val)
             if ref_match:
                 row["ref_table"] = ref_match.group(1)
-                row["ref_id"] = int(ref_match.group(2))
+                row["ref_id"] = ref_match.group(2)  # unique_id string
             continue
 
         # Extract tags -> _tags (inserted separately)
@@ -127,7 +145,7 @@ def _record_to_row(
 
         row[key] = val
 
-    return table, old_id, row
+    return table, exported_id, row
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +211,8 @@ def _parse_frontmatter(readme_text: str) -> dict[str, Any] | None:
 
 def _parse_source_asset_records(
     records: list[dict[str, Any]],
-) -> list[tuple[int | None, dict[str, Any]]]:
-    """Parse source_assets JSONL records into (old_id, row) tuples.
+) -> list[tuple[str | None, dict[str, Any]]]:
+    """Parse source_assets JSONL records into (exported_id, row) tuples.
 
     Source asset records have non-application/json mimetypes and different
     metadata structure than clinical records.
@@ -205,25 +223,29 @@ def _parse_source_asset_records(
         if metadata.get("table") != "source_assets":
             continue
 
-        # Parse old ID from metadata or URI — source assets use file:// URIs
-        # but may also have a regular health-memex: URI in some cases
-        old_id: int | None = None
+        # Parse the source_asset's own id (autoincrement) from any
+        # health-memex: URI present. source_assets has no unique_id
+        # column (no natural key beyond source+file_path), so its
+        # primary URI is file:// — the autoincrement string is only
+        # used by the caller for tag/asset bookkeeping.
+        exported_id: str | None = None
         uri = record.get("uri", "")
         uri_match = _match_uri(uri)
         if uri_match:
-            old_id = int(uri_match.group(2))
+            exported_id = uri_match.group(2)
 
         row: dict[str, Any] = {}
 
         for key, val in metadata.items():
             if key in _SYNTHETIC_KEYS:
                 continue
-            # Reverse ref_id_uri
+            # Reverse ref_id_uri: stash the parent's unique_id string;
+            # _import_source_assets will translate via uid_map.
             if key == "ref_id_uri":
                 ref_match = _match_uri(val)
                 if ref_match:
                     row["ref_table"] = ref_match.group(1)
-                    row["ref_id"] = int(ref_match.group(2))
+                    row["ref_id"] = ref_match.group(2)
                 continue
             row[key] = val
 
@@ -243,29 +265,30 @@ def _parse_source_asset_records(
         if "file_path" not in row:
             row["file_path"] = ""
 
-        result.append((old_id, row))
+        result.append((exported_id, row))
 
     return result
 
 
 def _import_source_assets(
     db: HealthMemexDB,
-    asset_rows: list[tuple[int | None, dict[str, Any]]],
+    asset_rows: list[tuple[str | None, dict[str, Any]]],
     archive_dir: str,
-    id_map: dict[str, dict[int, int]],
+    uid_map: dict[str, dict[str, int]],
     table_columns: set[str],
 ) -> int:
     """Import source asset records into the database.
 
     Handles file_path resolution from archive's media/ directory,
-    ref_id remapping through id_map, and base64 content restoration.
+    ref_id remapping through uid_map (parent.unique_id -> autoincrement
+    id of just-inserted parent row), and base64 content restoration.
 
     Returns the number of imported records.
     """
     count = 0
     media_dir = os.path.join(archive_dir, "media")
 
-    for old_id, row in asset_rows:
+    for exported_id, row in asset_rows:
         # Resolve file_path from media/
         media_name = row.pop("_media_name", None)
         base64_content = row.pop("_base64_content", None)
@@ -279,7 +302,7 @@ def _import_source_assets(
         if not row.get("file_path") and base64_content:
             # Write base64 content to media/ in the archive
             os.makedirs(media_dir, exist_ok=True)
-            file_name = row.get("file_name", f"asset_{old_id}")
+            file_name = row.get("file_name", f"asset_{exported_id}")
             dest = os.path.realpath(os.path.join(media_dir, file_name))
             real_media_dir = os.path.realpath(media_dir)
             if not dest.startswith(real_media_dir + os.sep):
@@ -291,12 +314,14 @@ def _import_source_assets(
         if not row.get("file_path"):
             row["file_path"] = ""
 
-        # Remap ref_id through id_map
+        # Remap ref_id: row.ref_id holds the parent's unique_id string
+        # (set by _parse_source_asset_records). Translate via uid_map
+        # to the parent's just-inserted autoincrement id.
         ref_table = row.get("ref_table")
-        ref_id = row.get("ref_id")
-        if ref_table and ref_id is not None:
-            parent_map = id_map.get(ref_table, {})
-            row["ref_id"] = parent_map.get(ref_id)  # None if parent not imported
+        ref_uid = row.get("ref_id")
+        if ref_table and ref_uid is not None:
+            parent_map = uid_map.get(ref_table, {})
+            row["ref_id"] = parent_map.get(ref_uid)  # None if parent not imported
 
         # Filter to known columns only
         filtered = {k: v for k, v in row.items() if k in table_columns}
@@ -308,13 +333,14 @@ def _import_source_assets(
         col_names = ", ".join(cols)
         placeholders = ", ".join("?" for _ in cols)
 
-        cursor = db.conn.execute(
+        db.conn.execute(
             f"INSERT INTO source_assets ({col_names}) VALUES ({placeholders})",
             list(filtered.values()),
         )
 
-        if old_id is not None:
-            id_map.setdefault("source_assets", {})[old_id] = cursor.lastrowid
+        # source_assets isn't a parent table for any FK in the schema,
+        # so we don't need to add it to uid_map. (Earlier versions did
+        # that for completeness; it's never read.)
 
         count += 1
 
@@ -686,8 +712,12 @@ def _import_arkiv_dir(
         fk_graph = _discover_fk_graph(db, schema_tables)
         import_order = _topological_sort(schema_tables, fk_graph)
 
-        # Track ID remappings: table -> {old_id: new_id}
-        id_map: dict[str, dict[int, int]] = {}
+        # Track unique_id -> autoincrement id per parent table, populated
+        # as parent rows are inserted so child rows can resolve FKs.
+        # Children carry parent.unique_id (the durable URI form); we
+        # translate to autoincrement id at insert time. This replaces
+        # the old "id_map[parent_table][old_autoincrement]" scheme.
+        uid_map: dict[str, dict[str, int]] = {}
 
         # Tag tables to skip in main loop (handled after parent insert)
         tag_tables = set()
@@ -709,7 +739,8 @@ def _import_arkiv_dir(
                 continue
 
             rows_for_table = table_records[table]
-            id_map[table] = {}
+            if table in _UNIQUE_KEYS:
+                uid_map[table] = {}
 
             # Get valid columns for this table
             valid_columns = _get_table_columns(db, table)
@@ -717,16 +748,21 @@ def _import_arkiv_dir(
             # Get FK columns for remapping
             table_fks = fk_graph.get(table, [])
 
-            for old_id, row in rows_for_table:
+            for exported_id, row in rows_for_table:
                 # Extract tags before column filtering
                 tags = row.pop("_tags", None)
 
-                # Remap FK columns
+                # Remap FK columns: row[fk_col] is the parent's
+                # unique_id string (set by _record_to_row); look up
+                # the parent's autoincrement id we just inserted.
                 for fk_col, parent_table, _parent_col in table_fks:
-                    old_fk = row.get(fk_col)
-                    if old_fk is not None:
-                        parent_map = id_map.get(parent_table, {})
-                        row[fk_col] = parent_map.get(old_fk)  # None if parent not imported
+                    parent_uid = row.get(fk_col)
+                    if parent_uid is not None:
+                        parent_map = uid_map.get(parent_table, {})
+                        row[fk_col] = parent_map.get(parent_uid)
+                        # None if parent not in this archive — leave
+                        # the FK NULL rather than error, so partial
+                        # imports stay loadable.
 
                 # Filter to valid columns only
                 filtered = {k: v for k, v in row.items() if k in valid_columns}
@@ -756,8 +792,13 @@ def _import_arkiv_dir(
                     )
                     new_id = cursor.lastrowid
 
-                if old_id is not None and new_id is not None:
-                    id_map[table][old_id] = new_id
+                # Populate the uid_map entry if this is a clinical
+                # table. The unique_id may be on the row (if the
+                # exporter wrote it) or computable from natural key.
+                if table in _UNIQUE_KEYS and new_id is not None:
+                    parent_uid = filtered.get("unique_id") or exported_id
+                    if parent_uid:
+                        uid_map[table][parent_uid] = new_id
 
                 # Step 7: Unfold tags
                 if tags and table in _TAG_CONFIG:
@@ -774,10 +815,14 @@ def _import_arkiv_dir(
             db.conn.commit()
             counts[table] = len(rows_for_table)
 
-        # Step 8: Handle source_assets
+        # Step 8: Handle source_assets — uses uid_map for ref_id
+        # resolution (child carries parent.unique_id; we map to
+        # parent.autoincrement_id).
         if source_asset_rows:
             sa_columns = _get_table_columns(db, "source_assets")
-            sa_count = _import_source_assets(db, source_asset_rows, archive_dir, id_map, sa_columns)
+            sa_count = _import_source_assets(
+                db, source_asset_rows, archive_dir, uid_map, sa_columns
+            )
             db.conn.commit()
             counts["source_assets"] = sa_count
         else:

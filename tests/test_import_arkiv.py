@@ -13,6 +13,7 @@ from health_memex.models import (
     FamilyHistoryRecord,
     LabResult,
     MedicationRecord,
+    PathologyReport,
     ProcedureRecord,
     UnifiedRecords,
 )
@@ -228,34 +229,41 @@ class TestRecordToRow:
 
         table, old_id, row = _record_to_row(record)
         assert table == "lab_results"
-        assert old_id == 42
+        # exported_id is the URI's id portion; for clinical tables this is
+        # the unique_id string. Tests use the older numeric form here as
+        # _match_uri accepts both forms (\\w+).
+        assert old_id == "42"
         assert row["source"] == "epic_anderson"
         assert row["test_name"] == "CEA"
         assert row["value_numeric"] == 5.8
         assert "table" not in row  # synthetic field stripped
 
     def test_fk_uri_reversed(self):
-        """procedure_uri should be reversed to procedure_id with old ID."""
+        """procedure_uri should be reversed to procedure_id holding the
+        parent's unique_id string. The actual autoincrement remap happens
+        at insert time via uid_map, not in _record_to_row."""
         from health_memex.import_arkiv import _record_to_row
 
         record = {
             "mimetype": "application/json",
-            "uri": "health-memex:pathology_reports/3",
+            "uri": "health-memex:pathology_reports/cafef00d12345678",
             "timestamp": "2024-07-03",
             "metadata": {
                 "table": "pathology_reports",
                 "source": "test_surgical",
-                "procedure_uri": "health-memex:procedures/10",
+                "procedure_uri": "health-memex:procedures/abcd1234deadbeef",
                 "report_date": "2024-07-03",
                 "specimen": "Right colon",
                 "diagnosis": "Adenocarcinoma",
             },
         }
 
-        table, old_id, row = _record_to_row(record)
+        table, exported_id, row = _record_to_row(record)
         assert table == "pathology_reports"
-        assert old_id == 3
-        assert row["procedure_id"] == 10
+        assert exported_id == "cafef00d12345678"
+        # procedure_id now holds the parent's unique_id string (durable).
+        # The insert step looks it up in uid_map to find the autoincrement.
+        assert row["procedure_id"] == "abcd1234deadbeef"
         assert "procedure_uri" not in row
 
     def test_tags_extracted(self):
@@ -361,7 +369,9 @@ class TestRecordToRow:
         assert old_id is None
 
     def test_ref_id_uri_reversed(self):
-        """ref_id_uri should be reversed to ref_table + ref_id for source_assets."""
+        """ref_id_uri should be reversed to ref_table + ref_id (parent's
+        unique_id string) for source_assets. The autoincrement translation
+        happens later via uid_map."""
         from health_memex.import_arkiv import _record_to_row
 
         record = {
@@ -372,13 +382,14 @@ class TestRecordToRow:
                 "source": "test",
                 "asset_type": "png",
                 "file_name": "scan.png",
-                "ref_id_uri": "health-memex:imaging_reports/7",
+                "ref_id_uri": "health-memex:imaging_reports/feedfacecafebeef",
             },
         }
 
-        _table, _old_id, row = _record_to_row(record)
+        _table, _exported_id, row = _record_to_row(record)
         assert row["ref_table"] == "imaging_reports"
-        assert row["ref_id"] == 7
+        # ref_id now holds the parent's unique_id (durable URI form).
+        assert row["ref_id"] == "feedfacecafebeef"
         assert "ref_id_uri" not in row
 
 
@@ -930,14 +941,19 @@ class TestRoundTrip:
             assert hgb["value_numeric"] == 12.5
 
     def test_round_trip_fk_relationships(self, tmp_path):
-        """FK relationships preserved through export -> import cycle."""
+        """FK relationships preserved through export -> import cycle.
+
+        Loads procedure first, then loads pathology with FK pointing at
+        the procedure. Going through load_source ensures unique_id is
+        populated automatically (which the export now requires).
+        """
         from health_memex.import_arkiv import import_arkiv
 
         # Create source DB with FK relationships
         src_db_path = str(tmp_path / "source.db")
         with HealthMemexDB(src_db_path) as db:
             db.init_schema()
-            records = UnifiedRecords(
+            db.load_source(UnifiedRecords(
                 source="test_surgical",
                 procedures=[
                     ProcedureRecord(
@@ -947,18 +963,25 @@ class TestRoundTrip:
                         provider="Dr. Surgeon",
                     ),
                 ],
-            )
-            db.load_source(records)
+            ))
+            proc_id = db.query("SELECT id FROM procedures")[0]["id"]
 
-            # Get procedure ID and manually insert linked pathology
-            proc = db.query("SELECT id FROM procedures")[0]
-            db.conn.execute(
-                """INSERT INTO pathology_reports
-                   (source, procedure_id, report_date, specimen, diagnosis)
-                   VALUES (?, ?, ?, ?, ?)""",
-                ("test_surgical", proc["id"], "2024-07-03", "Right colon", "Adenocarcinoma"),
-            )
-            db.conn.commit()
+            # Load pathology pointing at the procedure. The dataclass
+            # carries the autoincrement procedure_id; load_source
+            # auto-fills the pathology row's unique_id so it can be
+            # exported.
+            db.load_source(UnifiedRecords(
+                source="test_surgical",
+                pathology_reports=[
+                    PathologyReport(
+                        source="test_surgical",
+                        procedure_id=proc_id,
+                        report_date="2024-07-03",
+                        specimen="Right colon",
+                        diagnosis="Adenocarcinoma",
+                    ),
+                ],
+            ))
 
             archive_dir = str(tmp_path / "arkiv-export")
             export_arkiv(db, archive_dir)
@@ -1126,15 +1149,22 @@ class TestRoundTrip:
             )
             db.load_source(records)
 
-            # Add pathology linked to procedure
+            # Add pathology linked to procedure (via load_source so
+            # unique_id is auto-filled — required by export now).
             procs = db.query("SELECT id FROM procedures")
             proc_id = procs[0]["id"]
-            db.conn.execute(
-                "INSERT INTO pathology_reports (source, procedure_id, report_date, specimen, diagnosis) "
-                "VALUES (?, ?, ?, ?, ?)",
-                ("test_source", proc_id, "2024-07-03", "Right colon", "Adenocarcinoma"),
-            )
-            db.conn.commit()
+            db.load_source(UnifiedRecords(
+                source="test_source",
+                pathology_reports=[
+                    PathologyReport(
+                        source="test_source",
+                        procedure_id=proc_id,
+                        report_date="2024-07-03",
+                        specimen="Right colon",
+                        diagnosis="Adenocarcinoma",
+                    ),
+                ],
+            ))
 
             # Add note with tags
             db.save_note(

@@ -137,9 +137,30 @@ def _row_to_record(
     Returns:
         An arkiv record dict with mimetype, uri, optional timestamp, and metadata.
     """
+    # URIs use unique_id (durable, content-hash from natural key)
+    # for tables that have one. For notes/analyses (user-authored,
+    # not re-imported), there's no natural key to hash, so we fall
+    # back to autoincrement id. That's acceptable because these
+    # tables aren't recreated by EHR re-imports — autoincrement is
+    # stable for them in practice.
+    uid = row.get("unique_id")
+    if uid:
+        uri_id = uid
+    elif table in {"notes", "analyses"}:
+        uri_id = str(row["id"])
+    else:
+        # Should never happen for clinical tables since load_source
+        # auto-fills unique_id on every UPSERT; the migration
+        # backfills any pre-existing rows. Surface as an error
+        # rather than write a malformed URI.
+        raise ValueError(
+            f"row in {table!r} (id={row.get('id')!r}) has no unique_id; "
+            "cannot export. Run init_schema() to backfill."
+        )
+
     record: dict[str, Any] = {
         "mimetype": "application/json",
-        "uri": f"health-memex:{table}/{row['id']}",
+        "uri": f"health-memex:{table}/{uri_id}",
     }
 
     # Add timestamp if the field exists and has a non-None value
@@ -148,19 +169,28 @@ def _row_to_record(
         if ts_value is not None:
             record["timestamp"] = ts_value
 
-    # Build metadata: all non-null, non-empty fields, minus stripped cols
+    # Build metadata: all non-null, non-empty fields, minus stripped cols.
+    # unique_id is also stripped from metadata since it's already in the URI.
     metadata: dict[str, Any] = {"table": table}
+    skip_cols = _STRIP_COLS | {"unique_id"}
 
     for col, val in row.items():
         # Skip stripped columns
-        if col in _STRIP_COLS:
+        if col in skip_cols:
             continue
 
-        # Handle FK fields: convert to URI
+        # Handle FK fields: convert to URI using parent's unique_id.
+        # The parent table has unique_id (it's in _UNIQUE_KEYS); we
+        # look it up via a small per-row JOIN. For personal-archive
+        # scale this is fine; if it ever matters, _row_to_record
+        # could accept a pre-built id-to-unique_id map.
         if col in _FK_FIELDS:
             if val is not None:
                 fk_table, uri_key = _FK_FIELDS[col]
                 metadata[uri_key] = f"health-memex:{fk_table}/{val}"
+                # ↑ val is set by the caller _export_table to the
+                # parent's unique_id, not its autoincrement id. This
+                # is the upgrade from the old scheme.
             continue
 
         # Skip None and empty strings
@@ -180,6 +210,67 @@ def _row_to_record(
 # ---------------------------------------------------------------------------
 
 
+def _select_rows_with_fk_uids(db: HealthMemexDB, table: str) -> list[dict[str, Any]]:
+    """SELECT all rows from *table*, resolving each FK in _FK_FIELDS
+    to the parent's unique_id.
+
+    The arkiv URI format uses parent.unique_id (durable) rather than
+    parent.id (autoincrement, churns on re-import). Resolving at SQL
+    time via LEFT JOIN keeps _row_to_record simple — it just sees the
+    FK column already populated with the parent's unique_id string
+    instead of the autoincrement integer.
+    """
+    fk_cols = [c for c in _FK_FIELDS if c.startswith(table + ".") or _table_has_column(db, table, c)]
+    if not fk_cols:
+        return db.query(f"SELECT * FROM {table}")
+
+    # Build a SELECT that overrides each FK column with the parent's
+    # unique_id (or NULL if FK is itself NULL).
+    select_pieces = [f"{table}.*"]
+    join_pieces = []
+    for fk_col in fk_cols:
+        parent_table, _uri_key = _FK_FIELDS[fk_col]
+        alias = f"_p_{fk_col}"
+        # Override the FK column in the result set: SQLite returns
+        # the LAST same-named column when a SELECT yields duplicates,
+        # which is what we want here.
+        select_pieces.append(f"{alias}.unique_id AS {fk_col}")
+        join_pieces.append(
+            f"LEFT JOIN {parent_table} {alias} "
+            f"ON {alias}.id = {table}.{fk_col}"
+        )
+    sql = (
+        f"SELECT {', '.join(select_pieces)} FROM {table} "
+        + " ".join(join_pieces)
+    )
+    return db.query(sql)
+
+
+def _table_has_column(db: HealthMemexDB, table: str, col: str) -> bool:
+    """True iff *table* has a column called *col*."""
+    rows = db.query(f"PRAGMA table_info({table})")
+    return any(r["name"] == col for r in rows)
+
+
+def _lookup_unique_id(
+    db: HealthMemexDB, table: str, autoincrement_id: int
+) -> str | None:
+    """Look up a row's unique_id given its autoincrement id.
+
+    Used by source_assets export to translate ``ref_id`` (autoincrement)
+    into the parent's durable unique_id for the ``ref_id_uri`` field.
+    Returns None if the row doesn't exist, the table doesn't have a
+    unique_id column, or unique_id is NULL on that row.
+    """
+    if not _table_has_column(db, table, "unique_id"):
+        return None
+    rows = db.query(
+        f"SELECT unique_id FROM {table} WHERE id = ?",
+        (autoincrement_id,),
+    )
+    return rows[0]["unique_id"] if rows else None
+
+
 def _export_table(
     db: HealthMemexDB,
     table: str,
@@ -197,7 +288,7 @@ def _export_table(
     Returns:
         List of arkiv records, or None if the table is empty.
     """
-    rows = db.query(f"SELECT * FROM {table}")
+    rows = _select_rows_with_fk_uids(db, table)
     if not rows:
         return None
 
@@ -468,9 +559,17 @@ def _export_source_assets(
                 continue
             metadata[col] = val
 
-        # Add ref_id_uri if ref_table and ref_id present
-        if row.get("ref_table") and row.get("ref_id"):
-            metadata["ref_id_uri"] = f"health-memex:{row['ref_table']}/{row['ref_id']}"
+        # Add ref_id_uri if ref_table and ref_id present.
+        # Translate the autoincrement ref_id into the parent's
+        # unique_id so the URI is durable across re-imports. Skip
+        # silently if the parent row doesn't exist (orphan source
+        # asset) or doesn't have a unique_id (legacy data not yet
+        # backfilled — though init_schema should have handled it).
+        if row.get("ref_table") and row.get("ref_id") is not None:
+            ref_table = row["ref_table"]
+            parent_uid = _lookup_unique_id(db, ref_table, row["ref_id"])
+            if parent_uid:
+                metadata["ref_id_uri"] = f"health-memex:{ref_table}/{parent_uid}"
 
         record["metadata"] = metadata
         records.append(record)

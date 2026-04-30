@@ -44,11 +44,22 @@ def tmp_db(tmp_path):
     db.close()
 
 
+# Test fixtures pre-populate ``unique_id`` with a representative
+# 16-hex string. Real loads compute this via _compute_unique_id from
+# the row's natural key; the fixture value is opaque to the export
+# logic — it only checks that one is present and uses it as the URI.
+_FIXTURE_UID_LAB = "abc0000000000042"
+_FIXTURE_UID_FH = "abc0000000000007"
+_FIXTURE_UID_PATH = "abc0000000000003"
+_FIXTURE_UID_PROC = "abc0000000000010"
+
+
 @pytest.fixture
 def lab_row():
     """A typical lab_results row dict as returned by db.query()."""
     return {
         "id": 42,
+        "unique_id": _FIXTURE_UID_LAB,
         "source": "epic_anderson",
         "source_doc_id": "DOC0003",
         "test_name": "CEA",
@@ -69,6 +80,7 @@ def family_history_row():
     """A family_history row with no timestamp field."""
     return {
         "id": 7,
+        "unique_id": _FIXTURE_UID_FH,
         "source": "epic_anderson",
         "source_doc_id": "DOC0001",
         "relation": "Father",
@@ -80,12 +92,19 @@ def family_history_row():
 
 @pytest.fixture
 def pathology_row():
-    """A pathology_reports row with a procedure_id FK."""
+    """A pathology_reports row with a procedure_id FK.
+
+    The FK column carries the parent's ``unique_id`` (durable URI form),
+    not the parent's autoincrement id. _select_rows_with_fk_uids does
+    this translation at SELECT time in production code; in unit tests
+    we pre-bake it into the fixture.
+    """
     return {
         "id": 3,
+        "unique_id": _FIXTURE_UID_PATH,
         "source": "test_surgical",
         "source_doc_id": None,
-        "procedure_id": 10,
+        "procedure_id": _FIXTURE_UID_PROC,  # parent procedure's unique_id
         "report_date": "2024-07-03",
         "specimen": "Right colon",
         "diagnosis": "Invasive adenocarcinoma",
@@ -192,11 +211,29 @@ def db_with_analyses(tmp_db):
 
 @pytest.fixture
 def db_with_assets(tmp_db, tmp_path):
-    """DB with source assets that reference real files."""
+    """DB with source assets that reference real files.
+
+    The PNG asset references an imaging_reports row by autoincrement
+    id; the export translates that to the parent's unique_id for the
+    durable ``ref_id_uri`` field. We need a real parent row in
+    imaging_reports for the lookup to succeed.
+    """
     media_src = tmp_path / "source_files"
     media_src.mkdir()
     (media_src / "scan.png").write_bytes(b"\x89PNG fake image data")
     (media_src / "report.pdf").write_bytes(b"%PDF fake pdf data")
+
+    # Insert a parent imaging_reports row (needed so ref_id_uri can
+    # resolve via unique_id lookup).
+    from health_memex.models import ImagingReport, UnifiedRecords as UR2
+    tmp_db.load_source(UR2(
+        source="test_source",
+        imaging_reports=[ImagingReport(
+            source="test_source", study_name="CT Abdomen", study_date="2025-01-15",
+        )],
+    ))
+    img_row = tmp_db.query("SELECT id, unique_id FROM imaging_reports")[0]
+    img_id, img_uid = img_row["id"], img_row["unique_id"]
 
     tmp_db.conn.execute(
         """INSERT INTO source_assets
@@ -213,7 +250,7 @@ def db_with_assets(tmp_db, tmp_path):
             "CT Abdomen",
             "2025-01-15",
             "imaging_reports",
-            7,
+            img_id,  # autoincrement of the row we just inserted
         ),
     )
     tmp_db.conn.execute(
@@ -272,7 +309,7 @@ class TestRowToRecord:
         record = _row_to_record(lab_row, "lab_results", "result_date")
 
         assert record["mimetype"] == "application/json"
-        assert record["uri"] == "health-memex:lab_results/42"
+        assert record["uri"] == f"health-memex:lab_results/{_FIXTURE_UID_LAB}"
         assert record["timestamp"] == "2025-01-15"
         assert record["metadata"]["table"] == "lab_results"
         assert record["metadata"]["source"] == "epic_anderson"
@@ -285,6 +322,7 @@ class TestRowToRecord:
         """None and empty-string fields should be omitted from metadata."""
         row = {
             "id": 1,
+            "unique_id": "0000000000000001",
             "source": "test",
             "source_doc_id": None,
             "test_name": "WBC",
@@ -314,7 +352,7 @@ class TestRowToRecord:
         """family_history has timestamp_field=None, so no timestamp key."""
         record = _row_to_record(family_history_row, "family_history", None)
 
-        assert record["uri"] == "health-memex:family_history/7"
+        assert record["uri"] == f"health-memex:family_history/{_FIXTURE_UID_FH}"
         assert "timestamp" not in record
         assert record["metadata"]["relation"] == "Father"
         assert record["metadata"]["condition"] == "Colon cancer"
@@ -322,17 +360,18 @@ class TestRowToRecord:
         assert "age_at_onset" not in record["metadata"]
 
     def test_row_to_record_fk_converted_to_uri(self, pathology_row):
-        """procedure_id FK should become procedure_uri with health-memex: URI."""
+        """procedure_id FK should become procedure_uri with parent unique_id."""
         record = _row_to_record(pathology_row, "pathology_reports", "report_date")
 
         assert "procedure_id" not in record["metadata"]
-        assert record["metadata"]["procedure_uri"] == "health-memex:procedures/10"
+        assert record["metadata"]["procedure_uri"] == f"health-memex:procedures/{_FIXTURE_UID_PROC}"
         assert record["metadata"]["specimen"] == "Right colon"
 
     def test_row_to_record_fk_null_not_included(self):
         """If procedure_id is None, no procedure_uri should be in metadata."""
         row = {
             "id": 5,
+            "unique_id": "0000000000000005",
             "source": "test",
             "source_doc_id": None,
             "procedure_id": None,
@@ -354,6 +393,7 @@ class TestRowToRecord:
         """If the timestamp field exists but its value is None, omit timestamp."""
         row = {
             "id": 1,
+            "unique_id": "0000000000000001",
             "source": "test",
             "name": "Unknown med",
             "start_date": None,
@@ -365,6 +405,7 @@ class TestRowToRecord:
         """Numeric zero should be included (not treated as falsy)."""
         row = {
             "id": 1,
+            "unique_id": "0000000000000001",
             "source": "test",
             "score": 0,
             "total_score": 0,
@@ -766,6 +807,7 @@ class TestEdgeCases:
         """Boolean false (0 in SQLite) should be included in metadata."""
         row = {
             "id": 1,
+            "unique_id": "0000000000000001",
             "source": "test",
             "relation": "Father",
             "condition": "Cancer",
@@ -1002,7 +1044,14 @@ class TestSourceAssetExport:
         assert png_rec["metadata"]["ref_table"] == "imaging_reports"
         # ref_id replaced by ref_id_uri (not both)
         assert "ref_id" not in png_rec["metadata"]
-        assert png_rec["metadata"]["ref_id_uri"] == "health-memex:imaging_reports/7"
+        # Look up the parent's unique_id (set by load_source via the
+        # imaging_reports natural key) to verify the URI uses it.
+        parent_uid = db_with_assets.query(
+            "SELECT unique_id FROM imaging_reports"
+        )[0]["unique_id"]
+        assert png_rec["metadata"]["ref_id_uri"] == (
+            f"health-memex:imaging_reports/{parent_uid}"
+        )
 
         assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
         assert os.path.exists(os.path.join(output_dir, "media", "report.pdf"))
