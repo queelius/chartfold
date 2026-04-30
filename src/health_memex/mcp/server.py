@@ -79,11 +79,17 @@ def _sqlite_authorizer(action: int, arg1, arg2, db_name, trigger_name) -> int:
     return sqlite3.SQLITE_OK
 
 
-def _readonly_query(query: str) -> list[dict] | str:
+def _readonly_query(query: str, params: tuple = ()) -> list[dict] | str:
     """Execute a query against a read-only SQLite connection.
 
     Uses SQLite's URI mode=ro for engine-level read-only enforcement
     plus an authorizer callback to block ATTACH/DETACH.
+
+    *params* is forwarded to ``conn.execute`` as the standard sqlite3
+    parameter substitution (``?`` placeholders in the query). Callers
+    SHOULD use placeholders for any user-supplied value rather than
+    interpolating into the SQL string; the format-check defenses in
+    individual callers are then unnecessary.
     """
     conn = None
     MAX_ROWS = 5000
@@ -91,7 +97,7 @@ def _readonly_query(query: str) -> list[dict] | str:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
         conn.set_authorizer(_sqlite_authorizer)
         conn.row_factory = sqlite3.Row
-        cursor = conn.execute(query)
+        cursor = conn.execute(query, params)
         rows = cursor.fetchmany(MAX_ROWS)
         if len(rows) == MAX_ROWS and cursor.fetchone() is not None:
             return (
@@ -213,12 +219,16 @@ def get_record(kind: str, id: str) -> dict:
     # _UNIQUE_KEYS holds the clinical tables that DO have unique_id.
     has_unique_id = kind in _UNIQUE_KEYS
 
+    # `kind` is allowlisted via _RECORD_KINDS; `id` is parameterised, so
+    # neither can carry a SQL injection. The format checks pick the
+    # right column (durable unique_id vs autoincrement id) but no
+    # longer guard against escape — the placeholder does.
     if has_unique_id and _is_unique_id_format(id):
         rows = _readonly_query(
-            f"SELECT * FROM {kind} WHERE unique_id = '{id}'"
+            f"SELECT * FROM {kind} WHERE unique_id = ?", (id,)
         )
     elif id.isdigit():
-        rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = {int(id)}")
+        rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = ?", (id,))
     else:
         return {"error": "invalid_id", "id": id}
 

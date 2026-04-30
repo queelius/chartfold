@@ -665,10 +665,11 @@ class TestIsUniqueIdFormat:
         assert _is_unique_id_format("not-a-hash-here.") is False
 
     def test_pure_digits_at_16_chars_passes(self):
-        """Decimal digits ARE hex chars. A 16-digit string IS a valid
-        unique_id format. In practice no autoincrement id reaches 16
-        decimal digits (would require 10^16 records); the dual-lookup
-        in get_record handles ambiguity by trying unique_id first."""
+        """Decimal digits ARE hex chars, so a 16-digit string is a
+        valid unique_id format. In practice no autoincrement id reaches
+        16 decimal digits (would require 10^16 records). For shorter
+        digit strings, get_record routes them through the autoincrement
+        branch (id.isdigit()), so there's no ambiguity in normal use."""
         from health_memex.db import _is_unique_id_format
 
         assert _is_unique_id_format("1" * 16) is True
