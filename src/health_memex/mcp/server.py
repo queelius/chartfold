@@ -90,7 +90,28 @@ def _readonly_query(query: str, params: tuple = ()) -> list[dict] | str:
     SHOULD use placeholders for any user-supplied value rather than
     interpolating into the SQL string; the format-check defenses in
     individual callers are then unnecessary.
+
+    Why _get_db() runs first:
+
+    * ``mode=ro`` cannot CREATE the database file. If DB_PATH points
+      at a path that hasn't been initialised, ``mode=ro`` fails with
+      "unable to open database file". Forcing the R/W singleton to
+      instantiate first creates the file, runs init_schema (which is
+      itself idempotent), and applies migrations — only then does the
+      readonly connection attach.
+
+    * The R/W singleton also opens in WAL journal mode, creating the
+      ``-shm`` shadow-memory file. Modern sqlite3 (3.22+) handles
+      WAL+ro+missing-shm gracefully when the WAL has been
+      checkpointed, but older builds or DBs in inconsistent post-
+      crash states benefit from -shm being present before a readonly
+      attach.
+
+    Net effect: the very first read against a fresh DB path Just
+    Works, and we get migration-applied data instead of a confusing
+    error.
     """
+    _get_db()  # ensure file exists, schema initialised, -shm present
     conn = None
     MAX_ROWS = 5000
     try:

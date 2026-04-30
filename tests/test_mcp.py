@@ -475,6 +475,62 @@ class TestUniqueIdDurability:
         db.close()
         assert len(set(uids)) == 2, "two distinct natural keys → two distinct unique_ids"
 
+    def test_readonly_query_works_when_shm_missing(self, tmp_path, monkeypatch):
+        """Regression: _readonly_query (mode=ro) on a WAL-mode DB used
+        to fail with 'unable to open database file' when .db-shm wasn't
+        already on disk. The fix is to call _get_db() first so the R/W
+        singleton creates -shm before mode=ro tries to attach.
+
+        We simulate the scenario by:
+          1. creating + populating a DB via HealthMemexDB
+          2. closing it cleanly, then deleting -shm + -wal sidecars
+             (mimicking a checkpoint that cleared them)
+          3. resetting the MCP server's _db singleton
+          4. calling run_sql, which goes through _readonly_query
+        """
+        import os
+
+        from health_memex.db import HealthMemexDB
+        from health_memex.models import LabResult, UnifiedRecords
+
+        db_path = str(tmp_path / "wal_test.db")
+        db = HealthMemexDB(db_path)
+        db.init_schema()
+        db.load_source(
+            UnifiedRecords(
+                source="walfix",
+                lab_results=[
+                    LabResult(
+                        source="walfix",
+                        test_name="WBC",
+                        value="6.2",
+                        result_date="2025-01-15",
+                    ),
+                ],
+            )
+        )
+        # Force a WAL checkpoint and close. This + deleting sidecars
+        # mimics a fresh-subprocess scenario where -shm may not exist.
+        db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        db.close()
+        for sidecar in (db_path + "-shm", db_path + "-wal"):
+            if os.path.exists(sidecar):
+                os.unlink(sidecar)
+
+        monkeypatch.setenv("HEALTH_MEMEX_DB", db_path)
+        import health_memex.mcp.server as srv
+
+        monkeypatch.setattr(srv, "DB_PATH", db_path)
+        monkeypatch.setattr(srv, "_db", None)
+
+        # This call previously raised "unable to open database file".
+        # With the _get_db() prelude in _readonly_query, -shm gets
+        # recreated via the R/W singleton before the mode=ro attach.
+        result = srv.run_sql("SELECT test_name FROM lab_results")
+        assert isinstance(result, list), f"expected list, got {result!r}"
+        assert len(result) == 1
+        assert result[0]["test_name"] == "WBC"
+
     def test_migration_backfills_existing_rows(self, tmp_path):
         """A DB created before the unique_id column existed must get
         unique_ids on the next init_schema(). Simulates upgrading a

@@ -261,8 +261,16 @@ def main():
     identify_parser.add_argument("input_dir", help="Directory to inspect")
 
     # --- mcp ---
+    # default=None so we can tell whether the user actually passed --db.
+    # If they didn't, the env var HEALTH_MEMEX_DB takes precedence (and
+    # the server.py module already reads that env var with its own
+    # fallback to "health_memex.db").
     mcp_parser = sub.add_parser("mcp", help="Start MCP server")
-    mcp_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+    mcp_parser.add_argument(
+        "--db",
+        default=None,
+        help="SQLite database path (overrides $HEALTH_MEMEX_DB)",
+    )
 
     args = parser.parse_args()
 
@@ -1232,7 +1240,13 @@ def _handle_identify(args):
 
 
 def _handle_mcp(args):
-    os.environ["HEALTH_MEMEX_DB"] = args.db
+    # Only override the env var when --db was explicitly passed on the
+    # CLI. Otherwise honour an existing HEALTH_MEMEX_DB (so the user's
+    # ~/.config/memex/config.yaml can configure where health-memex
+    # reads from without forcing a CLI flag through the federation
+    # layer's launch command).
+    if args.db is not None:
+        os.environ["HEALTH_MEMEX_DB"] = args.db
 
     from health_memex.mcp.server import mcp
 
