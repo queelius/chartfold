@@ -202,6 +202,48 @@ def _record_to_row(record) -> dict:
     return asdict(record)
 
 
+# Number of hex chars retained from sha256 output for unique_id values.
+# 16 hex = 8 bytes = 64 bits → birthday collision after ~4 billion records,
+# wildly safe for personal-archive scale. Matches the bookmark-memex
+# convention (sha256(url)[:16]).
+_UNIQUE_ID_HEX_LEN = 16
+
+
+def _compute_unique_id(table: str, row: dict) -> str:
+    """Content-hash a row's natural key into a durable unique_id.
+
+    The natural key for *table* comes from :data:`_UNIQUE_KEYS`. Field
+    values are joined with ``\\x00`` (null byte, which never appears in
+    clinical text/date/number fields) so adjacent fields can't collide.
+    NULL/missing fields serialise as the empty string, keeping the
+    function total when a natural-key column is absent.
+
+    Same natural key always yields the same hash, which is the whole
+    point: re-importing the same source data produces stable URIs.
+
+    Raises ``ValueError`` for unknown tables, since durable IDs only
+    apply to tables that have a declared natural key.
+    """
+    if table not in _UNIQUE_KEYS:
+        raise ValueError(f"no natural key declared for table {table!r}")
+    parts: list[str] = []
+    for col in _UNIQUE_KEYS[table]:
+        val = row.get(col)
+        parts.append("" if val is None else str(val))
+    payload = "\x00".join(parts).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:_UNIQUE_ID_HEX_LEN]
+
+
+# Regex-like predicate for distinguishing unique_id strings from
+# autoincrement integer ids in URI lookup. A unique_id is exactly
+# _UNIQUE_ID_HEX_LEN lowercase hex chars; anything else is treated as
+# either a numeric autoincrement id (digits only) or invalid input.
+def _is_unique_id_format(s: str) -> bool:
+    if len(s) != _UNIQUE_ID_HEX_LEN:
+        return False
+    return all(c in "0123456789abcdef" for c in s)
+
+
 def _escape_like(s: str) -> str:
     """Escape LIKE wildcards so they match literally."""
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -314,10 +356,61 @@ class HealthMemexDB:
             with contextlib.suppress(sqlite3.OperationalError):
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN archived_at TEXT")
 
+        # Durable IDs (V2b): every clinical table gains a content-hash
+        # unique_id derived from its natural key. Stable across re-imports
+        # so trail steps and arkiv URIs survive DB rebuilds.
+        for table in _UNIQUE_KEYS:
+            with contextlib.suppress(sqlite3.OperationalError):
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN unique_id TEXT")
+            with contextlib.suppress(sqlite3.OperationalError):
+                self.conn.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_unique_id "
+                    f"ON {table}(unique_id) WHERE unique_id IS NOT NULL"
+                )
+        self._backfill_unique_ids()
+
         # Backfill FTS5 indexes for existing rows. Triggers keep them in sync
         # from now on, but rows loaded before the FTS tables existed need to
         # be indexed once. Safe to rerun: only rows missing from FTS are added.
         self._backfill_fts_indexes()
+
+    def _backfill_unique_ids(self) -> None:
+        """Compute unique_id for any rows where it's still NULL.
+
+        Runs after the ALTER TABLE migrations. For each table in
+        ``_UNIQUE_KEYS``, fetch rows missing a unique_id, compute the
+        natural-key hash, and UPDATE. Idempotent: a fresh DB has no
+        rows to backfill (load_source already populates unique_id).
+        """
+        any_updates = False
+        for table, unique_cols in _UNIQUE_KEYS.items():
+            select_cols = ", ".join(["id", *unique_cols])
+            try:
+                rows = self.conn.execute(
+                    f"SELECT {select_cols} FROM {table} "
+                    f"WHERE unique_id IS NULL"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                # Column missing on a much older DB that for some
+                # reason didn't pick up the ALTER above. Skip.
+                continue
+            if not rows:
+                continue
+            updates: list[tuple[str, int]] = []
+            for row in rows:
+                row_dict = {c: row[c] for c in unique_cols}
+                uid = _compute_unique_id(table, row_dict)
+                updates.append((uid, row["id"]))
+            self.conn.executemany(
+                f"UPDATE {table} SET unique_id = ? WHERE id = ?", updates
+            )
+            any_updates = True
+        # ``executemany`` of UPDATE starts an implicit transaction in
+        # Python's sqlite3 module. Commit so the backfill survives the
+        # connection close. (DDL ALTER TABLE earlier in this migration
+        # path is auto-committed; DML is not.)
+        if any_updates:
+            self.conn.commit()
 
     def _backfill_fts_indexes(self) -> None:
         """Rebuild FTS5 indexes when they have fewer docs than the parent.
@@ -383,6 +476,7 @@ class HealthMemexDB:
                 unique_cols = _UNIQUE_KEYS["patients"]
                 existing_keys = _get_existing_keys(self.conn, "patients", source, unique_cols)
                 row = _record_to_row(records.patient)
+                row["unique_id"] = _compute_unique_id("patients", row)
                 cols = list(row.keys())
                 sql = _build_upsert_sql("patients", cols, unique_cols)
                 self.conn.execute(sql, list(row.values()))
@@ -436,8 +530,9 @@ class HealthMemexDB:
                 # Snapshot existing keys before upsert
                 existing_keys = _get_existing_keys(self.conn, table, source, unique_cols)
 
-                # Build UPSERT SQL from first record's columns
+                # Build UPSERT SQL from first record's columns + unique_id
                 first_row = _record_to_row(record_list[0])
+                first_row["unique_id"] = _compute_unique_id(table, first_row)
                 cols = list(first_row.keys())
                 sql = _build_upsert_sql(table, cols, unique_cols)
 
@@ -447,7 +542,8 @@ class HealthMemexDB:
                 imported_keys: set[tuple] = set()
                 for r in record_list:
                     r_dict = _record_to_row(r)
-                    rows.append(list(r_dict.values()))
+                    r_dict["unique_id"] = _compute_unique_id(table, r_dict)
+                    rows.append([r_dict[c] for c in cols])
                     key = tuple(r_dict[c] for c in natural_key_cols)
                     imported_keys.add(key)
 

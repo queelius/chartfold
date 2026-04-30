@@ -1,5 +1,7 @@
 """Tests for health_memex.db SQLite database layer."""
 
+import pytest
+
 from health_memex.db import HealthMemexDB, _build_upsert_sql, _UNIQUE_KEYS
 from health_memex.models import (
     ImagingReport,
@@ -565,3 +567,109 @@ class TestContextManager:
         with HealthMemexDB(db_path) as db2:
             tables = db2.query("SELECT name FROM sqlite_master WHERE type='table'")
             assert len(tables) > 0
+
+
+class TestComputeUniqueId:
+    """Unit tests for the natural-key content-hash helper."""
+
+    def test_deterministic(self):
+        from health_memex.db import _compute_unique_id
+
+        row = {
+            "source": "epic",
+            "test_name": "CEA",
+            "result_date": "2025-06-15",
+            "value": "5.8",
+        }
+        a = _compute_unique_id("lab_results", row)
+        b = _compute_unique_id("lab_results", row)
+        assert a == b
+        assert len(a) == 16
+        # Hex chars only
+        assert all(c in "0123456789abcdef" for c in a)
+
+    def test_different_natural_keys_produce_different_ids(self):
+        from health_memex.db import _compute_unique_id
+
+        a = _compute_unique_id("lab_results", {
+            "source": "epic", "test_name": "CEA",
+            "result_date": "2025-06-15", "value": "5.8",
+        })
+        b = _compute_unique_id("lab_results", {
+            "source": "epic", "test_name": "CEA",
+            "result_date": "2025-06-15", "value": "6.2",  # different value
+        })
+        assert a != b
+
+    def test_null_separator_avoids_collisions(self):
+        """Joining with a separator that can appear in field values
+        (e.g. '|') would let ('foo|bar', '') collide with ('foo', 'bar').
+        We use \\x00 (null byte) which is never present in clinical
+        text/date/number fields, so this category of collision can't
+        occur. Verify by exercising would-be collisions."""
+        from health_memex.db import _compute_unique_id
+
+        a = _compute_unique_id("lab_results", {
+            "source": "epic|other", "test_name": "CEA",
+            "result_date": "2025-06-15", "value": "5.8",
+        })
+        b = _compute_unique_id("lab_results", {
+            "source": "epic", "test_name": "other|CEA",
+            "result_date": "2025-06-15", "value": "5.8",
+        })
+        assert a != b
+
+    def test_unknown_table_raises(self):
+        from health_memex.db import _compute_unique_id
+
+        with pytest.raises(ValueError, match="no natural key"):
+            _compute_unique_id("not_a_table", {})
+
+    def test_missing_field_treated_as_empty(self):
+        """Partial row dict (missing some natural-key fields) still
+        hashes — missing fields serialize as empty string. This makes
+        the function total even mid-migration when a field might be
+        unset."""
+        from health_memex.db import _compute_unique_id
+
+        # source is in the natural key but absent from the row
+        result = _compute_unique_id("lab_results", {"test_name": "X"})
+        assert len(result) == 16
+
+
+class TestIsUniqueIdFormat:
+    def test_valid_16_hex(self):
+        from health_memex.db import _is_unique_id_format
+
+        assert _is_unique_id_format("0123456789abcdef") is True
+        assert _is_unique_id_format("a" * 16) is True
+
+    def test_uppercase_hex_rejected(self):
+        """We canonicalise to lowercase hex (sha256 output is lowercase),
+        so uppercase shouldn't masquerade as a unique_id."""
+        from health_memex.db import _is_unique_id_format
+
+        assert _is_unique_id_format("ABCDEF0123456789") is False
+
+    def test_wrong_length_rejected(self):
+        from health_memex.db import _is_unique_id_format
+
+        assert _is_unique_id_format("a" * 15) is False
+        assert _is_unique_id_format("a" * 17) is False
+        assert _is_unique_id_format("") is False
+
+    def test_non_hex_chars_rejected(self):
+        from health_memex.db import _is_unique_id_format
+
+        assert _is_unique_id_format("g" * 16) is False
+        assert _is_unique_id_format("not-a-hash-here.") is False
+
+    def test_pure_digits_at_16_chars_passes(self):
+        """Decimal digits ARE hex chars. A 16-digit string IS a valid
+        unique_id format. In practice no autoincrement id reaches 16
+        decimal digits (would require 10^16 records); the dual-lookup
+        in get_record handles ambiguity by trying unique_id first."""
+        from health_memex.db import _is_unique_id_format
+
+        assert _is_unique_id_format("1" * 16) is True
+        assert _is_unique_id_format("123") is False  # too short

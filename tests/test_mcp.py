@@ -278,10 +278,14 @@ class TestGetRecord:
     layer's URI resolver."""
 
     def test_lab_result_round_trip(self, mcp_db):
-        """A real row returns {kind, id, record} with the row payload."""
+        """A real row returns {kind, id, record} with the row payload.
+
+        ``id`` is echoed back as the caller passed it (string), so trail
+        URIs round-trip cleanly regardless of which id format was used.
+        """
         result = mcp_db.get_record("lab_results", "1")
         assert result["kind"] == "lab_results"
-        assert result["id"] == 1
+        assert result["id"] == "1"  # echoed verbatim
         assert result["record"]["test_name"] == "CEA"
         assert result["record"]["value"] == "5.8"
         assert result["record"]["source"] == "test"
@@ -307,11 +311,11 @@ class TestGetRecord:
 
     def test_not_found(self, mcp_db):
         """A valid kind + integer id that doesn't exist returns
-        ``not_found`` (not a SQL error)."""
+        ``not_found`` (not a SQL error). ``id`` is echoed verbatim."""
         result = mcp_db.get_record("lab_results", "999999")
         assert result["error"] == "not_found"
         assert result["kind"] == "lab_results"
-        assert result["id"] == 999999
+        assert result["id"] == "999999"
 
     def test_kind_is_treated_literally(self, mcp_db):
         """SQL-injection-style kinds are rejected at the allowlist gate
@@ -333,11 +337,191 @@ class TestGetRecord:
                 f"kind {kind!r} produced a SQL error: {result.get('detail')}"
             )
 
-    def test_id_passed_as_int_string(self, mcp_db):
-        """The id parameter is typed as str (URIs carry strings) but
-        the response coerces to int."""
+    def test_id_echoed_as_string(self, mcp_db):
+        """The id parameter is typed as str (URIs carry strings) and
+        echoed back verbatim so the caller's format is preserved.
+
+        This matters because get_record now accepts both autoincrement
+        digits and 16-hex unique_id strings — only string-echoing
+        round-trips unambiguously.
+        """
         result = mcp_db.get_record("lab_results", "1")
-        assert isinstance(result["id"], int)
+        assert result["id"] == "1"
+        assert isinstance(result["id"], str)
+
+    def test_lookup_by_unique_id(self, mcp_db):
+        """The durable form: pass the 16-hex unique_id and get the same
+        row back. unique_id was populated automatically when the test
+        fixture's lab record was loaded via load_source."""
+        # First fetch the row's unique_id via SQL.
+        rows = mcp_db.run_sql("SELECT unique_id FROM lab_results WHERE id = 1")
+        uid = rows[0]["unique_id"]
+        assert uid is not None and len(uid) == 16
+        # Now look up by unique_id and verify same record.
+        result = mcp_db.get_record("lab_results", uid)
+        assert result["kind"] == "lab_results"
+        assert result["id"] == uid  # echoed back as the durable form
+        assert result["record"]["test_name"] == "CEA"
+        assert result["record"]["unique_id"] == uid
+
+    def test_unique_id_lookup_not_found(self, mcp_db):
+        """A well-formed but unknown unique_id returns not_found."""
+        result = mcp_db.get_record("lab_results", "0123456789abcdef")
+        assert result["error"] == "not_found"
+        assert result["id"] == "0123456789abcdef"
+
+    def test_invalid_id_neither_format(self, mcp_db):
+        """A string that's neither 16-hex nor digits-only fails fast."""
+        result = mcp_db.get_record("lab_results", "not-a-real-id")
+        assert result["error"] == "invalid_id"
+
+    def test_notes_use_autoincrement_only(self, mcp_db):
+        """The notes table has no natural key, so it has no unique_id.
+        get_record should look up notes by autoincrement id only.
+        Passing a hex-shaped string returns not_found (no fallback to
+        the unique_id branch happens, because the column doesn't exist).
+        """
+        # First save a note so we have something to look up.
+        mcp_db.save_note(title="t", content="c")
+        # Autoincrement lookup works.
+        result = mcp_db.get_record("notes", "1")
+        assert result["kind"] == "notes"
+        assert result["record"]["title"] == "t"
+        # Hex-shaped id is not supported for notes (no unique_id column).
+        # The current implementation falls through to invalid_id because
+        # the input is neither 16-hex (with unique_id support) nor digits.
+        result = mcp_db.get_record("notes", "0123456789abcdef")
+        assert result["error"] == "invalid_id"
+
+
+class TestUniqueIdDurability:
+    """The headline V2b property: same source data, same unique_id.
+
+    Re-importing the same UnifiedRecords (e.g. weekly EHR refresh)
+    must produce the same unique_id strings, so trail steps and arkiv
+    URIs survive across re-imports.
+    """
+
+    def test_reimport_preserves_unique_id(self, tmp_path):
+        """Two independent imports of the same record yield the same
+        unique_id. This is the proof that URIs into health-memex are
+        actually durable now."""
+        from health_memex.db import HealthMemexDB
+        from health_memex.models import LabResult, UnifiedRecords
+
+        recs = UnifiedRecords(
+            source="test_durable",
+            lab_results=[
+                LabResult(
+                    source="test_durable",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    result_date="2025-06-15",
+                ),
+            ],
+        )
+        db_path = str(tmp_path / "first_import.db")
+
+        # First import
+        db1 = HealthMemexDB(db_path)
+        db1.init_schema()
+        db1.load_source(recs)
+        first_uid = db1.query("SELECT unique_id FROM lab_results")[0]["unique_id"]
+        db1.close()
+
+        # Re-create the DB from scratch and import the same data
+        import os
+
+        os.unlink(db_path)
+        db2 = HealthMemexDB(db_path)
+        db2.init_schema()
+        db2.load_source(recs)
+        second_uid = db2.query("SELECT unique_id FROM lab_results")[0]["unique_id"]
+        db2.close()
+
+        assert first_uid == second_uid, (
+            "unique_id must survive DB rebuild + re-import — "
+            "that's the whole point of V2b durable IDs"
+        )
+        assert len(first_uid) == 16
+
+    def test_unique_id_distinguishes_natural_keys(self, tmp_path):
+        """Different natural keys must produce different unique_ids."""
+        from health_memex.db import HealthMemexDB
+        from health_memex.models import LabResult, UnifiedRecords
+
+        recs = UnifiedRecords(
+            source="test_distinct",
+            lab_results=[
+                LabResult(
+                    source="test_distinct",
+                    test_name="CEA",
+                    value="5.8",
+                    result_date="2025-06-15",
+                ),
+                LabResult(
+                    source="test_distinct",
+                    test_name="CEA",
+                    value="6.2",  # different value -> different natural key
+                    result_date="2025-07-20",
+                ),
+            ],
+        )
+        db = HealthMemexDB(str(tmp_path / "distinct.db"))
+        db.init_schema()
+        db.load_source(recs)
+        uids = [r["unique_id"] for r in db.query("SELECT unique_id FROM lab_results")]
+        db.close()
+        assert len(set(uids)) == 2, "two distinct natural keys → two distinct unique_ids"
+
+    def test_migration_backfills_existing_rows(self, tmp_path):
+        """A DB created before the unique_id column existed must get
+        unique_ids on the next init_schema(). Simulates upgrading a
+        live install."""
+        import sqlite3
+
+        from health_memex.db import HealthMemexDB
+        from health_memex.models import LabResult, UnifiedRecords
+
+        db_path = str(tmp_path / "old.db")
+
+        # Create a DB without the unique_id column (simulate old version)
+        db = HealthMemexDB(db_path)
+        db.init_schema()
+        db.load_source(
+            UnifiedRecords(
+                source="legacy",
+                lab_results=[
+                    LabResult(
+                        source="legacy",
+                        test_name="WBC",
+                        value="6.2",
+                        result_date="2025-01-15",
+                    ),
+                ],
+            )
+        )
+        # Forcibly NULL the unique_id to simulate a row from before the
+        # migration ran.
+        db.conn.execute("UPDATE lab_results SET unique_id = NULL")
+        db.conn.commit()
+        db.close()
+
+        # Verify the row is NULL
+        check_conn = sqlite3.connect(db_path)
+        check_conn.row_factory = sqlite3.Row
+        row = check_conn.execute("SELECT unique_id FROM lab_results").fetchone()
+        assert row["unique_id"] is None
+        check_conn.close()
+
+        # Re-open and re-init: migration should backfill
+        db2 = HealthMemexDB(db_path)
+        db2.init_schema()
+        rows = db2.query("SELECT unique_id FROM lab_results")
+        db2.close()
+        assert rows[0]["unique_id"] is not None
+        assert len(rows[0]["unique_id"]) == 16
 
 
 # ---------------------------------------------------------------------------

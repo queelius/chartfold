@@ -12,7 +12,12 @@ import sqlite3
 
 from mcp.server.fastmcp import FastMCP
 
-from health_memex.db import _UNIQUE_KEYS, HealthMemexDB, _build_upsert_sql
+from health_memex.db import (
+    _UNIQUE_KEYS,
+    HealthMemexDB,
+    _build_upsert_sql,
+    _is_unique_id_format,
+)
 
 DB_PATH = os.environ.get("HEALTH_MEMEX_DB", "health_memex.db")
 
@@ -170,25 +175,31 @@ def get_record(kind: str, id: str) -> dict:
     specific tools (``query_labs``, ``get_pathology_report``, etc.)
     which return richer, multi-row views.
 
+    Two id formats are accepted (auto-detected by string shape):
+
+      - **unique_id**: 16 hex chars (sha256 of the row's natural key,
+        truncated). Stable across re-imports — the durable form.
+        Preferred for trail steps and arkiv URIs.
+      - **autoincrement id**: pure digits (legacy). Resolves but is
+        not stable across DB rebuilds; trail steps using this form
+        may break after a re-import.
+
+    Both forms return the same response shape so callers don't need
+    to know which format they used.
+
     Args:
-        kind: Table name (e.g. ``"lab_results"``, ``"encounters"``,
-            ``"notes"``). Must match the arkiv URI convention used by
-            export_arkiv.py.
-        id: Autoincrement integer id of the row, passed as a string
-            (URIs carry ids as strings). Non-integer values return an
-            ``invalid_id`` error rather than a SQL error.
+        kind: Table name (e.g. ``"lab_results"``, ``"encounters"``).
+            Must match the arkiv URI convention.
+        id: 16-hex unique_id OR digits-only autoincrement id, passed
+            as a string. Other formats return ``invalid_id``.
 
     Returns:
-        On success: ``{"kind": kind, "id": <int>, "record": {...row}}``.
+        On success: ``{"kind": kind, "id": <id_used_for_lookup>,
+            "record": {...row}}``. ``id`` echoes back exactly what was
+            provided (preserving the format the caller chose).
         On invalid kind: ``{"error": "unknown_kind", "kind": kind, ...}``.
-        On non-integer id: ``{"error": "invalid_id", "id": id}``.
-        On missing row: ``{"error": "not_found", "kind": kind, "id": <int>}``.
-
-    Returning structured errors (rather than raising) lets the
-    federation surface the failure type cleanly via ``LookupResult``.
-    Re-imports change autoincrement ids; URIs into health-memex are
-    NOT durable across DB rebuilds. See docs/uri-scheme.md for the
-    durable-id action item (V2b).
+        On unrecognized id format: ``{"error": "invalid_id", "id": id}``.
+        On missing row: ``{"error": "not_found", "kind": kind, "id": id}``.
     """
     if kind not in _RECORD_KINDS:
         return {
@@ -196,20 +207,27 @@ def get_record(kind: str, id: str) -> dict:
             "kind": kind,
             "valid_kinds": sorted(_RECORD_KINDS),
         }
-    try:
-        record_id = int(id)
-    except (TypeError, ValueError):
+
+    # The notes/analyses tables have no natural key (and thus no
+    # unique_id column), so we always look them up by autoincrement id.
+    # _UNIQUE_KEYS holds the clinical tables that DO have unique_id.
+    has_unique_id = kind in _UNIQUE_KEYS
+
+    if has_unique_id and _is_unique_id_format(id):
+        rows = _readonly_query(
+            f"SELECT * FROM {kind} WHERE unique_id = '{id}'"
+        )
+    elif id.isdigit():
+        rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = {int(id)}")
+    else:
         return {"error": "invalid_id", "id": id}
 
-    rows = _readonly_query(
-        f"SELECT * FROM {kind} WHERE id = {record_id}"
-    )
     # _readonly_query returns str on error, list[dict] on success
     if isinstance(rows, str):
         return {"error": "sql_error", "detail": rows}
     if not rows:
-        return {"error": "not_found", "kind": kind, "id": record_id}
-    return {"kind": kind, "id": record_id, "record": rows[0]}
+        return {"error": "not_found", "kind": kind, "id": id}
+    return {"kind": kind, "id": id, "record": rows[0]}
 
 
 # ---------------------------------------------------------------------------
