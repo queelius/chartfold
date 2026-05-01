@@ -9,6 +9,7 @@ HealthMemexDB wraps a SQLite database with:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import sqlite3
@@ -322,23 +323,28 @@ class HealthMemexDB:
         self.conn.execute("PRAGMA foreign_keys=ON")
 
     def init_schema(self) -> None:
-        """Create all tables from schema.sql (IF NOT EXISTS).
-
-        Also migrates existing databases by adding any missing columns
-        (e.g. metadata) via ALTER TABLE.
+        """Create all tables from schema.sql (IF NOT EXISTS) and run
+        the forward migrations on any pre-existing database.
         """
         sql = _get_schema_sql()
         self.conn.executescript(sql)
-        self._migrate_add_metadata_columns()
+        self._run_migrations()
 
-    def _migrate_add_metadata_columns(self) -> None:
-        """Add columns introduced after initial schema to pre-existing DBs.
+    def _run_migrations(self) -> None:
+        """Bring a possibly-old database up to the current schema.
 
-        SQLite ALTER TABLE ADD COLUMN is cheap and idempotent (raises
-        OperationalError if the column already exists, which we suppress).
+        Each migration step uses ``ALTER TABLE ADD COLUMN`` (cheap,
+        idempotent — raises OperationalError if the column already
+        exists, which we suppress) plus targeted backfill helpers.
+        Called from ``init_schema`` after the IF-NOT-EXISTS DDL runs.
+        Steps:
+          1. ``metadata`` JSON column on every record table.
+          2. ``genetic_variants_count`` on ``load_log``.
+          3. ``archived_at`` on every soft-delete table.
+          4. ``unique_id`` (V2b durable IDs) on every clinical table,
+             with a partial UNIQUE INDEX, and a backfill pass.
+          5. FTS5 index rebuild for any rows missing from the index.
         """
-        import contextlib
-
         record_tables = ["patients"] + [t for _, t, _ in _TABLE_MAP]
         for table in record_tables:
             with contextlib.suppress(sqlite3.OperationalError):

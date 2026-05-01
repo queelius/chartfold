@@ -205,14 +205,16 @@ def get_record(kind: str, id: str) -> dict:
     Two id formats are accepted (auto-detected by string shape):
 
       - **unique_id**: 16 hex chars (sha256 of the row's natural key,
-        truncated). Stable across re-imports — the durable form.
-        Preferred for trail steps and arkiv URIs.
-      - **autoincrement id**: pure digits (legacy). Resolves but is
-        not stable across DB rebuilds; trail steps using this form
-        may break after a re-import.
+        truncated). Stable across re-imports. The durable form for
+        clinical tables in ``_UNIQUE_KEYS``.
+      - **autoincrement id**: pure digits. The native form for
+        ``notes`` and ``analyses`` (no natural key, no unique_id
+        column). Also resolves clinical rows for legacy URIs that
+        pre-date the unique_id migration; those URIs may break
+        across DB rebuilds since autoincrement values churn.
 
-    Both forms return the same response shape so callers don't need
-    to know which format they used.
+    Both forms return the same response shape, so callers don't
+    need to know which format they used.
 
     Args:
         kind: Table name (e.g. ``"lab_results"``, ``"encounters"``).

@@ -210,6 +210,36 @@ def _row_to_record(
 # ---------------------------------------------------------------------------
 
 
+# Per-export schema cache. Keyed by id(db.conn) so multiple concurrent
+# exports against different databases don't see each other's caches.
+# Cleared at the start of each export_arkiv() call (see _reset_caches
+# in the export entry point).
+_TABLE_COLS_CACHE: dict[int, dict[str, set[str]]] = {}
+
+
+def _table_columns(db: HealthMemexDB, table: str) -> set[str]:
+    """Column-name set for *table*, cached per export.
+
+    PRAGMA table_info is cheap individually but pricey when called
+    inside a per-row loop where ``db.query`` opens a fresh read-only
+    connection each time. We cache the column set per (connection,
+    table) pair so the second-and-later calls are O(1).
+
+    The cache is cleared at the start of every ``export_arkiv()`` call
+    so a long-running process (e.g. test suite) that exports against
+    multiple DBs doesn't accumulate stale entries.
+    """
+    cache = _TABLE_COLS_CACHE.setdefault(id(db.conn), {})
+    if table not in cache:
+        cache[table] = {r["name"] for r in db.query(f"PRAGMA table_info({table})")}
+    return cache[table]
+
+
+def _reset_export_caches() -> None:
+    """Clear the per-export caches. Called by export_arkiv()."""
+    _TABLE_COLS_CACHE.clear()
+
+
 def _select_rows_with_fk_uids(db: HealthMemexDB, table: str) -> list[dict[str, Any]]:
     """SELECT all rows from *table*, resolving each FK in _FK_FIELDS
     to the parent's unique_id.
@@ -220,20 +250,21 @@ def _select_rows_with_fk_uids(db: HealthMemexDB, table: str) -> list[dict[str, A
     FK column already populated with the parent's unique_id string
     instead of the autoincrement integer.
     """
-    fk_cols = [c for c in _FK_FIELDS if c.startswith(table + ".") or _table_has_column(db, table, c)]
+    cols = _table_columns(db, table)
+    fk_cols = [fk for fk in _FK_FIELDS if fk in cols]
     if not fk_cols:
         return db.query(f"SELECT * FROM {table}")
 
     # Build a SELECT that overrides each FK column with the parent's
-    # unique_id (or NULL if FK is itself NULL).
+    # unique_id (or NULL if FK is itself NULL). SQLite returns the
+    # LAST same-named column when a SELECT yields duplicates, so the
+    # alias-qualified ``unique_id AS <fk_col>`` wins over the original
+    # FK integer column from ``{table}.*``.
     select_pieces = [f"{table}.*"]
     join_pieces = []
     for fk_col in fk_cols:
         parent_table, _uri_key = _FK_FIELDS[fk_col]
         alias = f"_p_{fk_col}"
-        # Override the FK column in the result set: SQLite returns
-        # the LAST same-named column when a SELECT yields duplicates,
-        # which is what we want here.
         select_pieces.append(f"{alias}.unique_id AS {fk_col}")
         join_pieces.append(
             f"LEFT JOIN {parent_table} {alias} "
@@ -246,12 +277,6 @@ def _select_rows_with_fk_uids(db: HealthMemexDB, table: str) -> list[dict[str, A
     return db.query(sql)
 
 
-def _table_has_column(db: HealthMemexDB, table: str, col: str) -> bool:
-    """True iff *table* has a column called *col*."""
-    rows = db.query(f"PRAGMA table_info({table})")
-    return any(r["name"] == col for r in rows)
-
-
 def _lookup_unique_id(
     db: HealthMemexDB, table: str, autoincrement_id: int
 ) -> str | None:
@@ -262,7 +287,7 @@ def _lookup_unique_id(
     Returns None if the row doesn't exist, the table doesn't have a
     unique_id column, or unique_id is NULL on that row.
     """
-    if not _table_has_column(db, table, "unique_id"):
+    if "unique_id" not in _table_columns(db, table):
         return None
     rows = db.query(
         f"SELECT unique_id FROM {table} WHERE id = ?",
@@ -643,6 +668,7 @@ def export_arkiv(
     Returns the output path (the archive file or the directory, depending
     on the format inferred from the extension).
     """
+    _reset_export_caches()
     fmt = _detect_bundle_format(output_dir)
 
     if fmt == "dir":

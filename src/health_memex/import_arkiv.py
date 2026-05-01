@@ -792,13 +792,15 @@ def _import_arkiv_dir(
                     )
                     new_id = cursor.lastrowid
 
-                # Populate the uid_map entry if this is a clinical
-                # table. The unique_id may be on the row (if the
-                # exporter wrote it) or computable from natural key.
-                if table in _UNIQUE_KEYS and new_id is not None:
-                    parent_uid = filtered.get("unique_id") or exported_id
-                    if parent_uid:
-                        uid_map[table][parent_uid] = new_id
+                # Populate uid_map for any clinical table so child
+                # rows in subsequent iterations can resolve FK URIs
+                # via the parent's unique_id. ``exported_id`` is the
+                # URI's id portion, which is the unique_id string for
+                # tables in _UNIQUE_KEYS (the export side strips
+                # unique_id from metadata since it's already in the
+                # URI; we don't need to reconstruct it from filtered).
+                if table in _UNIQUE_KEYS and new_id is not None and exported_id:
+                    uid_map[table][exported_id] = new_id
 
                 # Step 7: Unfold tags
                 if tags and table in _TAG_CONFIG:
