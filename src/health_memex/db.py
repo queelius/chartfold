@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
 import sqlite3
 import time
 from dataclasses import asdict
@@ -317,6 +318,14 @@ class HealthMemexDB:
 
     def __init__(self, db_path: str = "health_memex.db"):
         self.db_path = db_path
+        # Ensure parent dir exists. The XDG default
+        # (~/.local/share/health-memex/health_memex.db) won't be there on
+        # a fresh install; sqlite3 raises a confusing "unable to open
+        # database file" if we don't create it. Skip for ":memory:" or
+        # other special paths that don't have a meaningful parent.
+        parent = os.path.dirname(db_path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent, exist_ok=True)
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
