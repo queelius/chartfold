@@ -101,6 +101,46 @@ class TestSchemaCreation:
         assert "metadata" in col_names
         db.close()
 
+    def test_legacy_notes_analyses_without_archived_at_migrate(self, tmp_path):
+        """Regression (B1): a legacy DB whose notes/analyses tables predate the
+        archived_at column must migrate cleanly. The archived_at indexes used
+        to be created in schema.sql's executescript BEFORE the migration added
+        the column, so on such a DB the CREATE INDEX raised 'no such column:
+        archived_at' and aborted the whole script — bricking every tool/CLI.
+        """
+        import sqlite3
+
+        db_path = str(tmp_path / "legacy.db")
+        conn = sqlite3.connect(db_path)
+        # Pre-create notes and analyses WITHOUT archived_at (the legacy shape).
+        conn.execute(
+            "CREATE TABLE notes ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "ref_table TEXT, ref_id INTEGER, text TEXT NOT NULL, "
+            "created_at TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE analyses ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "slug TEXT, title TEXT, category TEXT, content TEXT)"
+        )
+        conn.execute("INSERT INTO notes (text, created_at) VALUES ('n', '2020-01-01')")
+        conn.commit()
+        conn.close()
+
+        # init_schema must NOT raise, and must add archived_at + its index.
+        db = HealthMemexDB(db_path)
+        db.init_schema()  # would raise OperationalError before the fix
+        for table in ("notes", "analyses"):
+            cols = {c["name"] for c in db.query(f"PRAGMA table_info({table})")}
+            assert "archived_at" in cols, f"{table}.archived_at not migrated"
+            idx = {r["name"] for r in db.query(f"PRAGMA index_list({table})")}
+            assert f"idx_{table}_archived" in idx, f"{table} archived index missing"
+        # And a soft-delete-filtered read works (the chartfold-blocker query).
+        rows = db.query("SELECT id FROM notes WHERE archived_at IS NULL")
+        assert len(rows) == 1
+        db.close()
+
 
 class TestLoadSource:
     def test_load_patient(self, loaded_db):

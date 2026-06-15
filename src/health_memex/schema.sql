@@ -351,7 +351,11 @@ CREATE TABLE IF NOT EXISTS note_tags (
 
 CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_ref ON notes(ref_table, ref_id);
-CREATE INDEX IF NOT EXISTS idx_notes_archived ON notes(archived_at);
+-- NOTE: idx_notes_archived on notes(archived_at) is created in
+-- HealthMemexDB._run_migrations, AFTER the migration that adds the
+-- archived_at column. Creating it here would abort executescript on a
+-- legacy DB whose notes table predates archived_at (no such column),
+-- which would prevent the migration from ever running.
 CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
 
 -- Source assets (PDFs, images, etc. not parsed but tracked)
@@ -403,7 +407,9 @@ CREATE TABLE IF NOT EXISTS analysis_tags (
 
 CREATE INDEX IF NOT EXISTS idx_analyses_slug ON analyses(slug);
 CREATE INDEX IF NOT EXISTS idx_analyses_category ON analyses(category);
-CREATE INDEX IF NOT EXISTS idx_analyses_archived ON analyses(archived_at);
+-- NOTE: idx_analyses_archived on analyses(archived_at) is created in
+-- HealthMemexDB._run_migrations, AFTER the archived_at column is added
+-- (see idx_notes_archived above for the rationale).
 CREATE INDEX IF NOT EXISTS idx_analysis_tags_tag ON analysis_tags(tag);
 
 -- ---------------------------------------------------------------------------

@@ -371,6 +371,20 @@ class HealthMemexDB:
             with contextlib.suppress(sqlite3.OperationalError):
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN archived_at TEXT")
 
+        # archived_at indexes for notes/analyses are created HERE, not in
+        # schema.sql, so they run only after the column above exists. On a
+        # legacy DB whose notes/analyses tables predate archived_at, building
+        # these in the schema.sql executescript would raise "no such column"
+        # and abort the whole script before this migration could add it — a
+        # chicken-and-egg deadlock that bricked every tool/CLI against the
+        # deployed legacy database.
+        for table in ("notes", "analyses"):
+            with contextlib.suppress(sqlite3.OperationalError):
+                self.conn.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{table}_archived "
+                    f"ON {table}(archived_at)"
+                )
+
         # Durable IDs (V2b): every clinical table gains a content-hash
         # unique_id derived from its natural key. Stable across re-imports
         # so trail steps and arkiv URIs survive DB rebuilds.
