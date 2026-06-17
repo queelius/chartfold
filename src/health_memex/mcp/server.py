@@ -16,6 +16,7 @@ from health_memex.db import (
     _UNIQUE_KEYS,
     HealthMemexDB,
     _build_upsert_sql,
+    _compute_unique_id,
     _is_unique_id_format,
 )
 
@@ -829,6 +830,12 @@ def write_record(
         nk_where = " AND ".join(f"{c} = ?" for c in unique_cols)
         nk_values = tuple(data[c] for c in unique_cols)
         existing = db.conn.execute(f"SELECT id FROM {table} WHERE {nk_where}", nk_values).fetchone()
+
+        # Inject the durable content-hash unique_id at write time, the same
+        # way load_source does. Without it a write_record row gets unique_id
+        # = NULL and is unresolvable by the federation's content-hash URI
+        # until the next init_schema backfill (a whole-session window).
+        data = {**data, "unique_id": _compute_unique_id(table, data)}
 
         columns = list(data.keys())
         values = [data[c] for c in columns]

@@ -182,3 +182,45 @@ class TestResurrectionViaWriteRecord:
         assert r2["status"] == "updated"
         rows = mcp_srv.run_sql(f"SELECT archived_at FROM lab_results WHERE id = {r1['id']}")
         assert rows[0]["archived_at"] is None, "UPSERT must clear archived_at"
+
+
+class TestUniqueId:
+    """S1: write_record must assign the durable content-hash unique_id at
+    write time, not leave it NULL until the next init_schema backfill."""
+
+    _base: ClassVar[dict] = {
+        "source": "test",
+        "test_name": "CEA",
+        "result_date": "2025-06-15",
+        "value": "5.8",
+    }
+
+    def test_write_record_populates_unique_id(self, mcp_srv):
+        from health_memex.db import HealthMemexDB, _compute_unique_id
+
+        result = mcp_srv.write_record("lab_results", dict(self._base))
+        assert "error" not in result, result
+        row_id = result["id"]
+
+        db = HealthMemexDB(mcp_srv.DB_PATH)
+        try:
+            row = db.conn.execute(
+                "SELECT unique_id FROM lab_results WHERE id = ?", (row_id,)
+            ).fetchone()
+        finally:
+            db.close()
+        assert row["unique_id"], "write_record left unique_id NULL"
+        # Matches the durable hash the federation resolves URIs by.
+        assert row["unique_id"] == _compute_unique_id("lab_results", dict(self._base))
+
+    def test_unique_id_resolvable_same_session(self, mcp_srv):
+        """get_record by the content-hash unique_id must work in the same
+        session the row was written (no restart/backfill required)."""
+        from health_memex.db import _compute_unique_id
+
+        result = mcp_srv.write_record("lab_results", dict(self._base))
+        uid = _compute_unique_id("lab_results", dict(self._base))
+        rows = mcp_srv.run_sql(
+            f"SELECT id FROM lab_results WHERE unique_id = '{uid}'"
+        )
+        assert rows and rows[0]["id"] == result["id"]
