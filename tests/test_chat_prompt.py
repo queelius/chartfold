@@ -94,6 +94,19 @@ class TestGenerateSystemPrompt:
         assert "lab_results" in prompt
         assert "medications" in prompt
 
+    def test_warns_fts5_unavailable_in_spa(self, chat_db):
+        """The SPA DB has FTS5 stripped, so the prompt must tell the LLM to
+        use LIKE (not MATCH) and name the removed FTS5 tables, rather than
+        silently advertising MATCH against tables that aren't there."""
+        from health_memex.spa.export import _FTS5_TABLES
+
+        prompt = generate_system_prompt(chat_db.db_path)
+        assert "LIKE" in prompt
+        # Mentions FTS5 is unavailable and names each stripped table.
+        assert "FTS5" in prompt
+        for fts_table in _FTS5_TABLES:
+            assert fts_table in prompt
+
     def test_includes_summary_stats(self, chat_db):
         prompt = generate_system_prompt(chat_db.db_path)
         assert "epic_anderson" in prompt

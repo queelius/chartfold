@@ -77,9 +77,26 @@ def _role_instructions() -> str:
 
 
 def _schema_section() -> str:
-    """Return the schema section of the prompt."""
+    """Return the schema section of the prompt.
+
+    The SPA's embedded database has the FTS5 virtual tables and their
+    triggers stripped (sql.js has no FTS5), so the prompt must not advertise
+    `MATCH` against them. We annotate using export.py's canonical
+    ``_FTS5_TABLES`` list (lazy import: export.py imports this module, so a
+    top-level import would be circular).
+    """
+    from health_memex.spa.export import _FTS5_TABLES
+
     schema = (Path(__file__).parent.parent / "schema.sql").read_text()
-    return f"## Database Schema\n\n```sql\n{schema}\n```"
+    fts_list = ", ".join(_FTS5_TABLES)
+    note = (
+        f"\n\n**SPA note:** this exported database has the FTS5 virtual tables "
+        f"({fts_list}) and their triggers removed (sql.js cannot use FTS5). "
+        f"Use `LIKE '%term%'` for full-text search here, not `MATCH`. Those "
+        f"tables appear in the schema below for reference only and are not "
+        f"queryable in this SPA."
+    )
+    return f"## Database Schema{note}\n\n```sql\n{schema}\n```"
 
 
 def _summary_stats_section(conn: sqlite3.Connection) -> str:

@@ -243,16 +243,21 @@ def get_record(kind: str, id: str) -> dict:
     # _UNIQUE_KEYS holds the clinical tables that DO have unique_id.
     has_unique_id = kind in _UNIQUE_KEYS
 
-    # `kind` is allowlisted via _RECORD_KINDS; `id` is parameterised, so
+    # A URI fragment ("#page=3", an epubcfi, a message range, ...) addresses a
+    # position *within* a record, not a different record, so strip it before
+    # resolving: the base id selects the row. Mirrors mail-memex's parse_uri.
+    base_id, _, fragment = id.partition("#")
+
+    # `kind` is allowlisted via _RECORD_KINDS; `base_id` is parameterised, so
     # neither can carry a SQL injection. The format checks pick the
     # right column (durable unique_id vs autoincrement id) but no
     # longer guard against escape — the placeholder does.
-    if has_unique_id and _is_unique_id_format(id):
+    if has_unique_id and _is_unique_id_format(base_id):
         rows = _readonly_query(
-            f"SELECT * FROM {kind} WHERE unique_id = ?", (id,)
+            f"SELECT * FROM {kind} WHERE unique_id = ?", (base_id,)
         )
-    elif id.isdigit():
-        rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = ?", (id,))
+    elif base_id.isdigit():
+        rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = ?", (base_id,))
     else:
         return {"error": "invalid_id", "id": id}
 
@@ -261,7 +266,11 @@ def get_record(kind: str, id: str) -> dict:
         return {"error": "sql_error", "detail": rows}
     if not rows:
         return {"error": "not_found", "kind": kind, "id": id}
-    return {"kind": kind, "id": id, "record": rows[0]}
+    result = {"kind": kind, "id": id, "record": rows[0]}
+    if fragment:
+        # Echo the fragment so callers can post-resolve the sub-position.
+        result["fragment"] = fragment
+    return result
 
 
 # ---------------------------------------------------------------------------

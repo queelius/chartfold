@@ -290,6 +290,22 @@ class TestGetRecord:
         assert result["record"]["value"] == "5.8"
         assert result["record"]["source"] == "test"
 
+    def test_resolves_id_with_uri_fragment(self, mcp_db):
+        """A URI fragment addresses a position within a record, not a
+        different record, so it must be stripped before resolution and
+        echoed back rather than causing an invalid_id error."""
+        result = mcp_db.get_record("lab_results", "1#page=2")
+        assert "error" not in result
+        assert result["kind"] == "lab_results"
+        assert result["id"] == "1#page=2"  # echoed verbatim
+        assert result["fragment"] == "page=2"
+        assert result["record"]["test_name"] == "CEA"
+
+    def test_no_fragment_key_when_absent(self, mcp_db):
+        """Plain ids carry no fragment key in the response."""
+        result = mcp_db.get_record("lab_results", "1")
+        assert "fragment" not in result
+
     def test_unknown_kind(self, mcp_db):
         """An unrecognised kind returns a structured error listing the
         valid kinds so the operator can self-diagnose typos."""

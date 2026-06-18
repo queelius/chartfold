@@ -153,6 +153,8 @@ Design principle: the LLM writes its own SQL for all reads via `run_sql` + `get_
 
 Read-only SQL uses SQLite URI `mode=ro` for engine-level enforcement and blocks `ATTACH`/`DETACH` to prevent writable database bypass. Results capped at 5000 rows.
 
+**`run_sql`'s parameter is named `query`, not `sql`.** This diverges from the ecosystem's `execute_sql(sql=...)` / `run_sql(sql=...)` convention. The federation accommodates this via a per-archive `sql_arg` override: health-memex's archive config must set `sql_arg: query` (the federation config loader supports and tests this, defaulting `sql_arg` to `sql` for every other archive). Do not rename the parameter without coordinating a matching change to the federation config, or federation SQL calls into this archive will fail with a missing-argument error.
+
 ### Data Access Modules (analysis/)
 
 Parameterized query helpers that surface structured views of the data for LLMs (via MCP) and CLI:
