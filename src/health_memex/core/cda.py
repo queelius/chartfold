@@ -7,6 +7,14 @@ from lxml import etree
 
 NS = "urn:hl7-org:v3"
 
+# Hardened parsers for externally-sourced EHR files: disable entity resolution
+# (blocks XXE / entity-expansion via internal or SYSTEM entities) and disallow
+# network access (no external DTD/entity fetches). Constructed once and reused.
+_PARSER = etree.XMLParser(resolve_entities=False, no_network=True)
+_PARSER_RECOVER = etree.XMLParser(
+    resolve_entities=False, no_network=True, recover=True, encoding="utf-8"
+)
+
 
 def parse_doc(filepath: str, recover: bool = False) -> etree._Element:
     """Parse a CDA XML file and return the root element.
@@ -16,10 +24,9 @@ def parse_doc(filepath: str, recover: bool = False) -> etree._Element:
         recover: If True, use lxml's recovery mode for encoding issues.
     """
     if recover:
-        parser = etree.XMLParser(recover=True, encoding="utf-8")
         with open(filepath, "rb") as f:
-            return etree.parse(f, parser).getroot()
-    return etree.parse(filepath).getroot()
+            return etree.parse(f, _PARSER_RECOVER).getroot()
+    return etree.parse(filepath, _PARSER).getroot()
 
 
 def get_title(root: etree._Element) -> str:

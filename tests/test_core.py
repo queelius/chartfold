@@ -280,6 +280,43 @@ class TestCDAParsing:
         text = section_text(sections["Active Problems"])
         assert "Colon cancer" in text
 
+    def test_no_external_entity_resolution(self, tmp_path):
+        """External SYSTEM entities (XXE) must not be resolved (no file read)."""
+        secret = tmp_path / "secret.txt"
+        secret.write_text("TOPSECRET_PHI_DATA")
+        xml = (
+            '<?xml version="1.0"?>\n'
+            "<!DOCTYPE ClinicalDocument [\n"
+            f'  <!ENTITY xxe SYSTEM "file://{secret}">\n'
+            "]>\n"
+            f'<ClinicalDocument xmlns="{NS}">\n'
+            "  <title>&xxe;</title>\n"
+            "</ClinicalDocument>\n"
+        )
+        f = tmp_path / "xxe.xml"
+        f.write_text(xml)
+        # Should parse without leaking the file contents into the title.
+        for recover in (False, True):
+            root = parse_doc(str(f), recover=recover)
+            assert "TOPSECRET_PHI_DATA" not in get_title(root)
+
+    def test_no_internal_entity_expansion(self, tmp_path):
+        """Internal entities must not be expanded (entity-expansion hardening)."""
+        xml = (
+            '<?xml version="1.0"?>\n'
+            "<!DOCTYPE ClinicalDocument [\n"
+            '  <!ENTITY payload "EXPANDED_PAYLOAD">\n'
+            "]>\n"
+            f'<ClinicalDocument xmlns="{NS}">\n'
+            "  <title>&payload;</title>\n"
+            "</ClinicalDocument>\n"
+        )
+        f = tmp_path / "internal_entity.xml"
+        f.write_text(xml)
+        for recover in (False, True):
+            root = parse_doc(str(f), recover=recover)
+            assert "EXPANDED_PAYLOAD" not in get_title(root)
+
 
 # ---------------------------------------------------------------------------
 # FHIR parsing tests
