@@ -9,7 +9,7 @@ Usage:
     python -m health_memex query <sql> [--db health_memex.db]
     python -m health_memex summary [--db health_memex.db]
     python -m health_memex export html [--output FILE] [--embed-images] [--config FILE]
-                                     [--ai-chat] [--proxy-url URL]
+                                     [--ai-chat] [--proxy-url URL] [--include-notes]
     python -m health_memex export arkiv [--output DIR] [--embed] [--exclude-notes]
     python -m health_memex mcp [--db health_memex.db]
 """
@@ -167,6 +167,14 @@ def main():
         "--proxy-url",
         default="",
         help="Proxy URL for AI chat API calls",
+    )
+    html_parser.add_argument(
+        "--include-notes",
+        action="store_true",
+        help=(
+            "Include personal notes and analyses in the SPA (off by default; "
+            "archived records and the load_log audit trail are always excluded)"
+        ),
     )
 
     # export arkiv
@@ -753,6 +761,7 @@ def _handle_export(args):
                 embed_images=args.embed_images,
                 ai_chat=args.ai_chat,
                 proxy_url=args.proxy_url,
+                include_notes=args.include_notes,
             )
 
         elif args.export_format == "arkiv":

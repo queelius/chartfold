@@ -30,24 +30,26 @@ def visit_diff(db: HealthMemexDB, since_date: str) -> dict:
     new_labs = db.query(
         "SELECT test_name, value, value_numeric, unit, ref_range, "
         "interpretation, result_date, source "
-        "FROM lab_results WHERE result_date >= ? "
+        "FROM lab_results WHERE archived_at IS NULL AND result_date >= ? "
         "ORDER BY result_date DESC",
         (since_date,),
     )
 
     new_imaging = db.query(
         "SELECT study_name, modality, study_date, impression, source "
-        "FROM imaging_reports WHERE study_date >= ? "
+        "FROM imaging_reports WHERE archived_at IS NULL AND study_date >= ? "
         "ORDER BY study_date DESC",
         (since_date,),
     )
 
+    # Archived procedures (pr) must not surface as a procedure_name on the
+    # join, so the join is guarded with pr.archived_at IS NULL as well.
     new_pathology = db.query(
         "SELECT p.report_date, p.specimen, p.diagnosis, p.staging, p.margins, "
         "p.source, pr.name as procedure_name "
         "FROM pathology_reports p "
-        "LEFT JOIN procedures pr ON p.procedure_id = pr.id "
-        "WHERE p.report_date >= ? "
+        "LEFT JOIN procedures pr ON p.procedure_id = pr.id AND pr.archived_at IS NULL "
+        "WHERE p.archived_at IS NULL AND p.report_date >= ? "
         "ORDER BY p.report_date DESC",
         (since_date,),
     )
@@ -55,7 +57,7 @@ def visit_diff(db: HealthMemexDB, since_date: str) -> dict:
     medication_changes = db.query(
         "SELECT name, status, sig, start_date, stop_date, prescriber, source "
         "FROM medications "
-        "WHERE start_date >= ? OR stop_date >= ? "
+        "WHERE archived_at IS NULL AND (start_date >= ? OR stop_date >= ?) "
         "ORDER BY COALESCE(start_date, stop_date) DESC",
         (since_date, since_date),
     )
@@ -63,28 +65,28 @@ def visit_diff(db: HealthMemexDB, since_date: str) -> dict:
     new_notes = db.query(
         "SELECT note_type, author, note_date, "
         "SUBSTR(content, 1, 500) as content_preview, source "
-        "FROM clinical_notes WHERE note_date >= ? "
+        "FROM clinical_notes WHERE archived_at IS NULL AND note_date >= ? "
         "ORDER BY note_date DESC",
         (since_date,),
     )
 
     new_conditions = db.query(
         "SELECT condition_name, icd10_code, clinical_status, onset_date, source "
-        "FROM conditions WHERE onset_date >= ? "
+        "FROM conditions WHERE archived_at IS NULL AND onset_date >= ? "
         "ORDER BY onset_date DESC",
         (since_date,),
     )
 
     new_encounters = db.query(
         "SELECT encounter_date, encounter_type, facility, provider, reason, source "
-        "FROM encounters WHERE encounter_date >= ? "
+        "FROM encounters WHERE archived_at IS NULL AND encounter_date >= ? "
         "ORDER BY encounter_date DESC",
         (since_date,),
     )
 
     new_procedures = db.query(
         "SELECT name, procedure_date, provider, facility, source "
-        "FROM procedures WHERE procedure_date >= ? "
+        "FROM procedures WHERE archived_at IS NULL AND procedure_date >= ? "
         "ORDER BY procedure_date DESC",
         (since_date,),
     )
@@ -92,7 +94,7 @@ def visit_diff(db: HealthMemexDB, since_date: str) -> dict:
     new_genetic_variants = db.query(
         "SELECT gene, variant_type, classification, vaf, dna_change, "
         "protein_change, test_name, collection_date, result_date, source "
-        "FROM genetic_variants WHERE collection_date >= ? "
+        "FROM genetic_variants WHERE archived_at IS NULL AND collection_date >= ? "
         "ORDER BY collection_date DESC",
         (since_date,),
     )

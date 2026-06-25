@@ -35,7 +35,7 @@ def get_clinical_timeline(
     filt, p = _params("encounter_date")
     for r in db.query(
         f"SELECT encounter_date, encounter_type, facility, provider, reason, source "
-        f"FROM encounters WHERE 1=1{filt} ORDER BY encounter_date DESC",
+        f"FROM encounters WHERE archived_at IS NULL{filt} ORDER BY encounter_date DESC",
         p,
     ):
         events.append(
@@ -52,7 +52,7 @@ def get_clinical_timeline(
     filt, p = _params("procedure_date")
     for r in db.query(
         f"SELECT name, procedure_date, provider, facility, status, source "
-        f"FROM procedures WHERE 1=1{filt} ORDER BY procedure_date DESC",
+        f"FROM procedures WHERE archived_at IS NULL{filt} ORDER BY procedure_date DESC",
         p,
     ):
         events.append(
@@ -69,7 +69,7 @@ def get_clinical_timeline(
     filt, p = _params("study_date")
     for r in db.query(
         f"SELECT study_name, modality, study_date, impression, source "
-        f"FROM imaging_reports WHERE 1=1{filt} ORDER BY study_date DESC",
+        f"FROM imaging_reports WHERE archived_at IS NULL{filt} ORDER BY study_date DESC",
         p,
     ):
         events.append(
@@ -86,7 +86,7 @@ def get_clinical_timeline(
     filt, p = _params("report_date")
     for r in db.query(
         f"SELECT report_date, specimen, diagnosis, staging, margins, "
-        f"lymph_nodes, source FROM pathology_reports WHERE 1=1{filt} "
+        f"lymph_nodes, source FROM pathology_reports WHERE archived_at IS NULL{filt} "
         f"ORDER BY report_date DESC",
         p,
     ):
@@ -106,7 +106,7 @@ def get_clinical_timeline(
         lab_rows = db.query(
             f"SELECT test_name, value, value_numeric, unit, ref_range, "
             f"interpretation, result_date, source "
-            f"FROM lab_results WHERE 1=1{filt} ORDER BY result_date DESC",
+            f"FROM lab_results WHERE archived_at IS NULL{filt} ORDER BY result_date DESC",
             p,
         )
         # Group by (date, source) to create one event per lab panel
@@ -136,7 +136,7 @@ def get_clinical_timeline(
         filt, p = _params("note_date")
         for r in db.query(
             f"SELECT note_type, author, note_date, content, source "
-            f"FROM clinical_notes WHERE 1=1{filt} ORDER BY note_date DESC",
+            f"FROM clinical_notes WHERE archived_at IS NULL{filt} ORDER BY note_date DESC",
             p,
         ):
             events.append(
@@ -153,7 +153,7 @@ def get_clinical_timeline(
         for r in db.query(
             f"SELECT note_type, author, note_date, "
             f"SUBSTR(content, 1, 300) as preview, source "
-            f"FROM clinical_notes WHERE 1=1{filt} ORDER BY note_date DESC",
+            f"FROM clinical_notes WHERE archived_at IS NULL{filt} ORDER BY note_date DESC",
             p,
         ):
             events.append(

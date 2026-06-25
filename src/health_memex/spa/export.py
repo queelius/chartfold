@@ -16,8 +16,23 @@ import tomllib
 from pathlib import Path
 
 from health_memex.core.utils import IMAGE_MIME_TYPES
+from health_memex.db import _SOFT_DELETE_TABLES
 
 _SPA_DIR = Path(__file__).parent
+
+# Tables that carry the archived_at soft-delete column and must have their
+# soft-deleted rows removed before a DB is shipped in the public SPA bundle.
+# Sorted for deterministic DELETE order.
+_SOFT_DELETE_SPA_TABLES: tuple[str, ...] = tuple(sorted(_SOFT_DELETE_TABLES))
+
+# Tables that hold personal marginalia / analyses. They are dropped from the
+# SPA bundle unless the operator opts in with include_notes=True. Mirrors the
+# arkiv exporter's note-exclusion list.
+_NOTE_TABLES_SPA: tuple[str, ...] = ("notes", "note_tags", "analyses", "analysis_tags")
+
+# The audit trail. Always dropped from the public bundle (it records load
+# history and per-source record counts that the SPA never reads).
+_AUDIT_TABLES_SPA: tuple[str, ...] = ("load_log",)
 
 # sql.js is not compiled with FTS5 support; shipping the shadow tables just
 # bloats the bundle and would make the browser's ``CREATE VIRTUAL TABLE``
@@ -56,20 +71,33 @@ _JS_FILES_TAIL = [
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def _strip_fts5_and_vacuum(db_path: Path) -> None:
-    """Strip FTS5 shadow tables and VACUUM *db_path* in place.
+def _strip_fts5_and_vacuum(db_path: Path, include_notes: bool = False) -> None:
+    """Sanitize, strip FTS5 shadow tables, and VACUUM *db_path* in place.
 
-    Steps (each in its own connection to avoid cross-transaction issues):
+    Deny-by-default for the public SPA bundle. Steps (each in its own
+    connection to avoid cross-transaction issues):
 
     1. Set ``PRAGMA journal_mode=DELETE`` so no ``-wal``/``-shm`` sidecars
        are left next to the exported DB.
     2. Drop the FTS5 update triggers (which reference the virtual tables).
     3. Drop the FTS5 virtual tables themselves.
-    4. VACUUM in a fresh connection (VACUUM cannot run inside a
-       transaction with other statements in flight).
+    4. Sanitize (see ``_sanitize_db_for_spa``): delete soft-deleted
+       (archived) rows from every soft-delete table, drop the load_log
+       audit trail, and (unless include_notes is True) drop the personal
+       notes / analyses tables.
+    5. VACUUM in a fresh connection (VACUUM cannot run inside a
+       transaction with other statements in flight). VACUUM also reclaims
+       the space freed by the deletes so secrets are not left in free pages.
 
     Always operate on a copy; never pass the primary DB here. The
-    operations are destructive with respect to full-text search.
+    operations are destructive with respect to full-text search and the
+    sanitized records.
+
+    Args:
+        db_path: Path to the temp DB copy to sanitize in place.
+        include_notes: If True, keep the personal notes / analyses tables
+            in the bundle. Archived rows and load_log are removed
+            regardless.
     """
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute("PRAGMA journal_mode=DELETE")
@@ -77,9 +105,36 @@ def _strip_fts5_and_vacuum(db_path: Path) -> None:
             conn.execute(f"DROP TRIGGER IF EXISTS {trig}")
         for fts in _FTS5_TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {fts}")
+        _sanitize_db_for_spa(conn, include_notes=include_notes)
         conn.commit()
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute("VACUUM")
+
+
+def _sanitize_db_for_spa(conn: sqlite3.Connection, include_notes: bool) -> None:
+    """Remove non-publishable data from an SPA-bound DB copy (in *conn*).
+
+    Deny-by-default. Removes:
+      - every soft-deleted (archived_at IS NOT NULL) row from each
+        soft-delete table, so the SPA never ships records the user deleted,
+      - the load_log audit trail (load history / per-source counts), and
+      - the personal notes / analyses tables, unless include_notes is True.
+
+    Does not commit or VACUUM; the caller is responsible for both. VACUUM
+    afterwards reclaims the freed pages so removed rows leave no residue.
+    """
+    # 1. Delete archived rows from every soft-delete table.
+    for table in _SOFT_DELETE_SPA_TABLES:
+        conn.execute(f"DELETE FROM {table} WHERE archived_at IS NOT NULL")
+
+    # 2. Drop the audit trail.
+    for table in _AUDIT_TABLES_SPA:
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+    # 3. Drop personal notes / analyses unless explicitly included.
+    if not include_notes:
+        for table in _NOTE_TABLES_SPA:
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
 def _escape_for_script_tag(content: str) -> str:
@@ -122,7 +177,8 @@ def _load_images_json(db_path: str) -> str:
     try:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT id, asset_type, file_path, content_type FROM source_assets"
+            "SELECT id, asset_type, file_path, content_type FROM source_assets "
+            "WHERE archived_at IS NULL"
         ).fetchall()
     except sqlite3.Error:
         return "{}"
@@ -152,8 +208,14 @@ def export_spa(
     embed_images: bool = False,
     ai_chat: bool = False,
     proxy_url: str = "",
+    include_notes: bool = False,
 ) -> str:
     """Export a health-memex database as a single-file SPA HTML.
+
+    The embedded DB is sanitized deny-by-default: soft-deleted (archived)
+    records and the load_log audit trail are removed, and personal notes /
+    analyses are excluded unless include_notes is True. The original DB at
+    db_path is never mutated.
 
     Args:
         db_path: Path to the SQLite database file.
@@ -164,11 +226,14 @@ def export_spa(
             system prompt, and proxy config).
         proxy_url: URL of the CORS proxy for the AI chat API requests.
             Only used when ai_chat is True.
+        include_notes: If True, ship the personal notes / analyses tables in
+            the bundle. Archived rows and load_log are removed regardless.
 
     Returns:
         The output file path as a string.
     """
-    # 1. Copy the DB to a temp file, strip FTS5 shadow tables, set
+    # 1. Copy the DB to a temp file, strip FTS5 shadow tables, sanitize
+    #    (remove archived rows / load_log / optionally notes), set
     #    journal_mode=DELETE, VACUUM, then read + gzip those bytes.
     #    The original DB at db_path is never mutated.
     with tempfile.NamedTemporaryFile(
@@ -177,7 +242,7 @@ def export_spa(
         tmp_db = Path(tmp.name)
     try:
         shutil.copyfile(db_path, tmp_db)
-        _strip_fts5_and_vacuum(tmp_db)
+        _strip_fts5_and_vacuum(tmp_db, include_notes=include_notes)
         db_bytes = tmp_db.read_bytes()
     finally:
         try:

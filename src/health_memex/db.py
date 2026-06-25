@@ -631,7 +631,13 @@ class HealthMemexDB:
             conn.close()
 
     def summary(self) -> dict[str, int]:
-        """Return row counts for all main tables (auto-discovered from schema)."""
+        """Return active (non-archived) row counts for all main tables.
+
+        Auto-discovered from schema. Soft-delete tables are counted with
+        WHERE archived_at IS NULL so archived records do not inflate the
+        summary; tables without an archived_at column (e.g. join tables) are
+        counted in full.
+        """
         rows = self.query(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
             "ORDER BY name"
@@ -641,7 +647,12 @@ class HealthMemexDB:
             table = r["name"]
             if table == "load_log":
                 continue  # Exclude audit log from summary display
-            row = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+            if table in _SOFT_DELETE_TABLES:
+                row = self.conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE archived_at IS NULL"
+                ).fetchone()
+            else:
+                row = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
             result[table] = row[0]
         return result
 

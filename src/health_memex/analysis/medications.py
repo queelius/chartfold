@@ -12,7 +12,7 @@ def get_active_medications(db: HealthMemexDB) -> list[dict]:
     return db.query(
         "SELECT name, rxnorm_code, sig, route, start_date, prescriber, source "
         "FROM medications "
-        "WHERE LOWER(status) = 'active' "
+        "WHERE archived_at IS NULL AND LOWER(status) = 'active' "
         "ORDER BY name"
     )
 
@@ -22,21 +22,26 @@ def get_medication_history(db: HealthMemexDB, med_name: str = "") -> list[dict]:
     if med_name:
         return db.query(
             f"SELECT {_MED_COLUMNS} FROM medications "
-            "WHERE LOWER(name) LIKE ? "
+            "WHERE archived_at IS NULL AND LOWER(name) LIKE ? "
             "ORDER BY start_date DESC",
             (f"%{med_name.lower()}%",),
         )
-    return db.query(f"SELECT {_MED_COLUMNS} FROM medications ORDER BY status, name")
+    return db.query(
+        f"SELECT {_MED_COLUMNS} FROM medications WHERE archived_at IS NULL ORDER BY status, name"
+    )
 
 
 def get_medication_list(db: HealthMemexDB, status: str | None = None) -> list[dict]:
     """Get medications, optionally filtered by status."""
     if status:
         return db.query(
-            f"SELECT {_MED_COLUMNS} FROM medications WHERE LOWER(status) = ? ORDER BY name",
+            f"SELECT {_MED_COLUMNS} FROM medications "
+            "WHERE archived_at IS NULL AND LOWER(status) = ? ORDER BY name",
             (status.lower(),),
         )
-    return db.query(f"SELECT {_MED_COLUMNS} FROM medications ORDER BY status, name")
+    return db.query(
+        f"SELECT {_MED_COLUMNS} FROM medications WHERE archived_at IS NULL ORDER BY status, name"
+    )
 
 
 def reconcile_medications(db: HealthMemexDB) -> dict:
@@ -46,7 +51,9 @@ def reconcile_medications(db: HealthMemexDB) -> dict:
     - active: medications active in at least one source
     - discrepancies: medications with conflicting status across sources
     """
-    all_meds = db.query("SELECT name, status, sig, source FROM medications ORDER BY name")
+    all_meds = db.query(
+        "SELECT name, status, sig, source FROM medications WHERE archived_at IS NULL ORDER BY name"
+    )
 
     # Group by normalized name
     by_name: dict[str, list[dict]] = {}

@@ -44,29 +44,29 @@ def generate_visit_prep(
         "recent_labs": db.query(
             "SELECT test_name, value, value_numeric, unit, ref_range, "
             "interpretation, result_date, source "
-            "FROM lab_results WHERE result_date >= ? "
+            "FROM lab_results WHERE archived_at IS NULL AND result_date >= ? "
             "ORDER BY result_date DESC",
             (lookback,),
         ),
         "active_meds": db.query(
             "SELECT name, sig, route, start_date, prescriber, source "
-            "FROM medications WHERE LOWER(status) = 'active' "
+            "FROM medications WHERE archived_at IS NULL AND LOWER(status) = 'active' "
             "ORDER BY name"
         ),
         "recent_encounters": db.query(
             "SELECT encounter_date, encounter_type, facility, provider, reason, source "
-            "FROM encounters WHERE encounter_date >= ? "
+            "FROM encounters WHERE archived_at IS NULL AND encounter_date >= ? "
             "ORDER BY encounter_date DESC",
             (lookback,),
         ),
         "active_conditions": db.query(
             "SELECT condition_name, icd10_code, onset_date, source "
-            "FROM conditions WHERE LOWER(clinical_status) = 'active' "
+            "FROM conditions WHERE archived_at IS NULL AND LOWER(clinical_status) = 'active' "
             "ORDER BY condition_name"
         ),
         "recent_imaging": db.query(
             "SELECT study_name, modality, study_date, impression, source "
-            "FROM imaging_reports WHERE study_date >= ? "
+            "FROM imaging_reports WHERE archived_at IS NULL AND study_date >= ? "
             "ORDER BY study_date DESC",
             (lookback,),
         ),
@@ -78,6 +78,7 @@ def generate_visit_prep(
     prep["upcoming_due"] = db.query(
         "SELECT test_name, MAX(result_date) as last_date, value, unit "
         "FROM lab_results "
+        "WHERE archived_at IS NULL "
         "GROUP BY test_name "
         "HAVING MAX(result_date) < ? "
         "ORDER BY last_date DESC "
@@ -117,7 +118,7 @@ def _trends_from_config(
         params = [m.lower() for m in test.match]
         rows = db.query(
             f"SELECT test_name, value, value_numeric, ref_range, result_date, source "
-            f"FROM lab_results WHERE LOWER(test_name) IN ({placeholders}) "
+            f"FROM lab_results WHERE archived_at IS NULL AND LOWER(test_name) IN ({placeholders}) "
             f"ORDER BY result_date DESC LIMIT ?",
             tuple(params + [max_readings]),
         )
@@ -143,7 +144,8 @@ def _trends_from_frequent(
     """Fall back to the top N most-frequent test names."""
     frequent = db.query(
         "SELECT test_name, COUNT(*) as cnt "
-        "FROM lab_results GROUP BY test_name ORDER BY cnt DESC LIMIT ?",
+        "FROM lab_results WHERE archived_at IS NULL "
+        "GROUP BY test_name ORDER BY cnt DESC LIMIT ?",
         (top_n,),
     )
     config_tests = [LabTestConfig(name=r["test_name"], match=[r["test_name"]]) for r in frequent]
@@ -188,7 +190,7 @@ def generate_visit_prep_bundle(
     new_labs = db.query(
         "SELECT test_name, value, value_numeric, unit, ref_range, "
         "interpretation, result_date, source "
-        "FROM lab_results WHERE result_date >= ? "
+        "FROM lab_results WHERE archived_at IS NULL AND result_date >= ? "
         "ORDER BY result_date DESC",
         (lookback,),
     )
@@ -196,7 +198,7 @@ def generate_visit_prep_bundle(
     # 3. Imaging with full impressions and findings
     recent_imaging = db.query(
         "SELECT study_name, modality, study_date, impression, findings, source "
-        "FROM imaging_reports WHERE study_date >= ? "
+        "FROM imaging_reports WHERE archived_at IS NULL AND study_date >= ? "
         "ORDER BY study_date DESC",
         (lookback,),
     )
@@ -204,7 +206,7 @@ def generate_visit_prep_bundle(
     # 4. Clinical notes (full content)
     recent_notes = db.query(
         "SELECT note_date, note_type, author, content, source "
-        "FROM clinical_notes WHERE note_date >= ? "
+        "FROM clinical_notes WHERE archived_at IS NULL AND note_date >= ? "
         "ORDER BY note_date DESC",
         (lookback,),
     )
@@ -212,21 +214,21 @@ def generate_visit_prep_bundle(
     # 5. Active medications
     active_medications = db.query(
         "SELECT name, sig, route, start_date, prescriber, source "
-        "FROM medications WHERE LOWER(status) = 'active' "
+        "FROM medications WHERE archived_at IS NULL AND LOWER(status) = 'active' "
         "ORDER BY name"
     )
 
     # 6. Active conditions
     active_conditions = db.query(
         "SELECT condition_name, icd10_code, onset_date, source "
-        "FROM conditions WHERE LOWER(clinical_status) = 'active' "
+        "FROM conditions WHERE archived_at IS NULL AND LOWER(clinical_status) = 'active' "
         "ORDER BY condition_name"
     )
 
     # 7. Recent procedures
     recent_procedures = db.query(
         "SELECT name, procedure_date, provider, facility, source "
-        "FROM procedures WHERE procedure_date >= ? "
+        "FROM procedures WHERE archived_at IS NULL AND procedure_date >= ? "
         "ORDER BY procedure_date DESC",
         (lookback,),
     )
@@ -235,7 +237,8 @@ def generate_visit_prep_bundle(
     saved_notes: list[dict] = []
     if include_notes:
         saved_notes = db.query(
-            "SELECT id, title, content, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+            "SELECT id, title, content, created_at, updated_at FROM notes "
+            "WHERE archived_at IS NULL ORDER BY updated_at DESC"
         )
         for note in saved_notes:
             note["tags"] = db.get_note_tags(note["id"])
@@ -245,7 +248,7 @@ def generate_visit_prep_bundle(
     if include_analyses:
         saved_analyses = db.query(
             "SELECT id, slug, title, category, summary, content, updated_at "
-            "FROM analyses ORDER BY updated_at DESC"
+            "FROM analyses WHERE archived_at IS NULL ORDER BY updated_at DESC"
         )
         for analysis in saved_analyses:
             analysis["tags"] = db.get_analysis_tags(analysis["id"])
@@ -255,7 +258,8 @@ def generate_visit_prep_bundle(
 
     # Provider from most recent encounter
     latest_encounter = db.query(
-        "SELECT provider FROM encounters ORDER BY encounter_date DESC LIMIT 1"
+        "SELECT provider FROM encounters WHERE archived_at IS NULL "
+        "ORDER BY encounter_date DESC LIMIT 1"
     )
     provider = latest_encounter[0]["provider"] if latest_encounter else ""
 

@@ -35,17 +35,18 @@ def build_surgical_timeline(
     # Query all procedures for pathology linking, then paginate the result
     all_procedures = db.query(
         "SELECT id, name, procedure_date, provider, facility, source, operative_note "
-        "FROM procedures ORDER BY CASE WHEN procedure_date = '' THEN 1 ELSE 0 END, "
+        "FROM procedures WHERE archived_at IS NULL "
+        "ORDER BY CASE WHEN procedure_date = '' THEN 1 ELSE 0 END, "
         "procedure_date DESC"
     )
     pathology = db.query(
         "SELECT id, report_date, specimen, diagnosis, staging, margins, "
         "lymph_nodes, full_text, source, procedure_id "
-        "FROM pathology_reports ORDER BY report_date"
+        "FROM pathology_reports WHERE archived_at IS NULL ORDER BY report_date"
     )
     imaging = db.query(
         "SELECT id, study_name, modality, study_date, impression, source "
-        "FROM imaging_reports ORDER BY study_date"
+        "FROM imaging_reports WHERE archived_at IS NULL ORDER BY study_date"
     )
 
     # Link unlinked pathology reports to procedures (in-memory only, no DB writes)
@@ -87,7 +88,8 @@ def build_surgical_timeline(
 
     # Query medications for procedure-concurrent linking
     medications = db.query(
-        "SELECT name, status, start_date, stop_date, source FROM medications ORDER BY name"
+        "SELECT name, status, start_date, stop_date, source FROM medications "
+        "WHERE archived_at IS NULL ORDER BY name"
     )
 
     for proc in procedures:

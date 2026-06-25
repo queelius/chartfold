@@ -23,7 +23,7 @@ def get_lab_trend(
         start_date: Filter results on or after this ISO date.
         end_date: Filter results on or before this ISO date.
     """
-    conditions = []
+    conditions = ["archived_at IS NULL"]
     params = []
 
     if test_loinc:
@@ -62,7 +62,7 @@ def get_abnormal_labs(
     end_date: str = "",
 ) -> list[dict]:
     """Get lab results flagged as abnormal."""
-    conditions = ["interpretation != '' AND interpretation IS NOT NULL"]
+    conditions = ["archived_at IS NULL", "interpretation != '' AND interpretation IS NOT NULL"]
     params = []
 
     if start_date:
@@ -88,11 +88,11 @@ def get_latest_labs(db: HealthMemexDB, limit: int = 50) -> list[dict]:
         "SELECT test_name, value, value_numeric, unit, ref_range, "
         "interpretation, result_date, source "
         "FROM lab_results "
-        "WHERE id IN ("
+        "WHERE archived_at IS NULL AND id IN ("
         "  SELECT id FROM ("
         "    SELECT id, ROW_NUMBER() OVER ("
         "      PARTITION BY test_name ORDER BY result_date DESC, id DESC"
-        "    ) AS rn FROM lab_results"
+        "    ) AS rn FROM lab_results WHERE archived_at IS NULL"
         "  ) WHERE rn = 1"
         ") "
         "ORDER BY result_date DESC "
@@ -196,6 +196,7 @@ def get_available_tests(db: HealthMemexDB) -> list[dict]:
         "MIN(result_date) as first_date, "
         "MAX(result_date) as last_date "
         "FROM lab_results "
+        "WHERE archived_at IS NULL "
         "GROUP BY test_name "
         "ORDER BY count DESC"
     )

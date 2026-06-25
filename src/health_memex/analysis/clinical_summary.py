@@ -25,85 +25,88 @@ def get_clinical_summary(
     summary = {
         "active_conditions": db.query(
             "SELECT condition_name, icd10_code, onset_date, category, source "
-            "FROM conditions WHERE LOWER(clinical_status) = 'active' "
+            "FROM conditions WHERE archived_at IS NULL AND LOWER(clinical_status) = 'active' "
             "ORDER BY condition_name"
         ),
         "all_conditions": db.query(
             "SELECT condition_name, icd10_code, clinical_status, onset_date, "
             "resolved_date, category, source "
-            "FROM conditions ORDER BY onset_date DESC"
+            "FROM conditions WHERE archived_at IS NULL ORDER BY onset_date DESC"
         ),
         "allergies": db.query(
-            "SELECT allergen, reaction, severity, status, source FROM allergies ORDER BY allergen"
+            "SELECT allergen, reaction, severity, status, source "
+            "FROM allergies WHERE archived_at IS NULL ORDER BY allergen"
         ),
         "active_medications": db.query(
             "SELECT name, sig, route, start_date, prescriber, source "
-            "FROM medications WHERE LOWER(status) = 'active' "
+            "FROM medications WHERE archived_at IS NULL AND LOWER(status) = 'active' "
             "ORDER BY name"
         ),
         "all_medications": db.query(
             "SELECT name, status, sig, route, start_date, stop_date, prescriber, source "
-            "FROM medications ORDER BY CASE WHEN LOWER(status)='active' THEN 0 ELSE 1 END, name"
+            "FROM medications WHERE archived_at IS NULL "
+            "ORDER BY CASE WHEN LOWER(status)='active' THEN 0 ELSE 1 END, name"
         ),
         "recent_labs": db.query(
             "SELECT test_name, value, value_numeric, unit, ref_range, "
             "interpretation, result_date, source "
-            "FROM lab_results WHERE result_date >= ? "
+            "FROM lab_results WHERE archived_at IS NULL AND result_date >= ? "
             "ORDER BY result_date DESC",
             (cutoff,),
         ),
         "abnormal_labs": db.query(
             "SELECT test_name, value, value_numeric, unit, ref_range, "
             "interpretation, result_date, source "
-            "FROM lab_results WHERE interpretation != '' AND interpretation IS NOT NULL "
+            "FROM lab_results WHERE archived_at IS NULL "
+            "AND interpretation != '' AND interpretation IS NOT NULL "
             "AND result_date >= ? "
             "ORDER BY result_date DESC",
             (cutoff,),
         ),
         "recent_vitals": db.query(
             "SELECT vital_type, value, value_text, unit, recorded_date, source "
-            "FROM vitals WHERE recorded_date >= ? "
+            "FROM vitals WHERE archived_at IS NULL AND recorded_date >= ? "
             "ORDER BY recorded_date DESC",
             (cutoff,),
         ),
         "recent_imaging": db.query(
             "SELECT study_name, modality, study_date, impression, source "
-            "FROM imaging_reports WHERE study_date >= ? "
+            "FROM imaging_reports WHERE archived_at IS NULL AND study_date >= ? "
             "ORDER BY study_date DESC",
             (cutoff,),
         ),
         "all_imaging": db.query(
             "SELECT study_name, modality, study_date, "
             "SUBSTR(impression, 1, 300) as impression_preview, source "
-            "FROM imaging_reports ORDER BY study_date DESC"
+            "FROM imaging_reports WHERE archived_at IS NULL ORDER BY study_date DESC"
         ),
         "recent_encounters": db.query(
             "SELECT encounter_date, encounter_type, facility, provider, reason, source "
-            "FROM encounters WHERE encounter_date >= ? "
+            "FROM encounters WHERE archived_at IS NULL AND encounter_date >= ? "
             "ORDER BY encounter_date DESC",
             (cutoff,),
         ),
         "procedures": db.query(
             "SELECT name, procedure_date, provider, facility, status, source "
-            "FROM procedures ORDER BY procedure_date DESC"
+            "FROM procedures WHERE archived_at IS NULL ORDER BY procedure_date DESC"
         ),
         "pathology_reports": db.query(
             "SELECT report_date, specimen, diagnosis, staging, margins, "
             "lymph_nodes, source "
-            "FROM pathology_reports ORDER BY report_date DESC"
+            "FROM pathology_reports WHERE archived_at IS NULL ORDER BY report_date DESC"
         ),
     }
 
     if include_family_history:
         summary["family_history"] = db.query(
             "SELECT relation, condition, age_at_onset, deceased "
-            "FROM family_history ORDER BY relation"
+            "FROM family_history WHERE archived_at IS NULL ORDER BY relation"
         )
 
     if include_notes:
         summary["recent_notes"] = db.query(
             "SELECT note_type, author, note_date, content, source "
-            "FROM clinical_notes WHERE note_date >= ? "
+            "FROM clinical_notes WHERE archived_at IS NULL AND note_date >= ? "
             "ORDER BY note_date DESC",
             (cutoff,),
         )
@@ -111,7 +114,7 @@ def get_clinical_summary(
         summary["recent_notes_preview"] = db.query(
             "SELECT note_type, author, note_date, "
             "SUBSTR(content, 1, 300) as preview, source "
-            "FROM clinical_notes WHERE note_date >= ? "
+            "FROM clinical_notes WHERE archived_at IS NULL AND note_date >= ? "
             "ORDER BY note_date DESC",
             (cutoff,),
         )
