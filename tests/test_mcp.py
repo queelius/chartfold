@@ -807,3 +807,25 @@ class TestVisitPrepBundle:
         result = get_visit_prep_bundle(include_analyses=False, include_notes=False)
         assert result["saved_analyses"] == []
         assert result["saved_notes"] == []
+
+
+class TestGetRecordArchivedFlag:
+    """R4: get_record keeps archived records resolvable but flags them."""
+
+    def test_active_record_not_flagged(self, mcp_db):
+        result = mcp_db.get_record("lab_results", "1")
+        assert result.get("archived") is False
+
+    def test_archived_record_flagged(self, mcp_db):
+        import os
+
+        from health_memex.db import HealthMemexDB
+
+        wdb = HealthMemexDB(os.environ["HEALTH_MEMEX_DB"])
+        assert wdb.archive_record("lab_results", 1) is True
+        wdb.close()
+        mcp_db._db = None  # reset the read-only singleton to see the write
+
+        result = mcp_db.get_record("lab_results", "1")
+        assert "error" not in result  # still resolvable
+        assert result["archived"] is True

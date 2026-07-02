@@ -266,7 +266,14 @@ def get_record(kind: str, id: str) -> dict:
         return {"error": "sql_error", "detail": rows}
     if not rows:
         return {"error": "not_found", "kind": kind, "id": id}
-    result = {"kind": kind, "id": id, "record": rows[0]}
+    record = rows[0]
+    result = {"kind": kind, "id": id, "record": record}
+    # R4: surface archived state explicitly. Archived records stay resolvable
+    # (cross-archive references must not break on soft-delete), but callers
+    # should not have to dig the archived_at column out of the record.
+    result["archived"] = bool(
+        isinstance(record, dict) and record.get("archived_at")
+    )
     if fragment:
         # Echo the fragment so callers can post-resolve the sub-position.
         result["fragment"] = fragment
