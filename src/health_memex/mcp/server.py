@@ -188,12 +188,32 @@ def get_database_summary() -> dict:
     return {"table_counts": db.summary(), "load_history": db.sources()}
 
 
-# Tables that ``get_record`` can resolve. Mirrors the arkiv export
-# convention (``health-memex:{table}/{id}``) so URI kind == SQL table.
-# Derived from ``_UNIQUE_KEYS`` (the canonical clinical-table list) plus
-# ``notes`` and ``analyses`` which carry their own ``archived_at`` but
-# live outside the clinical-records pipeline.
-_RECORD_KINDS: frozenset[str] = frozenset({*_UNIQUE_KEYS.keys(), "notes", "analyses"})
+# Tables that ``get_record`` can resolve, mapped to the column holding each
+# record's durable id. Mirrors the arkiv export convention
+# (``health-memex:{table}/{id}``) so URI kind == SQL table. Derived from
+# ``_UNIQUE_KEYS`` (the canonical clinical-table list, keyed by unique_id)
+# plus ``notes`` and ``analyses``, which carry their own ``archived_at`` but
+# live outside the clinical-records pipeline and have no natural key, so
+# their id is the autoincrement ``id``. Served by ``get_record_kinds``.
+_RECORD_ID_COLUMNS: dict[str, str] = {
+    **dict.fromkeys(_UNIQUE_KEYS, "unique_id"),
+    "notes": "id",
+    "analyses": "id",
+}
+_RECORD_KINDS: frozenset[str] = frozenset(_RECORD_ID_COLUMNS)
+
+
+@mcp.tool()
+def get_record_kinds() -> dict:
+    """Declare the URI kinds this archive resolves (health-memex://<kind>/<id>)
+    and the table and id column backing each. Part of the *-memex archive
+    contract. Every kind is its SQL table."""
+    return {
+        "kinds": [
+            {"kind": kind, "table": kind, "id_column": id_column}
+            for kind, id_column in _RECORD_ID_COLUMNS.items()
+        ]
+    }
 
 
 @mcp.tool()
@@ -242,8 +262,7 @@ def get_record(kind: str, id: str) -> dict:
 
     # The notes/analyses tables have no natural key (and thus no
     # unique_id column), so we always look them up by autoincrement id.
-    # _UNIQUE_KEYS holds the clinical tables that DO have unique_id.
-    has_unique_id = kind in _UNIQUE_KEYS
+    has_unique_id = _RECORD_ID_COLUMNS[kind] == "unique_id"
 
     # A URI fragment ("#page=3", an epubcfi, a message range, ...) addresses a
     # position *within* a record, not a different record, so strip it before

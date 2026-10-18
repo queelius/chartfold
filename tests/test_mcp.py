@@ -340,6 +340,23 @@ class TestGetRecord:
         result = mcp_db.get_record("lab_results; DROP TABLE x", "1")
         assert result["error"] == "unknown_kind"
 
+    def test_record_kinds_declaration_matches_schema(self, mcp_db):
+        """get_record_kinds covers exactly the resolvable kinds, and every
+        declared table/id column exists in the real schema."""
+        from health_memex.mcp.server import _RECORD_KINDS
+
+        kinds = mcp_db.get_record_kinds()["kinds"]
+        assert {k["kind"] for k in kinds} == _RECORD_KINDS
+        for k in kinds:
+            result = mcp_db.run_sql(
+                f"SELECT COUNT(*) AS n FROM (SELECT `{k['id_column']}` FROM `{k['table']}` LIMIT 0)"
+            )
+            assert result == [{"n": 0}], (k, result)
+
+    def test_declared_id_column_resolves(self, mcp_db):
+        uid = mcp_db.run_sql("SELECT unique_id FROM lab_results LIMIT 1")[0]["unique_id"]
+        assert mcp_db.get_record("lab_results", uid)["record"]["test_name"] == "CEA"
+
     def test_each_clinical_kind_resolvable(self, mcp_multi_db):
         """A smoke test that every kind in the allowlist runs against
         the real schema without a SQL error. Most return not_found
