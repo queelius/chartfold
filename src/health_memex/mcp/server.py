@@ -1,7 +1,7 @@
 """MCP server for health-memex — Claude queries patient data via SQL tools.
 
 Run with: python -m health_memex.mcp.server
-Configure env: HEALTH_MEMEX_DB=/path/to/health_memex.db
+Configure env: HEALTH_MEMEX_DB=/path/to/health_memex.db (default: XDG data home)
 """
 
 from __future__ import annotations
@@ -18,9 +18,12 @@ from health_memex.db import (
     _build_upsert_sql,
     _compute_unique_id,
     _is_unique_id_format,
+    default_db_path,
 )
 
-DB_PATH = os.environ.get("HEALTH_MEMEX_DB", "health_memex.db")
+# Same resolver as the CLI (env var, then XDG), never a cwd-relative default:
+# the federation spawns this server from arbitrary working directories.
+DB_PATH = default_db_path()
 
 mcp = FastMCP(
     "health-memex",

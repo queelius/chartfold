@@ -41,6 +41,32 @@ from health_memex.models import (
     VitalRecord,
 )
 
+
+def default_db_path() -> str:
+    """Resolve the default DB path, honouring env vars and XDG.
+
+    Shared by the CLI and the MCP server so the two cannot drift. Resolution
+    order matches the convention used across the *-memex ecosystem
+    (mail-memex, llm-memex, bookmark-memex):
+
+      1. ``HEALTH_MEMEX_DB`` env var (if set) — overrides everything,
+         including the federation layer's per-archive config.
+      2. XDG data home: ``$XDG_DATA_HOME/health-memex/health_memex.db``
+         or ``~/.local/share/health-memex/health_memex.db``.
+
+    The previous default of bare ``"health_memex.db"`` resolved
+    relative to the process cwd, which meant the federation server
+    spawning health-memex from an arbitrary cwd would create a stray
+    DB next to whatever workspace it was launched from. The XDG
+    default fixes that without forcing operators to set the env var.
+    """
+    env = os.environ.get("HEALTH_MEMEX_DB")
+    if env:
+        return env
+    xdg_data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return str(Path(xdg_data) / "health-memex" / "health_memex.db")
+
+
 # Mapping: (record list attr on UnifiedRecords, SQLite table name, dataclass type)
 _TABLE_MAP: list[tuple[str, str, type]] = [
     ("documents", "documents", DocumentRecord),
