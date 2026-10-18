@@ -33,6 +33,13 @@ mcp = ["mcp>=1.0,<2"]
 dev = [
     "pytest",
     "pytest-cov",
+    # Exact pins: linter, formatter, and checker output changes between
+    # releases, and CI installs this extra so local and CI runs agree.
+    # Bump deliberately, together with any fixes the new versions demand.
+    "ruff==0.17.1",
+    "mypy==2.4.0",
+    "lxml-stubs==0.5.1",
+    "types-PyYAML==6.0.12.20260906",
 ]
 
 [project.scripts]
@@ -76,6 +83,7 @@ select = [
 ]
 ignore = [
     "PLR0913",  # Too many arguments
+    "PLR0917",  # Too many positional arguments (ruff's split-out sibling of PLR0913)
     "PLR2004",  # Magic value comparison
     "PLR0912",  # Too many branches (to fix in Phase 4)
     "PLR0911",  # Too many return statements

@@ -16,6 +16,7 @@ from __future__ import annotations
 import email
 import email.policy
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -98,7 +99,7 @@ def parse_mhtml(file_path: str) -> ParsedVisit:
 
         if content_type == "text/html" and not html_body:
             payload = part.get_payload(decode=True)
-            if payload:
+            if isinstance(payload, bytes) and payload:
                 html_body = payload.decode("utf-8", errors="replace")
 
         elif content_type.startswith("image/"):
@@ -106,13 +107,25 @@ def parse_mhtml(file_path: str) -> ParsedVisit:
             uuid = _extract_uuid_from_url(content_location)
             if uuid:
                 image_data = part.get_payload(decode=True)
-                if image_data:
+                if isinstance(image_data, bytes) and image_data:
                     result.images[uuid] = image_data
 
     if html_body:
         _extract_from_html(html_body, result)
 
     return result
+
+
+def _elements(nodes: object) -> list[lxml_html.HtmlElement]:
+    """Narrow lxml ``iter()``/``xpath()`` results to HTML elements.
+
+    lxml types ``xpath()`` as a wide union (a scalar for count/boolean
+    expressions, else a list of elements, strings, or attributes);
+    element-selecting queries only ever yield ``HtmlElement`` at runtime.
+    """
+    if isinstance(nodes, (str, bytes)) or not isinstance(nodes, Iterable):
+        return []
+    return [n for n in nodes if isinstance(n, lxml_html.HtmlElement)]
 
 
 def _extract_from_html(html_body: str, result: ParsedVisit) -> None:
@@ -123,7 +136,7 @@ def _extract_from_html(html_body: str, result: ParsedVisit) -> None:
         return
 
     # 1. Visit header: <h1 class="_PageHeading ...">Office Visit - Feb 05, 2026</h1>
-    for h1 in doc.iter("h1"):
+    for h1 in _elements(doc.iter("h1")):
         text = (h1.text_content() or "").strip()
         # Pattern: "Office Visit - Feb 05, 2026"
         match = re.match(r"(.+?)\s*-\s*(\w+ \d{1,2},\s*\d{4})", text)
@@ -135,9 +148,9 @@ def _extract_from_html(html_body: str, result: ParsedVisit) -> None:
 
     # 2. Provider/facility: <div class="subtitle">with Benjamin Tan, MD at WashU...</div>
     # Use XPath: divs whose class contains "subtitle"
-    subtitle_divs = doc.xpath('.//div[contains(@class, "subtitle")]')
+    subtitle_divs = _elements(doc.xpath('.//div[contains(@class, "subtitle")]'))
     if not subtitle_divs:
-        subtitle_divs = list(doc.iter("div"))
+        subtitle_divs = _elements(doc.iter("div"))
     for div in subtitle_divs:
         text = (div.text_content() or "").strip()
         match = re.match(r"with\s+(.+?)\s+at\s+(.+)", text)
@@ -150,7 +163,7 @@ def _extract_from_html(html_body: str, result: ParsedVisit) -> None:
     paragraphs: list[str] = []
     image_positions: list[tuple[int, str]] = []  # (paragraph_idx, uuid)
 
-    for div in doc.xpath(".//div[@data-paragraph]"):
+    for div in _elements(doc.xpath(".//div[@data-paragraph]")):
         para_idx = int(div.get("data-paragraph", "0"))
         text = (div.text_content() or "").strip()
 
@@ -159,7 +172,7 @@ def _extract_from_html(html_body: str, result: ParsedVisit) -> None:
         paragraphs.append(text)
 
         # Check for images in this paragraph
-        for img in div.iter("img"):
+        for img in _elements(div.iter("img")):
             src = img.get("src", "")
             uuid = _extract_uuid_from_url(src)
             if uuid:
@@ -235,8 +248,11 @@ def _looks_like_study_name(text: str) -> bool:
         "eus",
         "ercp",
     }
-    first_word = text.split()[0].lower().rstrip("/") if text else ""
-    return first_word in modality_words or "/" in text.split()[0]
+    words = text.split(maxsplit=1)
+    if not words:
+        return False
+    first_word = words[0]
+    return first_word.lower().rstrip("/") in modality_words or "/" in first_word
 
 
 def _parse_display_date(date_str: str) -> str:

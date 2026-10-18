@@ -239,8 +239,7 @@ def db_with_assets(tmp_db, tmp_path):
             ],
         )
     )
-    img_row = tmp_db.query("SELECT id, unique_id FROM imaging_reports")[0]
-    img_id, img_uid = img_row["id"], img_row["unique_id"]
+    img_id = tmp_db.query("SELECT id FROM imaging_reports")[0]["id"]
 
     tmp_db.conn.execute(
         """INSERT INTO source_assets

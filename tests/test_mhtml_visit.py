@@ -20,7 +20,9 @@ from health_memex.db import HealthMemexDB
 from health_memex.sources.mhtml_visit import (
     ParsedVisit,
     StudyRef,
+    _elements,
     _extract_uuid_from_url,
+    _looks_like_study_name,
     _normalize_date,
     _parse_display_date,
     parse_mhtml,
@@ -560,3 +562,34 @@ class TestAutoDetectMhtml:
             assert len(imaging) >= 2
             assets = db.query("SELECT * FROM source_assets WHERE source='mychart'")
             assert len(assets) == 2
+
+
+class TestLooksLikeStudyName:
+    def test_modality_first_word(self):
+        assert _looks_like_study_name("CT Abdomen Pelvis")
+
+    def test_slash_in_first_word(self):
+        assert _looks_like_study_name("PET/CT Skull to Thigh")
+
+    def test_plain_text_rejected(self):
+        assert not _looks_like_study_name("Follow up in two weeks")
+
+    def test_empty_and_whitespace_rejected(self):
+        # Whitespace is truthy but splits to [], which used to IndexError.
+        assert not _looks_like_study_name("")
+        assert not _looks_like_study_name("  \xa0\n")
+
+
+class TestElements:
+    def test_scalar_xpath_result_is_empty(self):
+        from lxml import html as lxml_html
+
+        doc = lxml_html.fromstring("<div><p>a</p><p>b</p></div>")
+        assert _elements(doc.xpath("count(//p)")) == []
+        assert _elements(doc.xpath("string(//p)")) == []
+
+    def test_keeps_elements_drops_text_nodes(self):
+        from lxml import html as lxml_html
+
+        doc = lxml_html.fromstring("<div><p>a</p><p>b</p></div>")
+        assert [e.text_content() for e in _elements(doc.xpath("//p | //p/text()"))] == ["a", "b"]

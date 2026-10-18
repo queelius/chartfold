@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -266,7 +267,7 @@ def get_record(kind: str, id: str) -> dict:
     if not rows:
         return {"error": "not_found", "kind": kind, "id": id}
     record = rows[0]
-    result = {"kind": kind, "id": id, "record": record}
+    result: dict[str, Any] = {"kind": kind, "id": id, "record": record}
     # R4: surface archived state explicitly. Archived records stay resolvable
     # (cross-archive references must not break on soft-delete), but callers
     # should not have to dig the archived_at column out of the record.
@@ -333,8 +334,8 @@ def get_lab_series_tool(
         _get_db(),
         test_name=test_name or None,
         test_loinc=loinc or None,
-        start_date=start_date or None,
-        end_date=end_date or None,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -368,8 +369,8 @@ def get_abnormal_labs_tool(
 
     return get_abnormal_labs(
         _get_db(),
-        start_date=start_date or None,
-        end_date=end_date or None,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -603,9 +604,7 @@ def get_visit_prep(
     """
     from health_memex.analysis.visit_prep import generate_visit_prep
 
-    return generate_visit_prep(
-        _get_db(), visit_date=visit_date or None, lookback_months=lookback_months
-    )
+    return generate_visit_prep(_get_db(), visit_date=visit_date, lookback_months=lookback_months)
 
 
 @mcp.tool()

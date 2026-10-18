@@ -120,7 +120,7 @@ def _trends_from_config(
             f"SELECT test_name, value, value_numeric, ref_range, result_date, source "
             f"FROM lab_results WHERE archived_at IS NULL AND LOWER(test_name) IN ({placeholders}) "
             f"ORDER BY result_date DESC LIMIT ?",
-            tuple(params + [max_readings]),
+            (*params, max_readings),
         )
         if rows:
             trends[test.name] = [

@@ -941,7 +941,7 @@ class HealthMemexDB:
             existing = self.query("SELECT id FROM analyses WHERE slug = ?", (slug,))
 
             if existing:
-                analysis_id = existing[0]["id"]
+                analysis_id = int(existing[0]["id"])
                 # Resurrection: saving an existing slug clears archived_at
                 # so users who re-save a soft-deleted analysis get it back.
                 self.conn.execute(

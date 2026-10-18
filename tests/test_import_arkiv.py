@@ -398,6 +398,25 @@ class TestRecordToRow:
 # ---------------------------------------------------------------------------
 
 
+class TestParseFrontmatter:
+    def test_mapping(self):
+        from health_memex.import_arkiv import _parse_frontmatter
+
+        assert _parse_frontmatter("---\nname: x\n---\nbody") == {"name": "x"}
+
+    def test_non_mapping_yaml_is_rejected(self):
+        """Valid YAML that is not a mapping must not leak to callers that index it."""
+        from health_memex.import_arkiv import _parse_frontmatter
+
+        assert _parse_frontmatter("---\njust a string\n---\nbody") is None
+        assert _parse_frontmatter("---\n- a\n- b\n---\nbody") is None
+
+    def test_invalid_yaml(self):
+        from health_memex.import_arkiv import _parse_frontmatter
+
+        assert _parse_frontmatter("---\n: [unclosed\n---\nbody") is None
+
+
 class TestValidateArkiv:
     def test_valid_archive(self, tmp_path):
         from health_memex.import_arkiv import validate_arkiv

@@ -186,9 +186,9 @@ def _lookup_id_by_unique(
         return None
     # conn.row_factory may or may not be set; handle both tuple + Row.
     try:
-        return r["id"]
+        return int(r["id"])
     except (IndexError, TypeError, KeyError):
-        return r[0]
+        return int(r[0])
 
 
 def _parse_frontmatter(readme_text: str) -> dict[str, Any] | None:
@@ -204,9 +204,12 @@ def _parse_frontmatter(readme_text: str) -> dict[str, Any] | None:
         return None
 
     try:
-        return yaml.safe_load(parts[1])
+        data = yaml.safe_load(parts[1])
     except yaml.YAMLError:
         return None
+    # Valid YAML need not be a mapping (a bare scalar or list parses fine),
+    # and every caller indexes the result as one.
+    return data if isinstance(data, dict) else None
 
 
 def _parse_source_asset_records(
@@ -649,7 +652,7 @@ def _import_arkiv_dir(
         frontmatter = _parse_frontmatter(f.read())
 
     # Collect records by table
-    table_records: dict[str, list[tuple[int | None, dict[str, Any]]]] = {}
+    table_records: dict[str, list[tuple[str | None, dict[str, Any]]]] = {}
     source_asset_raw_records: list[dict[str, Any]] = []
 
     contents = frontmatter.get("contents", []) if frontmatter else []

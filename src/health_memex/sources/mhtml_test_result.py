@@ -85,7 +85,7 @@ def parse_test_result_mhtml(file_path: str) -> ParsedTestResult:
     for part in msg.walk():
         if part.get_content_type() == "text/html" and not html_body:
             payload = part.get_payload(decode=True)
-            if payload:
+            if isinstance(payload, bytes) and payload:
                 html_body = payload.decode("utf-8", errors="replace")
 
     result = ParsedTestResult()

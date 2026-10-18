@@ -68,7 +68,7 @@ def build_surgical_timeline(
             ],
         )
         # Apply links in-memory for timeline construction
-        link_map = {path_id: proc_id for path_id, proc_id in links}
+        link_map = dict(links)
         for p in pathology:
             if p["id"] in link_map:
                 p["procedure_id"] = link_map[p["id"]]

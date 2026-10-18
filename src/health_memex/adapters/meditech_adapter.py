@@ -266,10 +266,10 @@ def meditech_to_unified(data: dict, source_name: str | None = None) -> UnifiedRe
     for vital in deduplicate_vitals(ccda.get("all_vitals", [])):
         val = vital.get("value")
         rounded = round(float(val), 2) if val is not None else None
-        key = (vital.get("type", ""), vital.get("date_iso", ""), rounded)
-        if key in existing_vitals:
+        vital_key = (vital.get("type", ""), vital.get("date_iso", ""), rounded)
+        if vital_key in existing_vitals:
             continue
-        existing_vitals.add(key)
+        existing_vitals.add(vital_key)
         records.vitals.append(
             VitalRecord(
                 source=source,

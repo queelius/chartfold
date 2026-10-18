@@ -7,6 +7,7 @@ using WebAssembly (sql.js) for client-side SQL queries.
 from __future__ import annotations
 
 import base64
+import contextlib
 import gzip
 import json
 import shutil
@@ -249,10 +250,8 @@ def export_spa(
         _strip_fts5_and_vacuum(tmp_db, include_notes=include_notes)
         db_bytes = tmp_db.read_bytes()
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             tmp_db.unlink()
-        except FileNotFoundError:
-            pass
     db_compressed = gzip.compress(db_bytes, compresslevel=9)
     db_gzip_b64 = base64.b64encode(db_compressed).decode("ascii")
 

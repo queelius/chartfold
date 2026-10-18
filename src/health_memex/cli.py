@@ -436,12 +436,7 @@ def _load_auto(db, input_dir: str, source_name: str = ""):
 
     # Handle MHTML files directly (MyChart pages)
     if os.path.isfile(input_dir) and input_dir.lower().endswith(".mhtml"):
-
-        class _Args:
-            pass
-
-        args = _Args()
-        args.input_file = input_dir
+        args = argparse.Namespace(input_file=input_dir)
 
         # Peek at HTML to detect test-result vs visit-note
         if _is_test_result_mhtml(input_dir):
