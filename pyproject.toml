@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=1.0,<2"]
 dev = [
     "pytest",
     "pytest-cov",
@@ -39,14 +39,21 @@ dev = [
 health-memex = "health_memex.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/queelius/health-memex"
-Repository = "https://github.com/queelius/health-memex"
+# The GitHub repo was never renamed from chartfold; health-memex 404s.
+Homepage = "https://github.com/queelius/chartfold"
+Repository = "https://github.com/queelius/chartfold"
 
 [tool.hatch.version]
 path = "src/health_memex/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/health_memex"]
+
+# Allowlist, not hatch's default of "everything not gitignored": 2.1.0's sdist
+# shipped untracked local tool state (.claude/, .serena/, .playwright-mcp/).
+# A health-data package must never pick up whatever sits in the working tree.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

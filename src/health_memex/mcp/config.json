@@ -2,10 +2,7 @@
   "mcpServers": {
     "health-memex": {
       "command": "python",
-      "args": ["-m", "health_memex.mcp.server"],
-      "env": {
-        "HEALTH_MEMEX_DB": "health_memex.db"
-      }
+      "args": ["-m", "health_memex.mcp.server"]
     }
   }
 }

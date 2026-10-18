@@ -139,6 +139,20 @@ health-memex init-config
 
 Generates `health_memex.toml` with lab tests to chart based on what's in your database.
 
+## Upgrading from 2.x
+
+3.0 changes two things you may notice:
+
+- **Arkiv exports from 2.x cannot be imported.** Record URIs now use a
+  durable content-hash `unique_id` instead of autoincrement row ids, so
+  references survive database rebuilds. Your existing database is upgraded
+  in place the first time 3.0 opens it; after that, run
+  `health-memex export arkiv` again to replace any 2.x backup bundles.
+- **The default database moved** from `./health_memex.db` (relative to the
+  current directory) to `~/.local/share/health-memex/health_memex.db`
+  (or `$XDG_DATA_HOME/health-memex/`), for the CLI and the MCP server alike.
+  Set `HEALTH_MEMEX_DB` or pass `--db` to keep using an existing file.
+
 ## Requirements
 
 - Python 3.11+
