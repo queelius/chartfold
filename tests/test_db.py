@@ -141,6 +141,50 @@ class TestSchemaCreation:
         assert len(rows) == 1
         db.close()
 
+    def test_legacy_db_without_fts_or_unique_id_migrates(self, tmp_path):
+        """Regression: a legacy DB that predates both the FTS5 tables and the
+        unique_id column must migrate cleanly. schema.sql creates the FTS tables
+        empty along with their AFTER UPDATE triggers, so if the unique_id
+        backfill UPDATEs clinical_notes before the FTS rebuild, each trigger
+        issues an FTS5 'delete' for a row that was never indexed and SQLite
+        raises 'database disk image is malformed'. Seen on the deployed
+        chartfold DB.
+        """
+        import sqlite3
+
+        from health_memex.models import ClinicalNote
+
+        db_path = str(tmp_path / "legacy.db")
+        db = HealthMemexDB(db_path)
+        db.init_schema()
+        db.load_source(UnifiedRecords(source="legacy", clinical_notes=[
+            ClinicalNote(source="legacy", note_date="2024-01-02",
+                         content="carcinoembryonic antigen trending down"),
+        ]))
+        db.close()
+
+        # Strip the FTS machinery and unique_ids: the legacy shape.
+        conn = sqlite3.connect(db_path)
+        for fts in ("clinical_notes_fts", "pathology_fts", "imaging_fts"):
+            conn.execute(f"DROP TABLE {fts}")
+        for (trigger,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        ).fetchall():
+            conn.execute(f"DROP TRIGGER {trigger}")
+        conn.execute("UPDATE clinical_notes SET unique_id = NULL")
+        conn.commit()
+        conn.close()
+
+        db = HealthMemexDB(db_path)
+        db.init_schema()  # raised DatabaseError before the fix
+        assert db.query("SELECT COUNT(*) AS n FROM clinical_notes "
+                        "WHERE unique_id IS NULL")[0]["n"] == 0
+        hits = db.query("SELECT rowid FROM clinical_notes_fts "
+                        "WHERE clinical_notes_fts MATCH 'antigen'")
+        assert len(hits) == 1
+        assert db.query("PRAGMA integrity_check")[0]["integrity_check"] == "ok"
+        db.close()
+
 
 class TestLoadSource:
     def test_load_patient(self, loaded_db):

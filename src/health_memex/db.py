@@ -350,9 +350,10 @@ class HealthMemexDB:
           1. ``metadata`` JSON column on every record table.
           2. ``genetic_variants_count`` on ``load_log``.
           3. ``archived_at`` on every soft-delete table.
-          4. ``unique_id`` (V2b durable IDs) on every clinical table,
-             with a partial UNIQUE INDEX, and a backfill pass.
-          5. FTS5 index rebuild for any rows missing from the index.
+          4. FTS5 index rebuild for any rows missing from the index.
+          5. ``unique_id`` (V2b durable IDs) on every clinical table,
+             with a partial UNIQUE INDEX, and a backfill pass. Must follow
+             step 4 (see the comment there).
         """
         record_tables = ["patients"] + [t for _, t, _ in _TABLE_MAP]
         for table in record_tables:
@@ -385,6 +386,15 @@ class HealthMemexDB:
                     f"ON {table}(archived_at)"
                 )
 
+        # Backfill FTS5 indexes for existing rows. Triggers keep them in sync
+        # from now on, but rows loaded before the FTS tables existed need to
+        # be indexed once. Safe to rerun: only rows missing from FTS are added.
+        # This MUST run before the unique_id backfill below: on a legacy DB the
+        # FTS tables were just created empty, and that backfill's UPDATEs fire
+        # the AFTER UPDATE triggers, whose FTS5 'delete' of a never-indexed row
+        # raises "database disk image is malformed".
+        self._backfill_fts_indexes()
+
         # Durable IDs (V2b): every clinical table gains a content-hash
         # unique_id derived from its natural key. Stable across re-imports
         # so trail steps and arkiv URIs survive DB rebuilds.
@@ -397,11 +407,6 @@ class HealthMemexDB:
                     f"ON {table}(unique_id) WHERE unique_id IS NOT NULL"
                 )
         self._backfill_unique_ids()
-
-        # Backfill FTS5 indexes for existing rows. Triggers keep them in sync
-        # from now on, but rows loaded before the FTS tables existed need to
-        # be indexed once. Safe to rerun: only rows missing from FTS are added.
-        self._backfill_fts_indexes()
 
     def _backfill_unique_ids(self) -> None:
         """Compute unique_id for any rows where it's still NULL.
