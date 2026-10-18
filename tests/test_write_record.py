@@ -220,7 +220,5 @@ class TestUniqueId:
 
         result = mcp_srv.write_record("lab_results", dict(self._base))
         uid = _compute_unique_id("lab_results", dict(self._base))
-        rows = mcp_srv.run_sql(
-            f"SELECT id FROM lab_results WHERE unique_id = '{uid}'"
-        )
+        rows = mcp_srv.run_sql(f"SELECT id FROM lab_results WHERE unique_id = '{uid}'")
         assert rows and rows[0]["id"] == result["id"]

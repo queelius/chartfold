@@ -266,20 +266,12 @@ def _select_rows_with_fk_uids(db: HealthMemexDB, table: str) -> list[dict[str, A
         parent_table, _uri_key = _FK_FIELDS[fk_col]
         alias = f"_p_{fk_col}"
         select_pieces.append(f"{alias}.unique_id AS {fk_col}")
-        join_pieces.append(
-            f"LEFT JOIN {parent_table} {alias} "
-            f"ON {alias}.id = {table}.{fk_col}"
-        )
-    sql = (
-        f"SELECT {', '.join(select_pieces)} FROM {table} "
-        + " ".join(join_pieces)
-    )
+        join_pieces.append(f"LEFT JOIN {parent_table} {alias} ON {alias}.id = {table}.{fk_col}")
+    sql = f"SELECT {', '.join(select_pieces)} FROM {table} " + " ".join(join_pieces)
     return db.query(sql)
 
 
-def _lookup_unique_id(
-    db: HealthMemexDB, table: str, autoincrement_id: int
-) -> str | None:
+def _lookup_unique_id(db: HealthMemexDB, table: str, autoincrement_id: int) -> str | None:
     """Look up a row's unique_id given its autoincrement id.
 
     Used by source_assets export to translate ``ref_id`` (autoincrement)

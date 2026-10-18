@@ -27,12 +27,21 @@ class TestAssetLookup:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, ref_table, ref_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/report.pdf", "report.pdf",
-             10, "Lab Report", "lab_results", 1),
+            (
+                "test_source",
+                "pdf",
+                "/tmp/report.pdf",
+                "report.pdf",
+                10,
+                "Lab Report",
+                "lab_results",
+                1,
+            ),
         )
         loaded_db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert ("lab_results", 1) in lookup["by_ref"]
@@ -45,12 +54,12 @@ class TestAssetLookup:
         loaded_db.conn.execute(
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/visit.pdf", "visit.pdf",
-             20, "Visit Doc", "2025-01-15"),
+            ("test_source", "pdf", "/tmp/visit.pdf", "visit.pdf", 20, "Visit Doc", "2025-01-15"),
         )
         loaded_db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert ("2025-01-15", "test_source") in lookup["by_date_source"]
@@ -58,6 +67,7 @@ class TestAssetLookup:
     def test_build_asset_lookup_empty_db(self, loaded_db):
         """Empty source_assets returns empty lookups."""
         from chartfold.hugo.generate import _build_asset_lookup
+
         lookup = _build_asset_lookup(loaded_db)
 
         assert lookup["by_ref"] == {}
@@ -143,18 +153,27 @@ class TestRenderSourceDocs:
     def test_render_with_ref_match(self):
         """Direct ref_table/ref_id match renders source doc links."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {
             "by_ref": {
                 ("encounters", 5): [
-                    {"id": 1, "file_name": "visit.pdf", "asset_type": "pdf",
-                     "file_size_kb": 42, "source": "epic", "title": "Visit Summary"},
+                    {
+                        "id": 1,
+                        "file_name": "visit.pdf",
+                        "asset_type": "pdf",
+                        "file_size_kb": 42,
+                        "source": "epic",
+                        "title": "Visit Summary",
+                    },
                 ],
             },
             "by_date_source": {},
         }
         result = _render_source_docs_section(
-            asset_lookup, {1: "/sources/epic/1_visit.pdf"},
-            ref_table="encounters", ref_id=5,
+            asset_lookup,
+            {1: "/sources/epic/1_visit.pdf"},
+            ref_table="encounters",
+            ref_id=5,
         )
         assert "Source Documents" in result
         assert "visit.pdf" in result or "Visit Summary" in result
@@ -163,18 +182,27 @@ class TestRenderSourceDocs:
     def test_render_with_date_source_fallback(self):
         """When no ref match, falls back to date+source matching."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {
             "by_ref": {},
             "by_date_source": {
                 ("2025-01-15", "epic"): [
-                    {"id": 2, "file_name": "labs.pdf", "asset_type": "pdf",
-                     "file_size_kb": 18, "source": "epic", "title": ""},
+                    {
+                        "id": 2,
+                        "file_name": "labs.pdf",
+                        "asset_type": "pdf",
+                        "file_size_kb": 18,
+                        "source": "epic",
+                        "title": "",
+                    },
                 ],
             },
         }
         result = _render_source_docs_section(
-            asset_lookup, {2: "/sources/epic/2_labs.pdf"},
-            date="2025-01-15", source="epic",
+            asset_lookup,
+            {2: "/sources/epic/2_labs.pdf"},
+            date="2025-01-15",
+            source="epic",
         )
         assert "labs.pdf" in result
         assert "/sources/epic/2_labs.pdf" in result
@@ -182,26 +210,39 @@ class TestRenderSourceDocs:
     def test_render_no_matches_returns_empty(self):
         """When no assets match, returns empty string."""
         from chartfold.hugo.generate import _render_source_docs_section
+
         asset_lookup = {"by_ref": {}, "by_date_source": {}}
         result = _render_source_docs_section(
-            asset_lookup, {},
-            ref_table="encounters", ref_id=999,
+            asset_lookup,
+            {},
+            ref_table="encounters",
+            ref_id=999,
         )
         assert result == ""
 
     def test_render_deduplicates(self):
         """Asset appearing in both ref and date match is shown only once."""
         from chartfold.hugo.generate import _render_source_docs_section
-        shared_asset = {"id": 1, "file_name": "report.pdf", "asset_type": "pdf",
-                        "file_size_kb": 10, "source": "epic", "title": ""}
+
+        shared_asset = {
+            "id": 1,
+            "file_name": "report.pdf",
+            "asset_type": "pdf",
+            "file_size_kb": 10,
+            "source": "epic",
+            "title": "",
+        }
         asset_lookup = {
             "by_ref": {("encounters", 5): [shared_asset]},
             "by_date_source": {("2025-01-15", "epic"): [shared_asset]},
         }
         result = _render_source_docs_section(
-            asset_lookup, {1: "/sources/epic/1_report.pdf"},
-            ref_table="encounters", ref_id=5,
-            date="2025-01-15", source="epic",
+            asset_lookup,
+            {1: "/sources/epic/1_report.pdf"},
+            ref_table="encounters",
+            ref_id=5,
+            date="2025-01-15",
+            source="epic",
         )
         assert result.count("report.pdf") == 1
 ```
@@ -289,79 +330,81 @@ git commit -m "feat(hugo): add _render_source_docs_section helper"
 Add to `TestLinkedSources`:
 
 ```python
-    def test_linked_sources_grouped_by_date(self, loaded_db, tmp_path):
-        """Sources page groups assets under encounter date headings."""
-        asset_dir = tmp_path / "assets"
-        asset_dir.mkdir()
-        f1 = asset_dir / "jan_visit.pdf"
-        f1.write_text("content1")
-        f2 = asset_dir / "feb_visit.pdf"
-        f2.write_text("content2")
+def test_linked_sources_grouped_by_date(self, loaded_db, tmp_path):
+    """Sources page groups assets under encounter date headings."""
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    f1 = asset_dir / "jan_visit.pdf"
+    f1.write_text("content1")
+    f2 = asset_dir / "feb_visit.pdf"
+    f2.write_text("content2")
 
-        loaded_db.conn.execute(
-            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
-            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "jan_visit.pdf", 5, "Jan Visit", "2025-01-15"),
-        )
-        loaded_db.conn.execute(
-            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
-            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f2), "feb_visit.pdf", 8, "Feb Visit", "2025-02-20"),
-        )
-        loaded_db.conn.commit()
+    loaded_db.conn.execute(
+        "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+        "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("test_source", "pdf", str(f1), "jan_visit.pdf", 5, "Jan Visit", "2025-01-15"),
+    )
+    loaded_db.conn.execute(
+        "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+        "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("test_source", "pdf", str(f2), "feb_visit.pdf", 8, "Feb Visit", "2025-02-20"),
+    )
+    loaded_db.conn.commit()
 
-        hugo_dir = tmp_path / "site"
-        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+    hugo_dir = tmp_path / "site"
+    generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
 
-        content = (hugo_dir / "content" / "sources.md").read_text()
-        # Should have date headings
-        assert "2025-01-15" in content
-        assert "2025-02-20" in content
-        # Dates should appear as headings (## prefix)
-        assert "## 2025-02-20" in content
-        assert "## 2025-01-15" in content
+    content = (hugo_dir / "content" / "sources.md").read_text()
+    # Should have date headings
+    assert "2025-01-15" in content
+    assert "2025-02-20" in content
+    # Dates should appear as headings (## prefix)
+    assert "## 2025-02-20" in content
+    assert "## 2025-01-15" in content
 
-    def test_linked_sources_undated_section(self, loaded_db, tmp_path):
-        """Assets without encounter_date go in 'Undated' section."""
-        asset_dir = tmp_path / "assets"
-        asset_dir.mkdir()
-        f1 = asset_dir / "style.xsl"
-        f1.write_text("xsl content")
 
-        loaded_db.conn.execute(
-            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
-            "file_size_kb, title) VALUES (?, ?, ?, ?, ?, ?)",
-            ("test_source", "xsl", str(f1), "style.xsl", 3, "Stylesheet"),
-        )
-        loaded_db.conn.commit()
+def test_linked_sources_undated_section(self, loaded_db, tmp_path):
+    """Assets without encounter_date go in 'Undated' section."""
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    f1 = asset_dir / "style.xsl"
+    f1.write_text("xsl content")
 
-        hugo_dir = tmp_path / "site"
-        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+    loaded_db.conn.execute(
+        "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+        "file_size_kb, title) VALUES (?, ?, ?, ?, ?, ?)",
+        ("test_source", "xsl", str(f1), "style.xsl", 3, "Stylesheet"),
+    )
+    loaded_db.conn.commit()
 
-        content = (hugo_dir / "content" / "sources.md").read_text()
-        assert "Undated" in content
-        assert "style.xsl" in content or "Stylesheet" in content
+    hugo_dir = tmp_path / "site"
+    generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
 
-    def test_linked_sources_backlinks_to_encounters(self, loaded_db, tmp_path):
-        """Assets on dates with encounters show back-links to encounter pages."""
-        asset_dir = tmp_path / "assets"
-        asset_dir.mkdir()
-        f1 = asset_dir / "visit.pdf"
-        f1.write_text("content")
+    content = (hugo_dir / "content" / "sources.md").read_text()
+    assert "Undated" in content
+    assert "style.xsl" in content or "Stylesheet" in content
 
-        loaded_db.conn.execute(
-            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
-            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "visit.pdf", 5, "Visit Doc", "2025-01-15"),
-        )
-        loaded_db.conn.commit()
 
-        hugo_dir = tmp_path / "site"
-        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+def test_linked_sources_backlinks_to_encounters(self, loaded_db, tmp_path):
+    """Assets on dates with encounters show back-links to encounter pages."""
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    f1 = asset_dir / "visit.pdf"
+    f1.write_text("content")
 
-        content = (hugo_dir / "content" / "sources.md").read_text()
-        # loaded_db has an encounter on 2025-01-15, so should have a back-link
-        assert "/encounters/" in content
+    loaded_db.conn.execute(
+        "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+        "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("test_source", "pdf", str(f1), "visit.pdf", 5, "Visit Doc", "2025-01-15"),
+    )
+    loaded_db.conn.commit()
+
+    hugo_dir = tmp_path / "site"
+    generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+
+    content = (hugo_dir / "content" / "sources.md").read_text()
+    # loaded_db has an encounter on 2025-01-15, so should have a back-link
+    assert "/encounters/" in content
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -386,8 +429,7 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
         "FROM source_assets ORDER BY source, encounter_date, file_name"
     )
     if not assets:
-        _write_page(content / "sources.md", "Source Documents",
-                     "*No source assets available.*")
+        _write_page(content / "sources.md", "Source Documents", "*No source assets available.*")
         return {}
 
     sources_dir = static / "sources"
@@ -463,12 +505,14 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append([
-                (display, url),
-                a["asset_type"],
-                size_str,
-                a["source"],
-            ])
+            rows.append(
+                [
+                    (display, url),
+                    a["asset_type"],
+                    size_str,
+                    a["source"],
+                ]
+            )
         table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
         md_parts.append(table)
         md_parts.append("")
@@ -481,12 +525,14 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
             url = asset_url_map[a["id"]]
             display = a.get("title") or a["file_name"]
             size_str = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
-            rows.append([
-                (display, url),
-                a["asset_type"],
-                size_str,
-                a["source"],
-            ])
+            rows.append(
+                [
+                    (display, url),
+                    a["asset_type"],
+                    size_str,
+                    a["source"],
+                ]
+            )
         table = _make_linked_table(["Document", "Type", "Size", "Source"], rows, link_col=0)
         md_parts.append(table)
 
@@ -497,16 +543,19 @@ def _generate_linked_sources(content: Path, static: Path, db: ChartfoldDB) -> di
 Also update the call site in `generate_site` to capture the return value:
 
 ```python
-        # Source documents
-        if linked_sources:
-            asset_lookup = _build_asset_lookup(db)
-            asset_url_map = _generate_linked_sources(content, out / "static", db)
-        else:
-            asset_lookup = None
-            asset_url_map = {}
-            _write_page(content / "sources.md", "Source Documents",
-                        "*Source documents not included. "
-                        "Run with `--linked-sources` to copy EHR assets into the site.*")
+# Source documents
+if linked_sources:
+    asset_lookup = _build_asset_lookup(db)
+    asset_url_map = _generate_linked_sources(content, out / "static", db)
+else:
+    asset_lookup = None
+    asset_url_map = {}
+    _write_page(
+        content / "sources.md",
+        "Source Documents",
+        "*Source documents not included. "
+        "Run with `--linked-sources` to copy EHR assets into the site.*",
+    )
 ```
 
 **Step 4: Run tests**
@@ -532,31 +581,30 @@ git commit -m "feat(hugo): rewrite _generate_linked_sources with date grouping a
 **Step 1: Write the failing test**
 
 ```python
-    def test_encounter_detail_shows_source_docs(self, loaded_db, tmp_path):
-        """Encounter detail page includes source documents when linked."""
-        asset_dir = tmp_path / "assets"
-        asset_dir.mkdir()
-        f1 = asset_dir / "visit_summary.pdf"
-        f1.write_text("pdf content")
+def test_encounter_detail_shows_source_docs(self, loaded_db, tmp_path):
+    """Encounter detail page includes source documents when linked."""
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    f1 = asset_dir / "visit_summary.pdf"
+    f1.write_text("pdf content")
 
-        # Insert asset linked by encounter_date matching the fixture encounter
-        loaded_db.conn.execute(
-            "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
-            "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "visit_summary.pdf", 15,
-             "Visit Summary PDF", "2025-01-15"),
-        )
-        loaded_db.conn.commit()
+    # Insert asset linked by encounter_date matching the fixture encounter
+    loaded_db.conn.execute(
+        "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
+        "file_size_kb, title, encounter_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("test_source", "pdf", str(f1), "visit_summary.pdf", 15, "Visit Summary PDF", "2025-01-15"),
+    )
+    loaded_db.conn.commit()
 
-        hugo_dir = tmp_path / "site"
-        generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
+    hugo_dir = tmp_path / "site"
+    generate_site(loaded_db.db_path, str(hugo_dir), linked_sources=True)
 
-        # Find the encounter detail page
-        enc_pages = list((hugo_dir / "content" / "encounters").glob("[0-9]*.md"))
-        assert len(enc_pages) >= 1
-        content = enc_pages[0].read_text()
-        assert "Source Documents" in content
-        assert "visit_summary.pdf" in content or "Visit Summary PDF" in content
+    # Find the encounter detail page
+    enc_pages = list((hugo_dir / "content" / "encounters").glob("[0-9]*.md"))
+    assert len(enc_pages) >= 1
+    content = enc_pages[0].read_text()
+    assert "Source Documents" in content
+    assert "visit_summary.pdf" in content or "Visit Summary PDF" in content
 ```
 
 Add this test to `TestLinkedSources`.
@@ -571,19 +619,14 @@ Expected: FAIL (no "Source Documents" section on detail page)
 In `generate_site`, pass the lookup/map to detail generators:
 
 ```python
-        # Encounters
-        _generate_encounters(content, data, db,
-                             asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+# Encounters
+_generate_encounters(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
 
-        # ... similar for other generators that produce detail pages:
-        _generate_clinical_notes(content, data, db,
-                                 asset_lookup=asset_lookup, asset_url_map=asset_url_map)
-        _generate_pathology(content, data, db,
-                            asset_lookup=asset_lookup, asset_url_map=asset_url_map)
-        _generate_surgical(content, data, db,
-                           asset_lookup=asset_lookup, asset_url_map=asset_url_map)
-        _generate_imaging(content, data, db,
-                          asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+# ... similar for other generators that produce detail pages:
+_generate_clinical_notes(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+_generate_pathology(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+_generate_surgical(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
+_generate_imaging(content, data, db, asset_lookup=asset_lookup, asset_url_map=asset_url_map)
 ```
 
 Update each function signature to accept optional `asset_lookup` and `asset_url_map` parameters (defaulting to `None` / `{}`).
@@ -591,14 +634,17 @@ Update each function signature to accept optional `asset_lookup` and `asset_url_
 In each detail page's body construction, append:
 
 ```python
-        if asset_lookup and asset_url_map:
-            source_docs = _render_source_docs_section(
-                asset_lookup, asset_url_map,
-                ref_table="encounters", ref_id=eid,
-                date=date, source=e.get("source", ""),
-            )
-            if source_docs:
-                body += "\n\n---\n\n" + source_docs
+if asset_lookup and asset_url_map:
+    source_docs = _render_source_docs_section(
+        asset_lookup,
+        asset_url_map,
+        ref_table="encounters",
+        ref_id=eid,
+        date=date,
+        source=e.get("source", ""),
+    )
+    if source_docs:
+        body += "\n\n---\n\n" + source_docs
 ```
 
 Use the appropriate `ref_table` for each generator:
@@ -696,8 +742,17 @@ class TestBidirectionalLinking:
             "INSERT INTO source_assets (source, asset_type, file_path, file_name, "
             "file_size_kb, title, encounter_date, ref_table, ref_id) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", str(f1), "specific_lab.pdf", 5,
-             "Specific Lab Report", "2025-01-15", "encounters", enc_id),
+            (
+                "test_source",
+                "pdf",
+                str(f1),
+                "specific_lab.pdf",
+                5,
+                "Specific Lab Report",
+                "2025-01-15",
+                "encounters",
+                enc_id,
+            ),
         )
         loaded_db.conn.commit()
 

@@ -47,9 +47,15 @@ _FTS5_TABLES: tuple[str, ...] = (
 # tables above and must be dropped before the tables are dropped, or the
 # drops will fail when SQLite tries to re-validate the trigger body.
 _FTS5_TRIGGERS: tuple[str, ...] = (
-    "clinical_notes_ai", "clinical_notes_ad", "clinical_notes_au",
-    "pathology_ai", "pathology_ad", "pathology_au",
-    "imaging_ai", "imaging_ad", "imaging_au",
+    "clinical_notes_ai",
+    "clinical_notes_ad",
+    "clinical_notes_au",
+    "pathology_ai",
+    "pathology_ad",
+    "pathology_au",
+    "imaging_ai",
+    "imaging_ad",
+    "imaging_au",
 )
 
 # JS files must be concatenated in dependency order.
@@ -236,9 +242,7 @@ def export_spa(
     #    (remove archived rows / load_log / optionally notes), set
     #    journal_mode=DELETE, VACUUM, then read + gzip those bytes.
     #    The original DB at db_path is never mutated.
-    with tempfile.NamedTemporaryFile(
-        prefix="health_memex_spa_", suffix=".db", delete=False
-    ) as tmp:
+    with tempfile.NamedTemporaryFile(prefix="health_memex_spa_", suffix=".db", delete=False) as tmp:
         tmp_db = Path(tmp.name)
     try:
         shutil.copyfile(db_path, tmp_db)

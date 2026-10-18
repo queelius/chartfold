@@ -55,9 +55,7 @@ def _discover_tables(db: ChartfoldDB) -> list[str]:
     return [r["name"] for r in rows]
 
 
-def _discover_fk_graph(
-    db: ChartfoldDB, tables: list[str]
-) -> dict[str, list[tuple[str, str, str]]]:
+def _discover_fk_graph(db: ChartfoldDB, tables: list[str]) -> dict[str, list[tuple[str, str, str]]]:
     """FK graph via PRAGMA foreign_key_list().
 
     Returns {child_table: [(fk_col, parent_table, parent_col), ...]}.
@@ -165,8 +163,11 @@ class TestExportArkiv:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="CEA",
-                    value="5.8", value_numeric=5.8, unit="ng/mL",
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
                     result_date="2025-01-15",
                 ),
             ],
@@ -216,8 +217,11 @@ class TestExportArkiv:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="CEA",
-                    value="5.8", value_numeric=5.8, unit="ng/mL",
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
                     result_date="2025-01-15",
                 ),
             ],
@@ -272,6 +276,7 @@ In `src/chartfold/export_arkiv.py`, add `import yaml` at the top and rewrite the
 ```python
 import yaml
 
+
 def export_arkiv(
     db: ChartfoldDB,
     output_dir: str,
@@ -291,9 +296,9 @@ def export_arkiv(
     os.makedirs(output_dir, exist_ok=True)
 
     tables_to_export = [
-        t for t in _TIMESTAMP_FIELDS
-        if t not in _EXCLUDED_TABLES
-        and (include_notes or t not in _NOTE_TABLES)
+        t
+        for t in _TIMESTAMP_FIELDS
+        if t not in _EXCLUDED_TABLES and (include_notes or t not in _NOTE_TABLES)
     ]
 
     contents = []  # for README.md frontmatter
@@ -304,9 +309,7 @@ def export_arkiv(
 
         if table in _TAG_CONFIG:
             tag_table, tag_fk = _TAG_CONFIG[table]
-            records = _export_table_with_tags(
-                db, table, tag_table, tag_fk, ts_field, output_dir
-            )
+            records = _export_table_with_tags(db, table, tag_table, tag_fk, ts_field, output_dir)
         else:
             records = _export_table(db, table, ts_field, output_dir)
 
@@ -315,10 +318,12 @@ def export_arkiv(
 
         schema = _build_schema(records)
 
-        contents.append({
-            "path": f"{table}.jsonl",
-            "description": _COLLECTION_DESCRIPTIONS.get(table, table),
-        })
+        contents.append(
+            {
+                "path": f"{table}.jsonl",
+                "description": _COLLECTION_DESCRIPTIONS.get(table, table),
+            }
+        )
 
         schema_data[table] = {
             "record_count": len(records),
@@ -354,6 +359,7 @@ def _get_version() -> str:
     """Get chartfold version string."""
     try:
         from importlib.metadata import version
+
         return version("chartfold")
     except Exception:
         return "dev"
@@ -403,16 +409,33 @@ def db_with_assets(tmp_db, tmp_path):
            (source, asset_type, file_path, file_name, file_size_kb,
             content_type, title, encounter_date, ref_table, ref_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        ("test_source", "png", str(media_src / "scan.png"), "scan.png",
-         1, "image/png", "CT Abdomen", "2025-01-15", "imaging_reports", 7),
+        (
+            "test_source",
+            "png",
+            str(media_src / "scan.png"),
+            "scan.png",
+            1,
+            "image/png",
+            "CT Abdomen",
+            "2025-01-15",
+            "imaging_reports",
+            7,
+        ),
     )
     tmp_db.conn.execute(
         """INSERT INTO source_assets
            (source, asset_type, file_path, file_name, file_size_kb,
             content_type, title)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        ("test_source", "pdf", str(media_src / "report.pdf"), "report.pdf",
-         2, "application/pdf", "Lab Report"),
+        (
+            "test_source",
+            "pdf",
+            str(media_src / "report.pdf"),
+            "report.pdf",
+            2,
+            "application/pdf",
+            "Lab Report",
+        ),
     )
     tmp_db.conn.commit()
     return tmp_db
@@ -597,19 +620,21 @@ def _export_source_assets(
 5. In `export_arkiv()`, handle `source_assets` specially before the main loop:
 
 ```python
-    # Export source assets separately (different record format)
-    if "source_assets" not in _EXCLUDED_TABLES:
-        asset_records = _export_source_assets(db, output_dir, embed=embed)
-        if asset_records is not None:
-            schema = _build_schema(asset_records)
-            contents.append({
+# Export source assets separately (different record format)
+if "source_assets" not in _EXCLUDED_TABLES:
+    asset_records = _export_source_assets(db, output_dir, embed=embed)
+    if asset_records is not None:
+        schema = _build_schema(asset_records)
+        contents.append(
+            {
                 "path": "source_assets.jsonl",
                 "description": _COLLECTION_DESCRIPTIONS.get("source_assets", "Source assets"),
-            })
-            schema_data["source_assets"] = {
-                "record_count": len(asset_records),
-                **schema,
             }
+        )
+        schema_data["source_assets"] = {
+            "record_count": len(asset_records),
+            **schema,
+        }
 ```
 
 And exclude `source_assets` from the main table loop (it has its own export path).
@@ -642,41 +667,53 @@ Wire the `--embed` flag through the CLI to `export_arkiv()`.
 Add to `tests/test_export_arkiv.py::TestCLI`:
 
 ```python
-    def test_cli_export_arkiv_embed(self, tmp_path):
-        """CLI: chartfold export arkiv --embed works."""
-        import subprocess
-        import sys
+def test_cli_export_arkiv_embed(self, tmp_path):
+    """CLI: chartfold export arkiv --embed works."""
+    import subprocess
+    import sys
 
-        db_path = str(tmp_path / "test.db")
-        db = ChartfoldDB(db_path)
-        db.init_schema()
+    db_path = str(tmp_path / "test.db")
+    db = ChartfoldDB(db_path)
+    db.init_schema()
 
-        # Create a real file for the source asset
-        asset_file = tmp_path / "test.png"
-        asset_file.write_bytes(b"\x89PNG test data")
+    # Create a real file for the source asset
+    asset_file = tmp_path / "test.png"
+    asset_file.write_bytes(b"\x89PNG test data")
 
-        db.conn.execute(
-            """INSERT INTO source_assets
-               (source, asset_type, file_path, file_name, file_size_kb, content_type)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("test", "png", str(asset_file), "test.png", 1, "image/png"),
-        )
-        db.conn.commit()
-        db.close()
+    db.conn.execute(
+        """INSERT INTO source_assets
+           (source, asset_type, file_path, file_name, file_size_kb, content_type)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        ("test", "png", str(asset_file), "test.png", 1, "image/png"),
+    )
+    db.conn.commit()
+    db.close()
 
-        output_dir = str(tmp_path / "arkiv-out")
-        result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "export", "arkiv",
-             "--db", db_path, "--output", output_dir, "--embed"],
-            check=False, capture_output=True, text=True,
-        )
-        assert result.returncode == 0, f"stderr: {result.stderr}"
+    output_dir = str(tmp_path / "arkiv-out")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "chartfold",
+            "export",
+            "arkiv",
+            "--db",
+            db_path,
+            "--output",
+            output_dir,
+            "--embed",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
 
-        # Verify base64 content is present
-        jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
-        with open(jsonl_path) as f:
-            rec = json.loads(f.readline())
-        assert "content" in rec
+    # Verify base64 content is present
+    jsonl_path = os.path.join(output_dir, "source_assets.jsonl")
+    with open(jsonl_path) as f:
+        rec = json.loads(f.readline())
+    assert "content" in rec
 ```
 
 **Step 2: Run test to verify it fails**
@@ -690,10 +727,11 @@ In `src/chartfold/cli.py`:
 
 Add after line 146 (the `--exclude-notes` arg for arkiv):
 ```python
-    arkiv_parser.add_argument(
-        "--embed", action="store_true",
-        help="Base64-encode source asset content inline (larger output, self-contained)"
-    )
+arkiv_parser.add_argument(
+    "--embed",
+    action="store_true",
+    help="Base64-encode source asset content inline (larger output, self-contained)",
+)
 ```
 
 Update the arkiv branch in `_handle_export` (around line 698):
@@ -898,8 +936,7 @@ from chartfold.export_arkiv import _FK_FIELDS, _TAG_CONFIG
 
 # Reverse FK mapping: uri_key -> (fk_col, parent_table)
 _REVERSE_FK: dict[str, tuple[str, str]] = {
-    uri_key: (fk_col, parent_table)
-    for fk_col, (parent_table, uri_key) in _FK_FIELDS.items()
+    uri_key: (fk_col, parent_table) for fk_col, (parent_table, uri_key) in _FK_FIELDS.items()
 }
 
 # Synthetic metadata keys to strip (not DB columns)
@@ -1123,9 +1160,7 @@ def validate_arkiv(input_dir: str) -> dict:
                     json.loads(line)
                     count += 1
                 except json.JSONDecodeError as e:
-                    errors.append(
-                        f"{jsonl_file} line {line_num}: invalid JSON: {e}"
-                    )
+                    errors.append(f"{jsonl_file} line {line_num}: invalid JSON: {e}")
 
         table = jsonl_file.replace(".jsonl", "")
         summary[table] = count
@@ -1386,9 +1421,7 @@ def import_arkiv(
 
         # Import source assets
         if source_asset_records:
-            sa_count = _import_source_assets(
-                db, source_asset_records, input_path, id_map
-            )
+            sa_count = _import_source_assets(db, source_asset_records, input_path, id_map)
             counts["source_assets"] = sa_count
 
     return {
@@ -1531,44 +1564,58 @@ class TestRoundTrip:
             source="test_source",
             lab_results=[
                 LabResult(
-                    source="test_source", test_name="CEA",
-                    value="5.8", value_numeric=5.8, unit="ng/mL",
-                    ref_range="0.0-3.0", interpretation="H",
-                    result_date="2025-01-15", status="final",
+                    source="test_source",
+                    test_name="CEA",
+                    value="5.8",
+                    value_numeric=5.8,
+                    unit="ng/mL",
+                    ref_range="0.0-3.0",
+                    interpretation="H",
+                    result_date="2025-01-15",
+                    status="final",
                 ),
                 LabResult(
-                    source="test_source", test_name="Hemoglobin",
-                    value="12.5", value_numeric=12.5, unit="g/dL",
+                    source="test_source",
+                    test_name="Hemoglobin",
+                    value="12.5",
+                    value_numeric=12.5,
+                    unit="g/dL",
                     result_date="2025-01-15",
                 ),
             ],
             encounters=[
                 EncounterRecord(
-                    source="test_source", encounter_date="2025-01-15",
-                    encounter_type="office visit", facility="Test Hospital",
+                    source="test_source",
+                    encounter_date="2025-01-15",
+                    encounter_type="office visit",
+                    facility="Test Hospital",
                 ),
             ],
             medications=[
                 MedicationRecord(
-                    source="test_source", name="Capecitabine",
+                    source="test_source",
+                    name="Capecitabine",
                     status="active",
                 ),
             ],
             conditions=[
                 ConditionRecord(
-                    source="test_source", condition_name="Colon cancer",
+                    source="test_source",
+                    condition_name="Colon cancer",
                     icd10_code="C18.9",
                 ),
             ],
             procedures=[
                 ProcedureRecord(
-                    source="test_source", name="Right hemicolectomy",
+                    source="test_source",
+                    name="Right hemicolectomy",
                     procedure_date="2024-07-01",
                 ),
             ],
             family_history=[
                 FamilyHistoryRecord(
-                    source="test_source", relation="Father",
+                    source="test_source",
+                    relation="Father",
                     condition="Heart Disease",
                 ),
             ],
@@ -1733,9 +1780,10 @@ class TestImportCLI:
 
         db_path = str(tmp_path / "imported.db")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "import",
-             str(archive_dir), "--db", db_path],
-            check=False, capture_output=True, text=True,
+            [sys.executable, "-m", "chartfold", "import", str(archive_dir), "--db", db_path],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "Import successful" in result.stdout
@@ -1752,9 +1800,19 @@ class TestImportCLI:
 
         db_path = str(tmp_path / "imported.db")
         result = subprocess.run(
-            [sys.executable, "-m", "chartfold", "import",
-             str(archive_dir), "--db", db_path, "--validate-only"],
-            check=False, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "chartfold",
+                "import",
+                str(archive_dir),
+                "--db",
+                db_path,
+                "--validate-only",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "Validation successful" in result.stdout
@@ -1773,16 +1831,14 @@ In `src/chartfold/cli.py`:
 1. Change the import parser (around line 148-157):
 
 ```python
-    # --- import ---
-    import_parser = sub.add_parser("import", help="Import data from arkiv archive")
-    import_parser.add_argument("input_dir", help="Path to arkiv archive directory")
-    import_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
-    import_parser.add_argument(
-        "--validate-only", action="store_true", help="Validate without importing"
-    )
-    import_parser.add_argument(
-        "--overwrite", action="store_true", help="Overwrite existing database"
-    )
+# --- import ---
+import_parser = sub.add_parser("import", help="Import data from arkiv archive")
+import_parser.add_argument("input_dir", help="Path to arkiv archive directory")
+import_parser.add_argument("--db", default=DEFAULT_DB, help="SQLite database path")
+import_parser.add_argument(
+    "--validate-only", action="store_true", help="Validate without importing"
+)
+import_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing database")
 ```
 
 2. Rewrite `_handle_import` (around line 707):
@@ -1868,10 +1924,11 @@ In `src/chartfold/cli.py`:
 
 2. Delete the json branch in `_handle_export` (lines 675-683):
 ```python
-    # DELETE THESE LINES:
-    if args.export_format == "json":
-        from chartfold.export_full import export_full_json
-        path = export_full_json(...)
+# DELETE THESE LINES:
+if args.export_format == "json":
+    from chartfold.export_full import export_full_json
+
+    path = export_full_json(...)
 ```
 
 3. Update the usage message in `_handle_export` to remove json:

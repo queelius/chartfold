@@ -408,8 +408,7 @@ class HealthMemexDB:
         for table in ("notes", "analyses"):
             with contextlib.suppress(sqlite3.OperationalError):
                 self.conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS idx_{table}_archived "
-                    f"ON {table}(archived_at)"
+                    f"CREATE INDEX IF NOT EXISTS idx_{table}_archived ON {table}(archived_at)"
                 )
 
         # Backfill FTS5 indexes for existing rows. Triggers keep them in sync
@@ -447,8 +446,7 @@ class HealthMemexDB:
             select_cols = ", ".join(["id", *unique_cols])
             try:
                 rows = self.conn.execute(
-                    f"SELECT {select_cols} FROM {table} "
-                    f"WHERE unique_id IS NULL"
+                    f"SELECT {select_cols} FROM {table} WHERE unique_id IS NULL"
                 ).fetchall()
             except sqlite3.OperationalError:
                 # Column missing on a much older DB that for some
@@ -461,9 +459,7 @@ class HealthMemexDB:
                 row_dict = {c: row[c] for c in unique_cols}
                 uid = _compute_unique_id(table, row_dict)
                 updates.append((uid, row["id"]))
-            self.conn.executemany(
-                f"UPDATE {table} SET unique_id = ? WHERE id = ?", updates
-            )
+            self.conn.executemany(f"UPDATE {table} SET unique_id = ? WHERE id = ?", updates)
             any_updates = True
         # ``executemany`` of UPDATE starts an implicit transaction in
         # Python's sqlite3 module. Commit so the backfill survives the

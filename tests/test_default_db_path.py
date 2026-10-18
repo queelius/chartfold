@@ -4,6 +4,7 @@ The MCP server reads its path at import time, and the federation layer
 spawns `health-memex mcp` from an arbitrary cwd, so each case runs in a
 fresh subprocess with a controlled environment and working directory.
 """
+
 import os
 import subprocess
 import sys
@@ -22,8 +23,12 @@ def _resolve(tmp_path, **env_overrides):
     cwd = tmp_path / "elsewhere"
     cwd.mkdir()
     out = subprocess.run(
-        [sys.executable, "-c", PROBE], cwd=cwd, env=env,
-        capture_output=True, text=True, check=True,
+        [sys.executable, "-c", PROBE],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split()
     return {"cli": out[0], "mcp": out[1]}
 

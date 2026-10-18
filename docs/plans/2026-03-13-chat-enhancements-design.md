@@ -47,8 +47,13 @@ On first visit, `Chat._container` is null and full `init()` runs. On re-entry, t
 from chartfold.db import _UNIQUE_KEYS
 
 _NON_CLINICAL_TABLES = {
-    "documents", "load_log", "notes", "note_tags",
-    "analyses", "analysis_tags", "source_assets",
+    "documents",
+    "load_log",
+    "notes",
+    "note_tags",
+    "analyses",
+    "analysis_tags",
+    "source_assets",
 }
 _CLINICAL_TABLES = [t for t in _UNIQUE_KEYS if t not in _NON_CLINICAL_TABLES]
 ```

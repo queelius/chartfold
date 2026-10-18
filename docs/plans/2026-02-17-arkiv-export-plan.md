@@ -530,9 +530,32 @@ def test_build_schema_types_and_counts():
     from chartfold.export_arkiv import _build_schema
 
     records = [
-        {"metadata": {"table": "lab_results", "source": "epic", "test_name": "CEA", "value_numeric": 2.3, "interpretation": "H"}},
-        {"metadata": {"table": "lab_results", "source": "epic", "test_name": "Hemoglobin", "value_numeric": 12.5, "interpretation": "L"}},
-        {"metadata": {"table": "lab_results", "source": "meditech", "test_name": "WBC", "value_numeric": 6.2}},
+        {
+            "metadata": {
+                "table": "lab_results",
+                "source": "epic",
+                "test_name": "CEA",
+                "value_numeric": 2.3,
+                "interpretation": "H",
+            }
+        },
+        {
+            "metadata": {
+                "table": "lab_results",
+                "source": "epic",
+                "test_name": "Hemoglobin",
+                "value_numeric": 12.5,
+                "interpretation": "L",
+            }
+        },
+        {
+            "metadata": {
+                "table": "lab_results",
+                "source": "meditech",
+                "test_name": "WBC",
+                "value_numeric": 6.2,
+            }
+        },
     ]
 
     schema = _build_schema(records)
@@ -561,9 +584,7 @@ def test_build_schema_high_cardinality_uses_example():
     """When unique values >= 20, schema uses example instead of values."""
     from chartfold.export_arkiv import _build_schema
 
-    records = [
-        {"metadata": {"name": f"item_{i}"}} for i in range(25)
-    ]
+    records = [{"metadata": {"name": f"item_{i}"}} for i in range(25)]
 
     schema = _build_schema(records)
     keys = schema["metadata_keys"]
@@ -850,8 +871,12 @@ _TAG_TABLES = {"notes", "analyses"}
 
 # Tables excluded from export entirely
 _EXCLUDED_TABLES = {
-    "load_log", "source_assets", "documents",
-    "note_tags", "analysis_tags", "sqlite_sequence",
+    "load_log",
+    "source_assets",
+    "documents",
+    "note_tags",
+    "analysis_tags",
+    "sqlite_sequence",
 }
 
 # Tag table config: parent_table -> (tag_table, fk_column)
@@ -879,9 +904,9 @@ def export_arkiv(
 
     # Determine which tables to export
     tables_to_export = [
-        t for t in _TIMESTAMP_FIELDS
-        if t not in _EXCLUDED_TABLES
-        and (include_notes or t not in _NOTE_TABLES)
+        t
+        for t in _TIMESTAMP_FIELDS
+        if t not in _EXCLUDED_TABLES and (include_notes or t not in _NOTE_TABLES)
     ]
 
     collections = []
@@ -891,9 +916,7 @@ def export_arkiv(
         # Tables with tags use the special exporter
         if table in _TAG_CONFIG:
             tag_table, tag_fk = _TAG_CONFIG[table]
-            records = _export_table_with_tags(
-                db, table, tag_table, tag_fk, ts_field, output_dir
-            )
+            records = _export_table_with_tags(db, table, tag_table, tag_fk, ts_field, output_dir)
         else:
             records = _export_table(db, table, ts_field, output_dir)
 
@@ -901,12 +924,14 @@ def export_arkiv(
             continue
 
         schema = _build_schema(records)
-        collections.append({
-            "file": f"{table}.jsonl",
-            "description": _COLLECTION_DESCRIPTIONS.get(table, table),
-            "record_count": len(records),
-            "schema": schema,
-        })
+        collections.append(
+            {
+                "file": f"{table}.jsonl",
+                "description": _COLLECTION_DESCRIPTIONS.get(table, table),
+                "record_count": len(records),
+                "schema": schema,
+            }
+        )
 
     # Write manifest
     manifest = {
@@ -978,9 +1003,19 @@ def test_cli_export_arkiv(tmp_path):
 
     output_dir = str(tmp_path / "arkiv-out")
     result = subprocess.run(
-        [sys.executable, "-m", "chartfold", "export", "arkiv",
-         "--db", db_path, "--output", output_dir],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "chartfold",
+            "export",
+            "arkiv",
+            "--db",
+            db_path,
+            "--output",
+            output_dir,
+        ],
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     assert "Exported to" in result.stdout
@@ -998,17 +1033,15 @@ Expected: FAIL — argparse error, "arkiv" not recognized
 In `src/chartfold/cli.py`, after the html_parser block (~line 123), add:
 
 ```python
-    # export arkiv
-    arkiv_parser = export_sub.add_parser(
-        "arkiv", help="Export as arkiv universal record format (JSONL + manifest)"
-    )
-    arkiv_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
-    arkiv_parser.add_argument(
-        "--output", default="chartfold_arkiv", help="Output directory path"
-    )
-    arkiv_parser.add_argument(
-        "--exclude-notes", action="store_true", help="Exclude personal notes and analyses"
-    )
+# export arkiv
+arkiv_parser = export_sub.add_parser(
+    "arkiv", help="Export as arkiv universal record format (JSONL + manifest)"
+)
+arkiv_parser.add_argument("--db", default=DEFAULT_DB, help=db_help)
+arkiv_parser.add_argument("--output", default="chartfold_arkiv", help="Output directory path")
+arkiv_parser.add_argument(
+    "--exclude-notes", action="store_true", help="Exclude personal notes and analyses"
+)
 ```
 
 In `_handle_export()`, update the usage message and add the arkiv branch:

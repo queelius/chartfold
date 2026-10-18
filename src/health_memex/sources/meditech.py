@@ -979,7 +979,7 @@ def deduplicate_notes(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = (note["type"], note["encounter_date"])
         if key not in best or len(note["text"]) > len(best[key]["text"]):
             best[key] = note
-    return sorted(best.values(), key=lambda x: (x["encounter_date"] or "0000"), reverse=True)
+    return sorted(best.values(), key=lambda x: x["encounter_date"] or "0000", reverse=True)
 
 
 def deduplicate_vitals(vitals: list[dict]) -> list[dict]:

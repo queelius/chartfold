@@ -162,37 +162,115 @@ def prep_db(tmp_path):
         source="test_source",
         lab_results=[
             # CEA: 8 readings for trend
-            LabResult(source="test_source", test_name="CEA", value="5.8",
-                      value_numeric=5.8, ref_range="<=5.0", result_date="2025-07-08"),
-            LabResult(source="test_source", test_name="CEA", value="4.6",
-                      value_numeric=4.6, ref_range="<=5.0", result_date="2025-07-31"),
-            LabResult(source="test_source", test_name="CEA", value="3.9",
-                      value_numeric=3.9, ref_range="<=5.0", result_date="2025-08-14"),
-            LabResult(source="test_source", test_name="CEA", value="2.9",
-                      value_numeric=2.9, ref_range="<=5.0", result_date="2025-11-06"),
-            LabResult(source="test_source", test_name="CEA", value="1.8",
-                      value_numeric=1.8, ref_range="<=5.0", result_date="2026-01-15"),
-            LabResult(source="test_source", test_name="CEA", value="1.7",
-                      value_numeric=1.7, ref_range="<=5.0", result_date="2026-02-05"),
-            LabResult(source="test_source", test_name="CEA", value="1.8",
-                      value_numeric=1.8, ref_range="<=5.0", result_date="2026-03-05"),
-            LabResult(source="test_source", test_name="CEA", value="2.3",
-                      value_numeric=2.3, ref_range="<=5.0", result_date="2026-03-19"),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                ref_range="<=5.0",
+                result_date="2025-07-08",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="4.6",
+                value_numeric=4.6,
+                ref_range="<=5.0",
+                result_date="2025-07-31",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="3.9",
+                value_numeric=3.9,
+                ref_range="<=5.0",
+                result_date="2025-08-14",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="2.9",
+                value_numeric=2.9,
+                ref_range="<=5.0",
+                result_date="2025-11-06",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.8",
+                value_numeric=1.8,
+                ref_range="<=5.0",
+                result_date="2026-01-15",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.7",
+                value_numeric=1.7,
+                ref_range="<=5.0",
+                result_date="2026-02-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.8",
+                value_numeric=1.8,
+                ref_range="<=5.0",
+                result_date="2026-03-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="2.3",
+                value_numeric=2.3,
+                ref_range="<=5.0",
+                result_date="2026-03-19",
+            ),
             # Hemoglobin: 3 readings
-            LabResult(source="test_source", test_name="Hemoglobin", value="15.8",
-                      value_numeric=15.8, result_date="2026-01-15"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="14.3",
-                      value_numeric=14.3, result_date="2026-03-19"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="16.1",
-                      value_numeric=16.1, result_date="2026-02-19"),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="15.8",
+                value_numeric=15.8,
+                result_date="2026-01-15",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="14.3",
+                value_numeric=14.3,
+                result_date="2026-03-19",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="16.1",
+                value_numeric=16.1,
+                result_date="2026-02-19",
+            ),
             # WBC: 2 readings
-            LabResult(source="test_source", test_name="WBC", value="4.57",
-                      value_numeric=4.57, result_date="2026-03-05"),
-            LabResult(source="test_source", test_name="WBC", value="4.32",
-                      value_numeric=4.32, result_date="2026-03-19"),
+            LabResult(
+                source="test_source",
+                test_name="WBC",
+                value="4.57",
+                value_numeric=4.57,
+                result_date="2026-03-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="WBC",
+                value="4.32",
+                value_numeric=4.32,
+                result_date="2026-03-19",
+            ),
             # Glucose: 1 reading (least frequent)
-            LabResult(source="test_source", test_name="Glucose", value="103",
-                      value_numeric=103.0, result_date="2026-03-19"),
+            LabResult(
+                source="test_source",
+                test_name="Glucose",
+                value="103",
+                value_numeric=103.0,
+                result_date="2026-03-19",
+            ),
         ],
     )
     db.load_source(records)
@@ -201,7 +279,6 @@ def prep_db(tmp_path):
 
 
 class TestResolveKeyTestTrends:
-
     def test_with_config(self, prep_db):
         from chartfold.analysis.visit_prep import _resolve_key_test_trends
 
@@ -351,8 +428,14 @@ Add more data to the `prep_db` fixture in `tests/test_visit_prep_bundle.py`. Rep
 
 ```python
 from chartfold.models import (
-    ClinicalNote, ConditionRecord, EncounterRecord, ImagingReport,
-    LabResult, MedicationRecord, ProcedureRecord, UnifiedRecords,
+    ClinicalNote,
+    ConditionRecord,
+    EncounterRecord,
+    ImagingReport,
+    LabResult,
+    MedicationRecord,
+    ProcedureRecord,
+    UnifiedRecords,
 )
 
 
@@ -365,80 +448,194 @@ def prep_db(tmp_path):
     records = UnifiedRecords(
         source="test_source",
         lab_results=[
-            LabResult(source="test_source", test_name="CEA", value="5.8",
-                      value_numeric=5.8, ref_range="<=5.0", result_date="2025-07-08"),
-            LabResult(source="test_source", test_name="CEA", value="4.6",
-                      value_numeric=4.6, ref_range="<=5.0", result_date="2025-07-31"),
-            LabResult(source="test_source", test_name="CEA", value="3.9",
-                      value_numeric=3.9, ref_range="<=5.0", result_date="2025-08-14"),
-            LabResult(source="test_source", test_name="CEA", value="2.9",
-                      value_numeric=2.9, ref_range="<=5.0", result_date="2025-11-06"),
-            LabResult(source="test_source", test_name="CEA", value="1.8",
-                      value_numeric=1.8, ref_range="<=5.0", result_date="2026-01-15"),
-            LabResult(source="test_source", test_name="CEA", value="1.7",
-                      value_numeric=1.7, ref_range="<=5.0", result_date="2026-02-05"),
-            LabResult(source="test_source", test_name="CEA", value="1.8",
-                      value_numeric=1.8, ref_range="<=5.0", result_date="2026-03-05"),
-            LabResult(source="test_source", test_name="CEA", value="2.3",
-                      value_numeric=2.3, ref_range="<=5.0", result_date="2026-03-19"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="15.8",
-                      value_numeric=15.8, result_date="2026-01-15"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="14.3",
-                      value_numeric=14.3, result_date="2026-03-19"),
-            LabResult(source="test_source", test_name="Hemoglobin", value="16.1",
-                      value_numeric=16.1, result_date="2026-02-19"),
-            LabResult(source="test_source", test_name="WBC", value="4.57",
-                      value_numeric=4.57, result_date="2026-03-05"),
-            LabResult(source="test_source", test_name="WBC", value="4.32",
-                      value_numeric=4.32, result_date="2026-03-19"),
-            LabResult(source="test_source", test_name="Glucose", value="103",
-                      value_numeric=103.0, result_date="2026-03-19"),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="5.8",
+                value_numeric=5.8,
+                ref_range="<=5.0",
+                result_date="2025-07-08",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="4.6",
+                value_numeric=4.6,
+                ref_range="<=5.0",
+                result_date="2025-07-31",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="3.9",
+                value_numeric=3.9,
+                ref_range="<=5.0",
+                result_date="2025-08-14",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="2.9",
+                value_numeric=2.9,
+                ref_range="<=5.0",
+                result_date="2025-11-06",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.8",
+                value_numeric=1.8,
+                ref_range="<=5.0",
+                result_date="2026-01-15",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.7",
+                value_numeric=1.7,
+                ref_range="<=5.0",
+                result_date="2026-02-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="1.8",
+                value_numeric=1.8,
+                ref_range="<=5.0",
+                result_date="2026-03-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="CEA",
+                value="2.3",
+                value_numeric=2.3,
+                ref_range="<=5.0",
+                result_date="2026-03-19",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="15.8",
+                value_numeric=15.8,
+                result_date="2026-01-15",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="14.3",
+                value_numeric=14.3,
+                result_date="2026-03-19",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Hemoglobin",
+                value="16.1",
+                value_numeric=16.1,
+                result_date="2026-02-19",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="WBC",
+                value="4.57",
+                value_numeric=4.57,
+                result_date="2026-03-05",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="WBC",
+                value="4.32",
+                value_numeric=4.32,
+                result_date="2026-03-19",
+            ),
+            LabResult(
+                source="test_source",
+                test_name="Glucose",
+                value="103",
+                value_numeric=103.0,
+                result_date="2026-03-19",
+            ),
         ],
         encounters=[
-            EncounterRecord(source="test_source", encounter_date="2026-03-05",
-                            encounter_type="Office Visit", provider="Dr. Tan",
-                            facility="Siteman"),
-            EncounterRecord(source="test_source", encounter_date="2026-03-19",
-                            encounter_type="Infusion", provider="Amy Ngo, NP",
-                            facility="Siteman"),
+            EncounterRecord(
+                source="test_source",
+                encounter_date="2026-03-05",
+                encounter_type="Office Visit",
+                provider="Dr. Tan",
+                facility="Siteman",
+            ),
+            EncounterRecord(
+                source="test_source",
+                encounter_date="2026-03-19",
+                encounter_type="Infusion",
+                provider="Amy Ngo, NP",
+                facility="Siteman",
+            ),
         ],
         imaging_reports=[
-            ImagingReport(source="test_source", study_name="MRI Abdomen Pelvis",
-                          modality="MRI", study_date="2026-03-31",
-                          impression="No new disease.",
-                          findings="Evolving postsurgical changes."),
+            ImagingReport(
+                source="test_source",
+                study_name="MRI Abdomen Pelvis",
+                modality="MRI",
+                study_date="2026-03-31",
+                impression="No new disease.",
+                findings="Evolving postsurgical changes.",
+            ),
         ],
         clinical_notes=[
-            ClinicalNote(source="test_source", note_type="Progress Notes",
-                         author="Dr. Tan", note_date="2026-03-05",
-                         content="Oncology Return Visit. Treatment history reviewed. "
-                                 "Metastatic Terminal Ileum Adenocarcinoma. " + "x" * 2000),
-            ClinicalNote(source="test_source", note_type="Progress Notes",
-                         author="Amy Ngo, NP", note_date="2026-03-19",
-                         content="Pt presenting for C4 FOLFOX."),
+            ClinicalNote(
+                source="test_source",
+                note_type="Progress Notes",
+                author="Dr. Tan",
+                note_date="2026-03-05",
+                content="Oncology Return Visit. Treatment history reviewed. "
+                "Metastatic Terminal Ileum Adenocarcinoma. " + "x" * 2000,
+            ),
+            ClinicalNote(
+                source="test_source",
+                note_type="Progress Notes",
+                author="Amy Ngo, NP",
+                note_date="2026-03-19",
+                content="Pt presenting for C4 FOLFOX.",
+            ),
         ],
         medications=[
-            MedicationRecord(source="test_source", name="levothyroxine 125 mcg",
-                             status="active", sig="1 tablet daily"),
+            MedicationRecord(
+                source="test_source",
+                name="levothyroxine 125 mcg",
+                status="active",
+                sig="1 tablet daily",
+            ),
         ],
         conditions=[
-            ConditionRecord(source="test_source", condition_name="Colon cancer",
-                            icd10_code="C18.9", clinical_status="active"),
+            ConditionRecord(
+                source="test_source",
+                condition_name="Colon cancer",
+                icd10_code="C18.9",
+                clinical_status="active",
+            ),
         ],
         procedures=[
-            ProcedureRecord(source="test_source", name="Liver resection",
-                            procedure_date="2025-12-18", facility="BJH"),
+            ProcedureRecord(
+                source="test_source",
+                name="Liver resection",
+                procedure_date="2025-12-18",
+                facility="BJH",
+            ),
         ],
     )
     db.load_source(records)
 
     # Add saved notes and analyses
-    db.save_note("Trial Research", "Bot/Bal and BNT122 options...",
-                 tags=["oncology", "clinical-trials"])
+    db.save_note(
+        "Trial Research", "Bot/Bal and BNT122 options...", tags=["oncology", "clinical-trials"]
+    )
     db.save_analysis(
-        slug="cancer-timeline", title="Cancer Timeline",
-        content="Full chronological narrative...", category="oncology",
-        summary="Timeline from diagnosis to present", tags=["oncology"],
+        slug="cancer-timeline",
+        title="Cancer Timeline",
+        content="Full chronological narrative...",
+        category="oncology",
+        summary="Timeline from diagnosis to present",
+        tags=["oncology"],
     )
 
     yield db
@@ -449,16 +646,24 @@ Then add the bundle tests:
 
 ```python
 class TestGenerateVisitPrepBundle:
-
     def test_returns_all_sections(self, prep_db):
         from chartfold.analysis.visit_prep import generate_visit_prep_bundle
 
         bundle = generate_visit_prep_bundle(prep_db, visit_date="2026-04-02")
         expected_keys = {
-            "visit_date", "lookback_start", "provider",
-            "lab_trends", "new_labs", "recent_imaging", "recent_notes",
-            "active_medications", "active_conditions", "recent_procedures",
-            "saved_notes", "saved_analyses", "treatment_context_note",
+            "visit_date",
+            "lookback_start",
+            "provider",
+            "lab_trends",
+            "new_labs",
+            "recent_imaging",
+            "recent_notes",
+            "active_medications",
+            "active_conditions",
+            "recent_procedures",
+            "saved_notes",
+            "saved_analyses",
+            "treatment_context_note",
         }
         assert set(bundle.keys()) == expected_keys
 
@@ -485,9 +690,7 @@ class TestGenerateVisitPrepBundle:
     def test_new_labs_from_lookback(self, prep_db):
         from chartfold.analysis.visit_prep import generate_visit_prep_bundle
 
-        bundle = generate_visit_prep_bundle(
-            prep_db, visit_date="2026-04-02", lookback_months=6
-        )
+        bundle = generate_visit_prep_bundle(prep_db, visit_date="2026-04-02", lookback_months=6)
         assert len(bundle["new_labs"]) > 0
 
     def test_imaging_includes_findings(self, prep_db):
@@ -539,9 +742,7 @@ class TestGenerateVisitPrepBundle:
     def test_exclude_notes(self, prep_db):
         from chartfold.analysis.visit_prep import generate_visit_prep_bundle
 
-        bundle = generate_visit_prep_bundle(
-            prep_db, visit_date="2026-04-02", include_notes=False
-        )
+        bundle = generate_visit_prep_bundle(prep_db, visit_date="2026-04-02", include_notes=False)
         assert bundle["saved_notes"] == []
 
     def test_empty_db(self, tmp_path):
@@ -655,8 +856,7 @@ def generate_visit_prep_bundle(
     saved_notes: list[dict] = []
     if include_notes:
         saved_notes = db.query(
-            "SELECT id, title, content, created_at, updated_at "
-            "FROM notes ORDER BY updated_at DESC"
+            "SELECT id, title, content, created_at, updated_at FROM notes ORDER BY updated_at DESC"
         )
         for note in saved_notes:
             note["tags"] = db._fetch_tags("note_tags", "note_id", note["id"])
@@ -747,10 +947,19 @@ class TestVisitPrepBundle:
         result = get_visit_prep_bundle(visit_date="2026-04-02")
         assert isinstance(result, dict)
         expected_keys = {
-            "visit_date", "lookback_start", "provider",
-            "lab_trends", "new_labs", "recent_imaging", "recent_notes",
-            "active_medications", "active_conditions", "recent_procedures",
-            "saved_notes", "saved_analyses", "treatment_context_note",
+            "visit_date",
+            "lookback_start",
+            "provider",
+            "lab_trends",
+            "new_labs",
+            "recent_imaging",
+            "recent_notes",
+            "active_medications",
+            "active_conditions",
+            "recent_procedures",
+            "saved_notes",
+            "saved_analyses",
+            "treatment_context_note",
         }
         assert set(result.keys()) == expected_keys
         # mcp_db has CEA lab data
@@ -759,9 +968,7 @@ class TestVisitPrepBundle:
     def test_get_visit_prep_bundle_exclude_flags(self, mcp_db):
         from chartfold.mcp.server import get_visit_prep_bundle
 
-        result = get_visit_prep_bundle(
-            include_analyses=False, include_notes=False
-        )
+        result = get_visit_prep_bundle(include_analyses=False, include_notes=False)
         assert result["saved_analyses"] == []
         assert result["saved_notes"] == []
 ```

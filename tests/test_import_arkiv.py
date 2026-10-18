@@ -953,35 +953,39 @@ class TestRoundTrip:
         src_db_path = str(tmp_path / "source.db")
         with HealthMemexDB(src_db_path) as db:
             db.init_schema()
-            db.load_source(UnifiedRecords(
-                source="test_surgical",
-                procedures=[
-                    ProcedureRecord(
-                        source="test_surgical",
-                        name="Right hemicolectomy",
-                        procedure_date="2024-07-01",
-                        provider="Dr. Surgeon",
-                    ),
-                ],
-            ))
+            db.load_source(
+                UnifiedRecords(
+                    source="test_surgical",
+                    procedures=[
+                        ProcedureRecord(
+                            source="test_surgical",
+                            name="Right hemicolectomy",
+                            procedure_date="2024-07-01",
+                            provider="Dr. Surgeon",
+                        ),
+                    ],
+                )
+            )
             proc_id = db.query("SELECT id FROM procedures")[0]["id"]
 
             # Load pathology pointing at the procedure. The dataclass
             # carries the autoincrement procedure_id; load_source
             # auto-fills the pathology row's unique_id so it can be
             # exported.
-            db.load_source(UnifiedRecords(
-                source="test_surgical",
-                pathology_reports=[
-                    PathologyReport(
-                        source="test_surgical",
-                        procedure_id=proc_id,
-                        report_date="2024-07-03",
-                        specimen="Right colon",
-                        diagnosis="Adenocarcinoma",
-                    ),
-                ],
-            ))
+            db.load_source(
+                UnifiedRecords(
+                    source="test_surgical",
+                    pathology_reports=[
+                        PathologyReport(
+                            source="test_surgical",
+                            procedure_id=proc_id,
+                            report_date="2024-07-03",
+                            specimen="Right colon",
+                            diagnosis="Adenocarcinoma",
+                        ),
+                    ],
+                )
+            )
 
             archive_dir = str(tmp_path / "arkiv-export")
             export_arkiv(db, archive_dir)
@@ -1153,18 +1157,20 @@ class TestRoundTrip:
             # unique_id is auto-filled — required by export now).
             procs = db.query("SELECT id FROM procedures")
             proc_id = procs[0]["id"]
-            db.load_source(UnifiedRecords(
-                source="test_source",
-                pathology_reports=[
-                    PathologyReport(
-                        source="test_source",
-                        procedure_id=proc_id,
-                        report_date="2024-07-03",
-                        specimen="Right colon",
-                        diagnosis="Adenocarcinoma",
-                    ),
-                ],
-            ))
+            db.load_source(
+                UnifiedRecords(
+                    source="test_source",
+                    pathology_reports=[
+                        PathologyReport(
+                            source="test_source",
+                            procedure_id=proc_id,
+                            report_date="2024-07-03",
+                            specimen="Right colon",
+                            diagnosis="Adenocarcinoma",
+                        ),
+                    ],
+                )
+            )
 
             # Add note with tags
             db.save_note(

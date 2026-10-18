@@ -365,13 +365,14 @@ then across 9 clinical categories. Date is editable for custom range.
 Add to `TestAiChatExport` in `tests/test_spa_export.py`:
 
 ```python
-    def test_ai_chat_has_render_chart_tool(self, ai_chat_html):
-        """Chat JS should define the render_chart tool."""
-        assert "render_chart" in ai_chat_html
+def test_ai_chat_has_render_chart_tool(self, ai_chat_html):
+    """Chat JS should define the render_chart tool."""
+    assert "render_chart" in ai_chat_html
 
-    def test_ai_chat_has_execute_render_chart(self, ai_chat_html):
-        """Chat JS should have the chart rendering method."""
-        assert "_executeRenderChart" in ai_chat_html
+
+def test_ai_chat_has_execute_render_chart(self, ai_chat_html):
+    """Chat JS should have the chart rendering method."""
+    assert "_executeRenderChart" in ai_chat_html
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -556,10 +557,11 @@ Run: `python -m pytest tests/test_chat_prompt.py::TestGenerateSystemPrompt::test
 In `src/chartfold/spa/chat_prompt.py`, in the `_role_instructions()` function, add after the existing guidelines:
 
 ```python
-        "- When asked to show trends or visualize data over time, first query the data with "
-        "run_sql, then call render_chart with the results to display an inline chart.\n"
-        "- The render_chart tool accepts: title, data (array of {date, value, source}), "
-        "y_label (units), and optional ref_range ({low, high})."
+"- When asked to show trends or visualize data over time, first query the data with"
+
+"run_sql, then call render_chart with the results to display an inline chart.\n"
+"- The render_chart tool accepts: title, data (array of {date, value, source}), "
+"y_label (units), and optional ref_range ({low, high})."
 ```
 
 - [ ] **Step 4: Run tests**

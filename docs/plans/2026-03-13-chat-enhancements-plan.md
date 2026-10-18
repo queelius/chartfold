@@ -34,10 +34,22 @@ class TestClinicalTablesList:
 
     def test_contains_expected_clinical_tables(self):
         expected = {
-            "patients", "encounters", "lab_results", "vitals",
-            "medications", "conditions", "procedures", "pathology_reports",
-            "imaging_reports", "clinical_notes", "immunizations", "allergies",
-            "social_history", "family_history", "mental_status", "genetic_variants",
+            "patients",
+            "encounters",
+            "lab_results",
+            "vitals",
+            "medications",
+            "conditions",
+            "procedures",
+            "pathology_reports",
+            "imaging_reports",
+            "clinical_notes",
+            "immunizations",
+            "allergies",
+            "social_history",
+            "family_history",
+            "mental_status",
+            "genetic_variants",
         }
         assert set(_CLINICAL_TABLES) == expected
 
@@ -77,8 +89,13 @@ from chartfold.db import _UNIQUE_KEYS
 
 # Tables excluded from clinical summary stats (metadata/system tables).
 _NON_CLINICAL_TABLES = {
-    "documents", "load_log", "notes", "note_tags",
-    "analyses", "analysis_tags", "source_assets",
+    "documents",
+    "load_log",
+    "notes",
+    "note_tags",
+    "analyses",
+    "analysis_tags",
+    "source_assets",
 }
 _CLINICAL_TABLES = [t for t in _UNIQUE_KEYS if t not in _NON_CLINICAL_TABLES]
 ```
@@ -233,9 +250,11 @@ def test_ai_chat_has_clear_button(self, ai_chat_html):
     """Chat UI should include a clear conversation button."""
     assert "chat-clear-btn" in ai_chat_html
 
+
 def test_ai_chat_has_trim_history(self, ai_chat_html):
     """Chat JS should include the _trimHistory function."""
     assert "_trimHistory" in ai_chat_html
+
 
 def test_ai_chat_has_max_messages(self, ai_chat_html):
     """Chat JS should define MAX_MESSAGES constant."""

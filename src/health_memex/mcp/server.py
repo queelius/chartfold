@@ -192,9 +192,7 @@ def get_database_summary() -> dict:
 # Derived from ``_UNIQUE_KEYS`` (the canonical clinical-table list) plus
 # ``notes`` and ``analyses`` which carry their own ``archived_at`` but
 # live outside the clinical-records pipeline.
-_RECORD_KINDS: frozenset[str] = frozenset(
-    {*_UNIQUE_KEYS.keys(), "notes", "analyses"}
-)
+_RECORD_KINDS: frozenset[str] = frozenset({*_UNIQUE_KEYS.keys(), "notes", "analyses"})
 
 
 @mcp.tool()
@@ -256,9 +254,7 @@ def get_record(kind: str, id: str) -> dict:
     # right column (durable unique_id vs autoincrement id) but no
     # longer guard against escape — the placeholder does.
     if has_unique_id and _is_unique_id_format(base_id):
-        rows = _readonly_query(
-            f"SELECT * FROM {kind} WHERE unique_id = ?", (base_id,)
-        )
+        rows = _readonly_query(f"SELECT * FROM {kind} WHERE unique_id = ?", (base_id,))
     elif base_id.isdigit():
         rows = _readonly_query(f"SELECT * FROM {kind} WHERE id = ?", (base_id,))
     else:
@@ -274,9 +270,7 @@ def get_record(kind: str, id: str) -> dict:
     # R4: surface archived state explicitly. Archived records stay resolvable
     # (cross-archive references must not break on soft-delete), but callers
     # should not have to dig the archived_at column out of the record.
-    result["archived"] = bool(
-        isinstance(record, dict) and record.get("archived_at")
-    )
+    result["archived"] = bool(isinstance(record, dict) and record.get("archived_at"))
     if fragment:
         # Echo the fragment so callers can post-resolve the sub-position.
         result["fragment"] = fragment

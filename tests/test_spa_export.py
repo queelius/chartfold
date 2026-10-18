@@ -1762,7 +1762,13 @@ class TestSpaFtsStrip:
             "INSERT INTO clinical_notes "
             "(source, note_date, note_type, author, content) "
             "VALUES (?, ?, ?, ?, ?)",
-            ("test_source", "2025-01-01", "progress", "Dr. Tester", "patient tolerated procedure well"),
+            (
+                "test_source",
+                "2025-01-01",
+                "progress",
+                "Dr. Tester",
+                "patient tolerated procedure well",
+            ),
         )
         db.conn.execute(
             "INSERT INTO pathology_reports (source, report_date, specimen, diagnosis, full_text) "
@@ -1786,15 +1792,15 @@ class TestSpaFtsStrip:
 
         with sqlite3.connect(str(extracted)) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             names = {r["name"] for r in rows}
 
         for virtual in ("clinical_notes_fts", "pathology_fts", "imaging_fts"):
             assert virtual not in names, f"{virtual} still in embedded DB"
         # sql.js-incompatible shadow names too
-        shadow_leftovers = [n for n in names if n.endswith(("_data", "_idx", "_docsize", "_config", "_content"))]
+        shadow_leftovers = [
+            n for n in names if n.endswith(("_data", "_idx", "_docsize", "_config", "_content"))
+        ]
         assert not shadow_leftovers, f"FTS5 shadow tables remain: {shadow_leftovers}"
 
     def test_embedded_db_has_no_fts_triggers(self, tmp_path, spa_output):
@@ -1803,22 +1809,24 @@ class TestSpaFtsStrip:
         self._seed_with_fts_content(db_path)
 
         export_spa(db_path, spa_output)
-        db_bytes = _extract_embedded_db_bytes(
-            Path(spa_output).read_text(encoding="utf-8")
-        )
+        db_bytes = _extract_embedded_db_bytes(Path(spa_output).read_text(encoding="utf-8"))
         extracted = tmp_path / "extracted.db"
         extracted.write_bytes(db_bytes)
 
         with sqlite3.connect(str(extracted)) as conn:
-            rows = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='trigger'"
-            ).fetchall()
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall()
             trigger_names = {r[0] for r in rows}
 
         for trig in (
-            "clinical_notes_ai", "clinical_notes_ad", "clinical_notes_au",
-            "pathology_ai", "pathology_ad", "pathology_au",
-            "imaging_ai", "imaging_ad", "imaging_au",
+            "clinical_notes_ai",
+            "clinical_notes_ad",
+            "clinical_notes_au",
+            "pathology_ai",
+            "pathology_ad",
+            "pathology_au",
+            "imaging_ai",
+            "imaging_ad",
+            "imaging_au",
         ):
             assert trig not in trigger_names, f"orphan FTS trigger {trig} remains"
 
@@ -1828,9 +1836,7 @@ class TestSpaFtsStrip:
         self._seed_with_fts_content(db_path)
 
         export_spa(db_path, spa_output)
-        db_bytes = _extract_embedded_db_bytes(
-            Path(spa_output).read_text(encoding="utf-8")
-        )
+        db_bytes = _extract_embedded_db_bytes(Path(spa_output).read_text(encoding="utf-8"))
         extracted = tmp_path / "extracted.db"
         extracted.write_bytes(db_bytes)
 
@@ -1844,20 +1850,14 @@ class TestSpaFtsStrip:
         self._seed_with_fts_content(db_path)
 
         export_spa(db_path, spa_output)
-        db_bytes = _extract_embedded_db_bytes(
-            Path(spa_output).read_text(encoding="utf-8")
-        )
+        db_bytes = _extract_embedded_db_bytes(Path(spa_output).read_text(encoding="utf-8"))
         extracted = tmp_path / "extracted.db"
         extracted.write_bytes(db_bytes)
 
         with sqlite3.connect(str(extracted)) as conn:
             conn.row_factory = sqlite3.Row
-            notes = conn.execute(
-                "SELECT content FROM clinical_notes"
-            ).fetchall()
-            paths = conn.execute(
-                "SELECT diagnosis FROM pathology_reports"
-            ).fetchall()
+            notes = conn.execute("SELECT content FROM clinical_notes").fetchall()
+            paths = conn.execute("SELECT diagnosis FROM pathology_reports").fetchall()
             assert len(notes) == 1
             assert "tolerated procedure" in notes[0]["content"]
             assert len(paths) == 1

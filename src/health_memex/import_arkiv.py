@@ -379,9 +379,7 @@ def _safe_extract_zip(zip_path: str, dest_dir: str) -> None:
         for name in zf.namelist():
             target = os.path.realpath(os.path.join(dest_dir, name))
             if target != real_dest and not target.startswith(real_dest + os.sep):
-                raise ValueError(
-                    f"Refusing to extract unsafe path from zip: {name!r}"
-                )
+                raise ValueError(f"Refusing to extract unsafe path from zip: {name!r}")
         zf.extractall(dest_dir)
 
 
@@ -396,14 +394,10 @@ def _safe_extract_tar_gz(tar_path: str, dest_dir: str) -> None:
     with tarfile.open(tar_path, "r:gz") as tf:
         for member in tf.getmembers():
             if not (member.isfile() or member.isdir()):
-                raise ValueError(
-                    f"Refusing to extract non-regular tar member: {member.name!r}"
-                )
+                raise ValueError(f"Refusing to extract non-regular tar member: {member.name!r}")
             target = os.path.realpath(os.path.join(dest_dir, member.name))
             if target != real_dest and not target.startswith(real_dest + os.sep):
-                raise ValueError(
-                    f"Refusing to extract unsafe path from tarball: {member.name!r}"
-                )
+                raise ValueError(f"Refusing to extract unsafe path from tarball: {member.name!r}")
         # Python 3.12+: "data" filter rejects absolute paths, symlinks, and
         # members with suspicious ownership, as a defence-in-depth in
         # addition to our own walk above.
@@ -782,9 +776,7 @@ def _import_arkiv_dir(
                     unique_cols = _UNIQUE_KEYS[table]
                     upsert_sql = _build_upsert_sql(table, cols, unique_cols)
                     db.conn.execute(upsert_sql, list(filtered.values()))
-                    new_id = _lookup_id_by_unique(
-                        db.conn, table, unique_cols, filtered
-                    )
+                    new_id = _lookup_id_by_unique(db.conn, table, unique_cols, filtered)
                 else:
                     cursor = db.conn.execute(
                         f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",

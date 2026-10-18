@@ -115,6 +115,7 @@ NEWSOURCE_CONFIG = SourceConfig(
     # ... other config
 )
 
+
 def process_newsource_export(input_dir: str) -> dict:
     """Parse newsource export files.
 
@@ -142,6 +143,7 @@ Create `adapters/newsource_adapter.py`:
 ```python
 from chartfold.models import UnifiedRecords, LabResult, MedicationRecord
 from chartfold.core.utils import normalize_date_to_iso
+
 
 def newsource_to_unified(data: dict) -> UnifiedRecords:
     """Convert newsource data to UnifiedRecords."""
@@ -214,9 +216,7 @@ from chartfold.adapters.newsource_adapter import newsource_to_unified
 @pytest.fixture
 def sample_newsource_data():
     return {
-        "lab_results": [
-            {"name": "CEA", "value": "5.8", "date": "2025-01-15"}
-        ],
+        "lab_results": [{"name": "CEA", "value": "5.8", "date": "2025-01-15"}],
         # ...
     }
 

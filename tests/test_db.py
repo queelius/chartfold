@@ -157,10 +157,18 @@ class TestSchemaCreation:
         db_path = str(tmp_path / "legacy.db")
         db = HealthMemexDB(db_path)
         db.init_schema()
-        db.load_source(UnifiedRecords(source="legacy", clinical_notes=[
-            ClinicalNote(source="legacy", note_date="2024-01-02",
-                         content="carcinoembryonic antigen trending down"),
-        ]))
+        db.load_source(
+            UnifiedRecords(
+                source="legacy",
+                clinical_notes=[
+                    ClinicalNote(
+                        source="legacy",
+                        note_date="2024-01-02",
+                        content="carcinoembryonic antigen trending down",
+                    ),
+                ],
+            )
+        )
         db.close()
 
         # Strip the FTS machinery and unique_ids: the legacy shape.
@@ -177,10 +185,13 @@ class TestSchemaCreation:
 
         db = HealthMemexDB(db_path)
         db.init_schema()  # raised DatabaseError before the fix
-        assert db.query("SELECT COUNT(*) AS n FROM clinical_notes "
-                        "WHERE unique_id IS NULL")[0]["n"] == 0
-        hits = db.query("SELECT rowid FROM clinical_notes_fts "
-                        "WHERE clinical_notes_fts MATCH 'antigen'")
+        assert (
+            db.query("SELECT COUNT(*) AS n FROM clinical_notes WHERE unique_id IS NULL")[0]["n"]
+            == 0
+        )
+        hits = db.query(
+            "SELECT rowid FROM clinical_notes_fts WHERE clinical_notes_fts MATCH 'antigen'"
+        )
         assert len(hits) == 1
         assert db.query("PRAGMA integrity_check")[0]["integrity_check"] == "ok"
         db.close()
@@ -675,14 +686,24 @@ class TestComputeUniqueId:
     def test_different_natural_keys_produce_different_ids(self):
         from health_memex.db import _compute_unique_id
 
-        a = _compute_unique_id("lab_results", {
-            "source": "epic", "test_name": "CEA",
-            "result_date": "2025-06-15", "value": "5.8",
-        })
-        b = _compute_unique_id("lab_results", {
-            "source": "epic", "test_name": "CEA",
-            "result_date": "2025-06-15", "value": "6.2",  # different value
-        })
+        a = _compute_unique_id(
+            "lab_results",
+            {
+                "source": "epic",
+                "test_name": "CEA",
+                "result_date": "2025-06-15",
+                "value": "5.8",
+            },
+        )
+        b = _compute_unique_id(
+            "lab_results",
+            {
+                "source": "epic",
+                "test_name": "CEA",
+                "result_date": "2025-06-15",
+                "value": "6.2",  # different value
+            },
+        )
         assert a != b
 
     def test_null_separator_avoids_collisions(self):
@@ -693,14 +714,24 @@ class TestComputeUniqueId:
         occur. Verify by exercising would-be collisions."""
         from health_memex.db import _compute_unique_id
 
-        a = _compute_unique_id("lab_results", {
-            "source": "epic|other", "test_name": "CEA",
-            "result_date": "2025-06-15", "value": "5.8",
-        })
-        b = _compute_unique_id("lab_results", {
-            "source": "epic", "test_name": "other|CEA",
-            "result_date": "2025-06-15", "value": "5.8",
-        })
+        a = _compute_unique_id(
+            "lab_results",
+            {
+                "source": "epic|other",
+                "test_name": "CEA",
+                "result_date": "2025-06-15",
+                "value": "5.8",
+            },
+        )
+        b = _compute_unique_id(
+            "lab_results",
+            {
+                "source": "epic",
+                "test_name": "other|CEA",
+                "result_date": "2025-06-15",
+                "value": "5.8",
+            },
+        )
         assert a != b
 
     def test_unknown_table_raises(self):

@@ -49,13 +49,11 @@ def chat_db(tmp_path):
         ("epic_anderson", "Jane Doe", "1970-05-15"),
     )
     db.conn.execute(
-        "INSERT INTO lab_results (source, test_name, value, result_date) "
-        "VALUES (?, ?, ?, ?)",
+        "INSERT INTO lab_results (source, test_name, value, result_date) VALUES (?, ?, ?, ?)",
         ("epic_anderson", "CEA", "3.2", "2025-06-01"),
     )
     db.conn.execute(
-        "INSERT INTO lab_results (source, test_name, value, result_date) "
-        "VALUES (?, ?, ?, ?)",
+        "INSERT INTO lab_results (source, test_name, value, result_date) VALUES (?, ?, ?, ?)",
         ("meditech_houston", "CBC", "normal", "2025-07-01"),
     )
     db.conn.execute(
@@ -199,9 +197,7 @@ def _get_summary_stats(db_path: str) -> str:
 
     # Sources
     try:
-        rows = conn.execute(
-            "SELECT DISTINCT source FROM load_log ORDER BY source"
-        ).fetchall()
+        rows = conn.execute("SELECT DISTINCT source FROM load_log ORDER BY source").fetchall()
         sources = [r["source"] for r in rows]
         if sources:
             lines.append(f"Data sources: {', '.join(sources)}")
@@ -225,10 +221,22 @@ def _get_summary_stats(db_path: str) -> str:
 
     # Table counts
     tables = [
-        "patients", "encounters", "lab_results", "vitals", "medications",
-        "conditions", "procedures", "pathology_reports", "imaging_reports",
-        "clinical_notes", "immunizations", "allergies", "social_history",
-        "family_history", "mental_status", "genetic_variants",
+        "patients",
+        "encounters",
+        "lab_results",
+        "vitals",
+        "medications",
+        "conditions",
+        "procedures",
+        "pathology_reports",
+        "imaging_reports",
+        "clinical_notes",
+        "immunizations",
+        "allergies",
+        "social_history",
+        "family_history",
+        "mental_status",
+        "genetic_variants",
     ]
     count_lines = []
     for table in tables:
@@ -981,6 +989,7 @@ Add these tests to `tests/test_spa_export.py`:
 ```python
 # Add to tests/test_spa_export.py
 
+
 class TestAiChatExport:
     """Tests for the --ai-chat conditional export."""
 
@@ -1001,7 +1010,9 @@ class TestAiChatExport:
 
     def test_ai_chat_includes_config(self, spa_db, spa_output):
         """With ai_chat, the chat config is embedded."""
-        export_spa(spa_db, spa_output, ai_chat=True, proxy_url="https://proxy.example.com/v1/messages")
+        export_spa(
+            spa_db, spa_output, ai_chat=True, proxy_url="https://proxy.example.com/v1/messages"
+        )
         with open(spa_output) as f:
             html = f.read()
         assert 'id="chartfold-chat-config"' in html
@@ -1054,7 +1065,7 @@ _JS_FILES_BASE = [
 ]
 
 _JS_FILES_CHAT = [
-    "chat.js",     # Must come before sections.js (Sections.ask_ai calls Chat.init)
+    "chat.js",  # Must come before sections.js (Sections.ask_ai calls Chat.init)
 ]
 
 _JS_FILES_TAIL = [
@@ -1110,24 +1121,20 @@ def export_spa(
 **Edit 5:** After optional data loading (lines 145-149), add chat prompt generation:
 
 ```python
-    # 7. AI chat data (system prompt + config)
-    chat_prompt_tag = ""
-    chat_config_tag = ""
-    if ai_chat:
-        from chartfold.spa.chat_prompt import generate_system_prompt
+# 7. AI chat data (system prompt + config)
+chat_prompt_tag = ""
+chat_config_tag = ""
+if ai_chat:
+    from chartfold.spa.chat_prompt import generate_system_prompt
 
-        system_prompt = _safe_json_for_script(generate_system_prompt(db_path))
-        chat_prompt_tag = (
-            f'\n    <script id="chartfold-system-prompt" type="text/plain">'
-            f"{system_prompt}</script>"
-        )
-        chat_config = _safe_json_for_script(
-            json.dumps({"proxyUrl": proxy_url or None})
-        )
-        chat_config_tag = (
-            f'\n    <script id="chartfold-chat-config" type="application/json">'
-            f"{chat_config}</script>"
-        )
+    system_prompt = _safe_json_for_script(generate_system_prompt(db_path))
+    chat_prompt_tag = (
+        f'\n    <script id="chartfold-system-prompt" type="text/plain">{system_prompt}</script>'
+    )
+    chat_config = _safe_json_for_script(json.dumps({"proxyUrl": proxy_url or None}))
+    chat_config_tag = (
+        f'\n    <script id="chartfold-chat-config" type="application/json">{chat_config}</script>'
+    )
 ```
 
 **Edit 6:** In the HTML template (lines 152-174), insert `{chat_prompt_tag}{chat_config_tag}` after the images script tag:
@@ -1232,6 +1239,7 @@ This test verifies the full round-trip: create DB with analyses, export with `--
 ```python
 # Add to tests/test_spa_export.py
 
+
 class TestAiChatIntegration:
     """Integration test: full export with AI chat enabled."""
 
@@ -1251,8 +1259,7 @@ class TestAiChatIntegration:
             ("epic", "Test Patient", "1970-01-01"),
         )
         db.conn.execute(
-            "INSERT INTO lab_results (source, test_name, value, result_date) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO lab_results (source, test_name, value, result_date) VALUES (?, ?, ?, ?)",
             ("epic", "CEA", "4.5", "2025-06-01"),
         )
         db.conn.execute(
@@ -1275,7 +1282,8 @@ class TestAiChatIntegration:
         # Export with AI chat
         out_path = str(tmp_path / "export.html")
         export_spa(
-            db_path, out_path,
+            db_path,
+            out_path,
             ai_chat=True,
             proxy_url="https://proxy.example.com/v1/messages",
         )

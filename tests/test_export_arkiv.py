@@ -226,12 +226,19 @@ def db_with_assets(tmp_db, tmp_path):
     # Insert a parent imaging_reports row (needed so ref_id_uri can
     # resolve via unique_id lookup).
     from health_memex.models import ImagingReport, UnifiedRecords as UR2
-    tmp_db.load_source(UR2(
-        source="test_source",
-        imaging_reports=[ImagingReport(
-            source="test_source", study_name="CT Abdomen", study_date="2025-01-15",
-        )],
-    ))
+
+    tmp_db.load_source(
+        UR2(
+            source="test_source",
+            imaging_reports=[
+                ImagingReport(
+                    source="test_source",
+                    study_name="CT Abdomen",
+                    study_date="2025-01-15",
+                )
+            ],
+        )
+    )
     img_row = tmp_db.query("SELECT id, unique_id FROM imaging_reports")[0]
     img_id, img_uid = img_row["id"], img_row["unique_id"]
 
@@ -1046,12 +1053,8 @@ class TestSourceAssetExport:
         assert "ref_id" not in png_rec["metadata"]
         # Look up the parent's unique_id (set by load_source via the
         # imaging_reports natural key) to verify the URI uses it.
-        parent_uid = db_with_assets.query(
-            "SELECT unique_id FROM imaging_reports"
-        )[0]["unique_id"]
-        assert png_rec["metadata"]["ref_id_uri"] == (
-            f"health-memex:imaging_reports/{parent_uid}"
-        )
+        parent_uid = db_with_assets.query("SELECT unique_id FROM imaging_reports")[0]["unique_id"]
+        assert png_rec["metadata"]["ref_id_uri"] == (f"health-memex:imaging_reports/{parent_uid}")
 
         assert os.path.exists(os.path.join(output_dir, "media", "scan.png"))
         assert os.path.exists(os.path.join(output_dir, "media", "report.pdf"))
@@ -1384,10 +1387,15 @@ class TestPhiNotice:
 
         proc = subprocess.run(
             [
-                sys.executable, "-m", "health_memex",
-                "export", "arkiv",
-                "--db", db_path,
-                "--output", out_path,
+                sys.executable,
+                "-m",
+                "health_memex",
+                "export",
+                "arkiv",
+                "--db",
+                db_path,
+                "--output",
+                out_path,
             ],
             check=False,
             capture_output=True,

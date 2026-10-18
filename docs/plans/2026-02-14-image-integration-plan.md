@@ -223,20 +223,22 @@ class TestSourceDocsImages:
             "(source, asset_type, file_path, file_name, file_size_kb, "
             "title, encounter_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "png", "/tmp/ct-scan.png", "ct-scan.png",
-             120, "CT Scan", "2025-01-15"),
+            ("test_source", "png", "/tmp/ct-scan.png", "ct-scan.png", 120, "CT Scan", "2025-01-15"),
         )
         db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+
         asset_lookup = _build_asset_lookup(db)
         # Simulate url map
         asset_id = db.query("SELECT id FROM source_assets WHERE file_name='ct-scan.png'")[0]["id"]
         asset_url_map = {asset_id: "/sources/test_source/1_ct-scan.png"}
 
         result = _render_source_docs_section(
-            asset_lookup, asset_url_map,
-            date="2025-01-15", source="test_source",
+            asset_lookup,
+            asset_url_map,
+            date="2025-01-15",
+            source="test_source",
         )
         assert "lightbox" in result
         assert "ct-scan.png" in result
@@ -250,19 +252,21 @@ class TestSourceDocsImages:
             "(source, asset_type, file_path, file_name, file_size_kb, "
             "title, encounter_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/report.pdf", "report.pdf",
-             85, "Lab Report", "2025-01-15"),
+            ("test_source", "pdf", "/tmp/report.pdf", "report.pdf", 85, "Lab Report", "2025-01-15"),
         )
         db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+
         asset_lookup = _build_asset_lookup(db)
         asset_id = db.query("SELECT id FROM source_assets WHERE file_name='report.pdf'")[0]["id"]
         asset_url_map = {asset_id: "/sources/test_source/2_report.pdf"}
 
         result = _render_source_docs_section(
-            asset_lookup, asset_url_map,
-            date="2025-01-15", source="test_source",
+            asset_lookup,
+            asset_url_map,
+            date="2025-01-15",
+            source="test_source",
         )
         assert "[Lab Report]" in result
         assert "lightbox" not in result
@@ -280,16 +284,17 @@ class TestSourceDocsImages:
                 ("test_source", "png", f"/tmp/{name}", name, 100, "2025-01-15"),
             )
             db.conn.commit()
-            aid = db.query(
-                "SELECT id FROM source_assets WHERE file_name=?", (name,)
-            )[0]["id"]
+            aid = db.query("SELECT id FROM source_assets WHERE file_name=?", (name,))[0]["id"]
             asset_url_map[aid] = f"/sources/test_source/{aid}_{name}"
 
         from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+
         asset_lookup = _build_asset_lookup(db)
         result = _render_source_docs_section(
-            asset_lookup, asset_url_map,
-            date="2025-01-15", source="test_source",
+            asset_lookup,
+            asset_url_map,
+            date="2025-01-15",
+            source="test_source",
         )
         assert "asset-gallery" in result
 
@@ -301,19 +306,21 @@ class TestSourceDocsImages:
             "(source, asset_type, file_path, file_name, file_size_kb, "
             "title, encounter_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test_source", "pdf", "/tmp/lab.pdf", "lab.pdf",
-             50, "015_Laboratory", "2025-01-15"),
+            ("test_source", "pdf", "/tmp/lab.pdf", "lab.pdf", 50, "015_Laboratory", "2025-01-15"),
         )
         db.conn.commit()
 
         from chartfold.hugo.generate import _build_asset_lookup, _render_source_docs_section
+
         asset_lookup = _build_asset_lookup(db)
         asset_id = db.query("SELECT id FROM source_assets WHERE file_name='lab.pdf'")[0]["id"]
         asset_url_map = {asset_id: "/sources/test_source/3_lab.pdf"}
 
         result = _render_source_docs_section(
-            asset_lookup, asset_url_map,
-            date="2025-01-15", source="test_source",
+            asset_lookup,
+            asset_url_map,
+            date="2025-01-15",
+            source="test_source",
         )
         assert "Laboratory" in result
 ```
@@ -384,9 +391,7 @@ def _render_source_docs_section(
             lines.append('<div class="asset-gallery">')
         for a, url in images:
             alt = a.get("title") or a["file_name"]
-            lines.append(
-                f'{{{{< lightbox src="{url}" alt="{alt}" >}}}}'
-            )
+            lines.append(f'{{{{< lightbox src="{url}" alt="{alt}" >}}}}')
         if len(images) >= 3:
             lines.append("</div>")
         lines.append("")
@@ -463,6 +468,7 @@ class TestSourcesCategoryGrouping:
             Path(f"/tmp/{fname}").touch()
 
         from chartfold.hugo.generate import _generate_linked_sources
+
         _generate_linked_sources(content, static, db)
 
         page = (content / "sources.md").read_text()
@@ -511,12 +517,21 @@ class TestSourceAssetRendering:
             "(source, asset_type, file_path, file_name, file_size_kb, "
             "ref_table, ref_id, encounter_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("test", "png", "/tmp/ct-scan.png", "ct-scan.png", 120,
-             "imaging_reports", img_id, "2025-01-15"),
+            (
+                "test",
+                "png",
+                "/tmp/ct-scan.png",
+                "ct-scan.png",
+                120,
+                "imaging_reports",
+                img_id,
+                "2025-01-15",
+            ),
         )
         db.conn.commit()
         # Asset rendering function should include base64 img tag
         from chartfold.export_html import _render_imaging_section
+
         html = _render_imaging_section(db, "")
         # Note: actual base64 test requires the file to exist;
         # we test the structure instead
@@ -530,12 +545,12 @@ class TestSourceAssetRendering:
             "(source, asset_type, file_path, file_name, file_size_kb, "
             "title, encounter_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("test", "pdf", "/tmp/lab.pdf", "lab.pdf", 50,
-             "015_Laboratory", "2025-01-15"),
+            ("test", "pdf", "/tmp/lab.pdf", "lab.pdf", 50, "015_Laboratory", "2025-01-15"),
         )
         db.conn.commit()
 
         from chartfold.export_html import _render_source_documents_section
+
         html = _render_source_documents_section(db)
         assert "Laboratory" in html
         assert "lab.pdf" in html
@@ -569,9 +584,11 @@ def _render_source_documents_section(db: ChartfoldDB) -> str:
     for cat in sorted(by_category.keys()):
         group = by_category[cat]
         parts.append(f"<h3>{_escape(cat)} ({len(group)})</h3>")
-        parts.append('<table class="sortable"><thead><tr>'
-                     '<th>Document</th><th>Type</th><th>Size</th>'
-                     '<th>Date</th><th>Source</th></tr></thead><tbody>')
+        parts.append(
+            '<table class="sortable"><thead><tr>'
+            "<th>Document</th><th>Type</th><th>Size</th>"
+            "<th>Date</th><th>Source</th></tr></thead><tbody>"
+        )
         for a in group:
             display = _escape(a.get("title") or a["file_name"])
             size = f"{a['file_size_kb']} KB" if a.get("file_size_kb") else ""
@@ -583,15 +600,19 @@ def _render_source_documents_section(db: ChartfoldDB) -> str:
                 # Inline thumbnail with CSS lightbox
                 img_data = _encode_image_base64(a["file_path"])
                 if img_data:
-                    display = (f'<a href="#{a["id"]}">'
-                              f'<img src="{img_data}" alt="{display}" '
-                              f'style="max-width:100px;max-height:80px;"></a>')
+                    display = (
+                        f'<a href="#{a["id"]}">'
+                        f'<img src="{img_data}" alt="{display}" '
+                        f'style="max-width:100px;max-height:80px;"></a>'
+                    )
             else:
                 # Relative path link for PDFs
                 display = f'<a href="{_escape(a["file_path"])}">{display}</a>'
 
-            parts.append(f"<tr><td>{display}</td><td>{atype}</td>"
-                        f"<td>{size}</td><td>{date}</td><td>{src}</td></tr>")
+            parts.append(
+                f"<tr><td>{display}</td><td>{atype}</td>"
+                f"<td>{size}</td><td>{date}</td><td>{src}</td></tr>"
+            )
         parts.append("</tbody></table>")
 
     parts.append("</div>")
@@ -609,9 +630,13 @@ def _encode_image_base64(file_path: str) -> str:
 
     suffix = p.suffix.lower().lstrip(".")
     mime_map = {
-        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-        "gif": "image/gif", "bmp": "image/bmp",
-        "tif": "image/tiff", "tiff": "image/tiff",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
     }
     mime = mime_map.get(suffix, "")
     if not mime:
@@ -712,6 +737,7 @@ class TestAnalysisSection:
         )
 
         from chartfold.hugo.generate import _generate_analysis_pages
+
         _generate_analysis_pages(content, analysis_dir)
 
         page = (content / "analysis" / "cea-trend-analysis.md").read_text()
@@ -808,6 +834,7 @@ def test_analysis_section_in_html(self, tmp_db, tmp_path):
     (analysis_dir / "summary.md").write_text("# Treatment Summary\n\nChemo completed.")
 
     from chartfold.export_html import _render_analysis_section
+
     html = _render_analysis_section(analysis_dir)
     assert "Treatment Summary" in html
     assert "Chemo completed" in html
