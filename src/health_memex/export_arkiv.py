@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from arkiv import bundle_format, pack_bundle
 
 if TYPE_CHECKING:
     from health_memex.db import HealthMemexDB
@@ -607,36 +608,39 @@ def _export_source_assets(
 # ---------------------------------------------------------------------------
 
 
-def _detect_bundle_format(path: str) -> str:
-    """Infer output format from *path*'s extension.
+def _staged_files(directory: str) -> set[str]:
+    """Archive-relative POSIX paths of every regular file under *directory*."""
+    root = Path(directory)
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
 
-    Returns one of ``"zip"``, ``"tar.gz"``, ``"dir"``. Matches the same
-    rule used by every other *-memex archive exporter.
+
+def _bundle_members(bundle: str, fmt: str) -> set[str]:
+    """Member names of a packed ``.zip`` / ``.tar.gz`` bundle."""
+    if fmt == "zip":
+        with zipfile.ZipFile(bundle) as zf:
+            return set(zf.namelist())
+    with tarfile.open(bundle, "r:gz") as tf:
+        return set(tf.getnames())
+
+
+def _pack_staging(staging: str, archive_path: str, fmt: str) -> None:
+    """Pack *staging* into *archive_path* via ``arkiv.pack_bundle``.
+
+    ``pack_bundle`` deliberately omits dot-prefixed entries and the derived
+    database at the archive root (``*.db`` / ``*.sqlite`` beside
+    README.md). Every file health-memex stages is real payload (a source
+    asset can arrive as ``media/.something``), so after packing we compare
+    the bundle's members against the staged tree and refuse to leave a
+    lossy bundle behind rather than drop data silently.
     """
-    lower = path.lower()
-    if lower.endswith(".zip"):
-        return "zip"
-    if lower.endswith(".tar.gz") or lower.endswith(".tgz"):
-        return "tar.gz"
-    return "dir"
-
-
-def _pack_zip(source_dir: str, out_path: str) -> None:
-    """Write *source_dir*'s contents into a .zip at *out_path*."""
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for dirpath, _dirnames, filenames in os.walk(source_dir):
-            for name in filenames:
-                abs_path = os.path.join(dirpath, name)
-                rel = os.path.relpath(abs_path, source_dir)
-                zf.write(abs_path, rel)
-
-
-def _pack_tar_gz(source_dir: str, out_path: str) -> None:
-    """Write *source_dir*'s contents into a .tar.gz at *out_path*."""
-    with tarfile.open(out_path, "w:gz") as tf:
-        # arcname="" flattens the top-level so entries look like
-        # "records.jsonl" rather than "<tmpdir>/records.jsonl".
-        tf.add(source_dir, arcname="")
+    pack_bundle(staging, archive_path)
+    dropped = sorted(_staged_files(staging) - _bundle_members(archive_path, fmt))
+    if dropped:
+        os.unlink(archive_path)
+        raise ValueError(
+            f"arkiv bundle packing would omit {len(dropped)} exported file(s) "
+            f"({', '.join(dropped)}); export to a directory instead"
+        )
 
 
 def export_arkiv(
@@ -661,9 +665,9 @@ def export_arkiv(
     on the format inferred from the extension).
     """
     _reset_export_caches()
-    fmt = _detect_bundle_format(output_dir)
+    fmt = bundle_format(output_dir)
 
-    if fmt == "dir":
+    if fmt not in ("zip", "tar.gz"):
         work_dir = output_dir
         os.makedirs(work_dir, exist_ok=True)
         _write_bundle_contents(db, work_dir, include_notes=include_notes, embed=embed)
@@ -674,10 +678,7 @@ def export_arkiv(
     os.makedirs(os.path.dirname(os.path.abspath(archive_path)) or ".", exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="health_memex_arkiv_") as staging:
         _write_bundle_contents(db, staging, include_notes=include_notes, embed=embed)
-        if fmt == "zip":
-            _pack_zip(staging, archive_path)
-        elif fmt == "tar.gz":
-            _pack_tar_gz(staging, archive_path)
+        _pack_staging(staging, archive_path, fmt)
     return archive_path
 
 

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import yaml
+from arkiv import bundle_format, unpack_bundle
 
 from health_memex.db import (
     _UNIQUE_KEYS,
@@ -355,63 +356,29 @@ def _import_source_assets(
 # ---------------------------------------------------------------------------
 
 
-def _detect_bundle_format(path: str) -> str:
-    """Infer the format of an arkiv archive from its path.
+def _contents_path(archive_dir: str, rel_path: str) -> str | None:
+    """Resolve a README ``contents[].path`` against *archive_dir*.
 
-    Returns one of ``"dir"``, ``"zip"``, ``"tar.gz"``. Mirrors the rule used
-    by ``export_arkiv._detect_bundle_format``: directories are directories,
-    ``.zip`` is zip, ``.tar.gz`` / ``.tgz`` is gzip tarball. Any other file
-    extension falls through to ``"dir"`` for the caller to error on (there
-    is no sensible "unknown archive" interpretation).
+    Returns the joined path, or None when it would land outside the
+    archive root (``../outside.jsonl``, an absolute path, or a symlink
+    pointing elsewhere). ``contents`` is untrusted bundle metadata, so a
+    shard path must be confined to the archive the same way arkiv
+    confines extracted members.
     """
-    p = Path(path)
-    if p.is_dir():
-        return "dir"
-    lower = str(p).lower()
-    if lower.endswith(".zip"):
-        return "zip"
-    if lower.endswith(".tar.gz") or lower.endswith(".tgz"):
-        return "tar.gz"
-    return "dir"
-
-
-def _safe_extract_zip(zip_path: str, dest_dir: str) -> None:
-    """Extract a zip archive into *dest_dir*, rejecting path traversal."""
-    real_dest = os.path.realpath(dest_dir)
-    with zipfile.ZipFile(zip_path) as zf:
-        for name in zf.namelist():
-            target = os.path.realpath(os.path.join(dest_dir, name))
-            if target != real_dest and not target.startswith(real_dest + os.sep):
-                raise ValueError(f"Refusing to extract unsafe path from zip: {name!r}")
-        zf.extractall(dest_dir)
-
-
-def _safe_extract_tar_gz(tar_path: str, dest_dir: str) -> None:
-    """Extract a gzip tarball into *dest_dir*.
-
-    Rejects path traversal and non-regular members (symlinks, devices,
-    hardlinks). tarfile.extractall is famously unsafe by default; we walk
-    the member list first and validate before extracting anything.
-    """
-    real_dest = os.path.realpath(dest_dir)
-    with tarfile.open(tar_path, "r:gz") as tf:
-        for member in tf.getmembers():
-            if not (member.isfile() or member.isdir()):
-                raise ValueError(f"Refusing to extract non-regular tar member: {member.name!r}")
-            target = os.path.realpath(os.path.join(dest_dir, member.name))
-            if target != real_dest and not target.startswith(real_dest + os.sep):
-                raise ValueError(f"Refusing to extract unsafe path from tarball: {member.name!r}")
-        # Python 3.12+: "data" filter rejects absolute paths, symlinks, and
-        # members with suspicious ownership, as a defence-in-depth in
-        # addition to our own walk above.
-        tf.extractall(dest_dir, filter="data")
+    joined = Path(archive_dir, rel_path)
+    try:
+        joined.resolve().relative_to(Path(archive_dir).resolve())
+    except ValueError:
+        return None
+    return str(joined)
 
 
 def _find_archive_root(extracted_dir: str) -> str:
     """Locate the directory containing ``README.md`` after extraction.
 
-    The exporter packs with ``arcname=""`` (tar) and ``relpath`` (zip), so
-    README.md lives at the archive root. We still descend into a single
+    The exporter packs with ``arkiv.pack_bundle``, whose member names are
+    relative to the staging directory, so README.md lives at the archive
+    root. We still descend into a single
     top-level subdirectory when present so we tolerate bundles packed by
     other tools (or by a user who zipped the parent folder).
     """
@@ -434,16 +401,15 @@ def _resolve_archive_dir(archive_path: str) -> Iterator[str]:
     TemporaryDirectory and yields that. The temp dir is cleaned up on
     context exit.
     """
-    fmt = _detect_bundle_format(archive_path)
-    if fmt == "dir":
+    if bundle_format(archive_path) not in ("zip", "tar.gz"):
         yield archive_path
         return
 
     with tempfile.TemporaryDirectory(prefix="health_memex_arkiv_import_") as tmp:
-        if fmt == "zip":
-            _safe_extract_zip(archive_path, tmp)
-        elif fmt == "tar.gz":
-            _safe_extract_tar_gz(archive_path, tmp)
+        # arkiv.unpack_bundle rejects path-escaping members and escaping
+        # link targets, extracts tar with filter="data", and enforces
+        # zip/tar bomb limits on entry count and uncompressed size.
+        unpack_bundle(archive_path, tmp)
         yield _find_archive_root(tmp)
 
 
@@ -508,8 +474,11 @@ def _validate_arkiv_dir(archive_dir: str) -> dict[str, Any]:
     contents = frontmatter.get("contents", [])
     for entry in contents:
         path = entry.get("path", "")
-        jsonl_path = os.path.join(archive_dir, path)
+        jsonl_path = _contents_path(archive_dir, path)
 
+        if jsonl_path is None:
+            errors.append(f"Unsafe path in contents (escapes the archive root): {path!r}")
+            continue
         if not os.path.isfile(jsonl_path):
             errors.append(f"Missing file listed in contents: {path}")
             continue
@@ -658,9 +627,11 @@ def _import_arkiv_dir(
     contents = frontmatter.get("contents", []) if frontmatter else []
     for entry in contents:
         path = entry.get("path", "")
-        jsonl_path = os.path.join(archive_dir, path)
+        jsonl_path = _contents_path(archive_dir, path)
 
-        if not os.path.isfile(jsonl_path):
+        # Validation above already rejected unsafe paths; re-check here so
+        # this loop never depends on that ordering.
+        if jsonl_path is None or not os.path.isfile(jsonl_path):
             continue
 
         with open(jsonl_path, "r", encoding="utf-8") as f:

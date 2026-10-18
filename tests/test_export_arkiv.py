@@ -1265,25 +1265,119 @@ class TestCLI:
 # ---------------------------------------------------------------------------
 
 
-class TestDetectBundleFormat:
-    def test_no_extension_is_dir(self):
-        from health_memex.export_arkiv import _detect_bundle_format
+class TestReproducibleBundles:
+    """Packing is delegated to arkiv.pack_bundle, which is byte-reproducible."""
 
-        assert _detect_bundle_format("out") == "dir"
-        assert _detect_bundle_format("/tmp/archive") == "dir"
+    def _stage(self, db, staging):
+        from health_memex.export_arkiv import _reset_export_caches, _write_bundle_contents
 
-    def test_zip_extension(self):
-        from health_memex.export_arkiv import _detect_bundle_format
+        _reset_export_caches()
+        _write_bundle_contents(db, str(staging), include_notes=True, embed=False)
 
-        assert _detect_bundle_format("out.zip") == "zip"
-        assert _detect_bundle_format("OUT.ZIP") == "zip"
+    @pytest.mark.parametrize("ext", ["zip", "tar.gz"])
+    def test_same_staging_dir_packs_to_identical_bytes(self, db_with_assets, tmp_path, ext):
+        """The same staged tree (shards + README + schema + media/) packs to
+        identical bytes on every run: no disk mtimes, owners, or gzip header
+        timestamp leak into the bundle."""
+        from health_memex.export_arkiv import _pack_staging
 
-    def test_tar_gz_extensions(self):
-        from health_memex.export_arkiv import _detect_bundle_format
+        staging = tmp_path / "staging"
+        self._stage(db_with_assets, staging)
+        assert any((staging / "media").iterdir())
 
-        assert _detect_bundle_format("out.tar.gz") == "tar.gz"
-        assert _detect_bundle_format("out.tgz") == "tar.gz"
-        assert _detect_bundle_format("OUT.TAR.GZ") == "tar.gz"
+        first = tmp_path / f"a.{ext}"
+        second = tmp_path / f"b.{ext}"
+        _pack_staging(str(staging), str(first), ext)
+        # Touch every staged file so a packer that used disk mtimes would differ.
+        for p in staging.rglob("*"):
+            if p.is_file():
+                os.utime(p, (1_000_000_000, 1_000_000_000))
+        _pack_staging(str(staging), str(second), ext)
+        assert first.read_bytes() == second.read_bytes()
+
+    @pytest.mark.parametrize("ext", ["zip", "tar.gz"])
+    def test_full_export_is_reproducible(self, db_with_assets, tmp_path, ext):
+        """Two full exports of the same DB give identical bundle bytes.
+
+        The README frontmatter embeds today's date, so this holds within a
+        day; across days only README.md differs, the data shards do not.
+        """
+        first = tmp_path / f"a.{ext}"
+        second = tmp_path / f"b.{ext}"
+        export_arkiv(db_with_assets, str(first))
+        export_arkiv(db_with_assets, str(second))
+        assert first.read_bytes() == second.read_bytes()
+
+    def test_tar_members_carry_no_root_entry_or_identity(self, db_with_assets, tmp_path):
+        import tarfile
+
+        out = tmp_path / "archive.tar.gz"
+        export_arkiv(db_with_assets, str(out))
+        with tarfile.open(out, "r:gz") as tf:
+            members = tf.getmembers()
+        names = [m.name for m in members]
+        assert names == sorted(names)
+        assert "" not in names and "." not in names
+        assert all(m.isfile() for m in members)
+        assert all(m.mtime == 0 and m.uid == 0 and m.uname == "" for m in members)
+
+    def test_zip_members_are_sorted_with_fixed_dates(self, db_with_assets, tmp_path):
+        import zipfile
+
+        out = tmp_path / "archive.zip"
+        export_arkiv(db_with_assets, str(out))
+        with zipfile.ZipFile(out) as zf:
+            infos = zf.infolist()
+        names = [i.filename for i in infos]
+        assert names == sorted(names)
+        assert {i.date_time for i in infos} == {(1980, 1, 1, 0, 0, 0)}
+
+
+class TestPackSkipRuleGuard:
+    """arkiv.pack_bundle skips dotfiles and the archive-root derived database.
+    Source assets are payload whatever their name, so a database-named asset
+    must survive bundling, and anything pack_bundle would still drop (a
+    dotfile) must fail the export rather than vanish silently."""
+
+    @staticmethod
+    def _db_with_asset(tmp_db, tmp_path, name: str, payload: bytes):
+        src = tmp_path / "ehr_export"
+        src.mkdir()
+        (src / name).write_bytes(payload)
+        tmp_db.conn.execute(
+            """INSERT INTO source_assets
+               (source, asset_type, file_path, file_name, file_size_kb, content_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("test_source", "bin", str(src / name), name, 0, ""),
+        )
+        tmp_db.conn.commit()
+        return tmp_db
+
+    @pytest.mark.parametrize("ext", ["zip", "tar.gz"])
+    def test_database_named_asset_is_bundled(self, tmp_db, tmp_path, ext):
+        db = self._db_with_asset(tmp_db, tmp_path, "viewer.db", b"opaque vendor payload")
+        out = tmp_path / f"archive.{ext}"
+        export_arkiv(db, str(out))
+        from arkiv import unpack_bundle
+
+        unpacked = tmp_path / "unpacked"
+        unpack_bundle(out, unpacked)
+        assert (unpacked / "media" / "viewer.db").read_bytes() == b"opaque vendor payload"
+
+    @pytest.mark.parametrize("ext", ["zip", "tar.gz"])
+    def test_bundle_export_refuses_to_drop_media(self, tmp_db, tmp_path, ext):
+        db = self._db_with_asset(tmp_db, tmp_path, ".hidden-scan.png", b"png")
+        out = tmp_path / f"archive.{ext}"
+        with pytest.raises(ValueError) as excinfo:
+            export_arkiv(db, str(out))
+        assert "media/.hidden-scan.png" in str(excinfo.value)
+        assert not out.exists(), "a lossy bundle must not be left behind"
+
+    def test_directory_export_keeps_the_file(self, tmp_db, tmp_path):
+        db = self._db_with_asset(tmp_db, tmp_path, ".hidden-scan.png", b"png")
+        out = tmp_path / "archive-dir"
+        export_arkiv(db, str(out))
+        assert (out / "media" / ".hidden-scan.png").read_bytes() == b"png"
 
 
 class TestBundleExport:

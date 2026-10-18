@@ -3,6 +3,7 @@
 import json
 import os
 
+import pytest
 import yaml
 
 from health_memex.db import HealthMemexDB
@@ -502,6 +503,79 @@ class TestValidateArkiv:
 # ---------------------------------------------------------------------------
 # Tests: import_arkiv
 # ---------------------------------------------------------------------------
+
+
+class TestContentsPathEscape:
+    """README ``contents[].path`` must stay inside the archive root."""
+
+    def _archive_with_path(self, tmp_path, shard_path):
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        _create_minimal_archive(archive_dir)
+        # A perfectly valid shard sitting just outside the archive root.
+        (tmp_path / "outside.jsonl").write_text((archive_dir / "lab_results.jsonl").read_text())
+        frontmatter = {"name": "Evil", "contents": [{"path": shard_path, "description": "x"}]}
+        readme = "---\n" + yaml.dump(frontmatter, sort_keys=False) + "---\n"
+        (archive_dir / "README.md").write_text(readme)
+        return archive_dir
+
+    @pytest.mark.parametrize("shard_path", ["../outside.jsonl", "sub/../../outside.jsonl"])
+    def test_validate_rejects_escaping_path(self, tmp_path, shard_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        archive_dir = self._archive_with_path(tmp_path, shard_path)
+        result = validate_arkiv(str(archive_dir))
+        assert result["valid"] is False
+        assert any("escapes the archive root" in e for e in result["errors"])
+        assert "outside" not in result["summary"]
+
+    def test_validate_rejects_absolute_path(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        archive_dir = self._archive_with_path(tmp_path, str(tmp_path / "outside.jsonl"))
+        result = validate_arkiv(str(archive_dir))
+        assert result["valid"] is False
+        assert any("escapes the archive root" in e for e in result["errors"])
+
+    def test_validate_rejects_symlinked_shard_outside_root(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        archive_dir = self._archive_with_path(tmp_path, "linked.jsonl")
+        (archive_dir / "linked.jsonl").symlink_to(tmp_path / "outside.jsonl")
+        result = validate_arkiv(str(archive_dir))
+        assert result["valid"] is False
+
+    def test_import_rejects_escaping_path(self, tmp_path):
+        from health_memex.import_arkiv import import_arkiv
+
+        archive_dir = self._archive_with_path(tmp_path, "../outside.jsonl")
+        dest_db = tmp_path / "dest.db"
+        result = import_arkiv(str(archive_dir), str(dest_db))
+        assert result["success"] is False
+        assert any("escapes the archive root" in e for e in result["errors"])
+        assert not dest_db.exists()
+
+    def test_import_rejects_escaping_path_in_zip(self, tmp_path):
+        """Same check applies after a bundle is extracted to a temp dir."""
+        import zipfile as _zipfile
+
+        from health_memex.import_arkiv import import_arkiv
+
+        frontmatter = {"name": "Evil", "contents": [{"path": "../outside.jsonl"}]}
+        bundle = tmp_path / "evil.zip"
+        with _zipfile.ZipFile(bundle, "w") as zf:
+            zf.writestr("README.md", "---\n" + yaml.dump(frontmatter) + "---\n")
+        result = import_arkiv(str(bundle), str(tmp_path / "dest.db"))
+        assert result["success"] is False
+        assert any("escapes the archive root" in e for e in result["errors"])
+
+    def test_nested_inside_path_still_allowed(self, tmp_path):
+        from health_memex.import_arkiv import validate_arkiv
+
+        archive_dir = self._archive_with_path(tmp_path, "shards/../lab_results.jsonl")
+        result = validate_arkiv(str(archive_dir))
+        # "shards/" does not exist, but the normalized path stays inside.
+        assert not any("escapes the archive root" in e for e in result["errors"])
 
 
 class TestImportArkiv:
@@ -1309,31 +1383,6 @@ class TestImportCLI:
 # ---------------------------------------------------------------------------
 
 
-class TestDetectBundleFormat:
-    def test_directory(self, tmp_path):
-        from health_memex.import_arkiv import _detect_bundle_format
-
-        assert _detect_bundle_format(str(tmp_path)) == "dir"
-
-    def test_zip(self, tmp_path):
-        from health_memex.import_arkiv import _detect_bundle_format
-
-        (tmp_path / "x.zip").write_bytes(b"")
-        assert _detect_bundle_format(str(tmp_path / "x.zip")) == "zip"
-
-    def test_tar_gz(self, tmp_path):
-        from health_memex.import_arkiv import _detect_bundle_format
-
-        (tmp_path / "x.tar.gz").write_bytes(b"")
-        assert _detect_bundle_format(str(tmp_path / "x.tar.gz")) == "tar.gz"
-
-    def test_tgz(self, tmp_path):
-        from health_memex.import_arkiv import _detect_bundle_format
-
-        (tmp_path / "x.tgz").write_bytes(b"")
-        assert _detect_bundle_format(str(tmp_path / "x.tgz")) == "tar.gz"
-
-
 class TestBundleImport:
     """End-to-end: export to bundle, then import it back."""
 
@@ -1458,6 +1507,67 @@ class TestBundleImport:
 
         result = validate_arkiv(str(malicious))
         assert result["valid"] is False
+
+    def test_tar_symlink_escape_rejected(self, tmp_path):
+        """A tar member linking outside the extraction dir is refused."""
+        import io
+        import tarfile as _tarfile
+
+        from health_memex.import_arkiv import validate_arkiv
+
+        malicious = tmp_path / "evil.tar.gz"
+        with _tarfile.open(malicious, "w:gz") as tf:
+            readme = b"---\ncontents: []\n---\n"
+            info = _tarfile.TarInfo("README.md")
+            info.size = len(readme)
+            tf.addfile(info, io.BytesIO(readme))
+            link = _tarfile.TarInfo("media/passwd")
+            link.type = _tarfile.SYMTYPE
+            link.linkname = "/etc/passwd"
+            tf.addfile(link)
+
+        result = validate_arkiv(str(malicious))
+        assert result["valid"] is False
+
+    @pytest.mark.parametrize("name", ["archive.zip", "archive.tar.gz"])
+    def test_media_round_trip_through_bundle(self, tmp_path, name):
+        """Source assets in media/ survive export -> bundle -> import."""
+        from health_memex.import_arkiv import import_arkiv
+
+        src_db = str(tmp_path / "src.db")
+        self._populate_db(src_db)
+        media_src = tmp_path / "ehr_files"
+        media_src.mkdir()
+        (media_src / "scan.pdf").write_bytes(b"%PDF fake")
+        with HealthMemexDB(src_db) as db:
+            db.conn.execute(
+                """INSERT INTO source_assets
+                   (source, asset_type, file_path, file_name, file_size_kb, content_type)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    "test_bundle",
+                    "pdf",
+                    str(media_src / "scan.pdf"),
+                    "scan.pdf",
+                    0,
+                    "application/pdf",
+                ),
+            )
+            db.conn.commit()
+            bundle = str(tmp_path / name)
+            export_arkiv(db, bundle)
+
+        dest_db = str(tmp_path / "dest.db")
+        result = import_arkiv(bundle, dest_db)
+        assert result["success"] is True, result.get("errors")
+        assert result["counts"].get("source_assets") == 1
+        with HealthMemexDB(dest_db) as db:
+            rows = db.query("SELECT file_name, content_type, file_path FROM source_assets")
+        assert len(rows) == 1
+        assert rows[0]["file_name"] == "scan.pdf"
+        assert rows[0]["content_type"] == "application/pdf"
+        # The media/ file was found in the extracted bundle and resolved.
+        assert rows[0]["file_path"].endswith(os.path.join("media", "scan.pdf"))
 
     def test_directory_input_still_works(self, tmp_path):
         """Directory inputs continue to work after the bundle refactor."""

@@ -24,6 +24,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
+    # Shared arkiv bundle pack/unpack (byte-reproducible packing, safe
+    # extraction with zip/tar bomb limits).
+    "arkiv>=0.4",
     "lxml",
     "pyyaml",
 ]
