@@ -711,9 +711,13 @@ class TestImportArkiv:
             assert assets[0]["asset_type"] == "png"
             assert assets[0]["file_name"] == "scan.png"
             assert assets[0]["content_type"] == "image/png"
-            # file_path should point to the archive's media/ copy
-            assert "media" in assets[0]["file_path"]
-            assert os.path.isfile(assets[0]["file_path"])
+            # file_path is relative to the DB dir, inside its own media store
+            from health_memex.media import resolve_asset_path
+
+            uid = assets[0]["unique_id"]
+            assert assets[0]["file_path"] == f"media/{uid}.png"
+            resolved = resolve_asset_path(db_path, assets[0]["file_path"])
+            assert resolved is not None and resolved.is_file()
 
     def test_import_invalid_archive(self, tmp_path):
         """Importing an invalid archive should fail gracefully."""
@@ -1566,8 +1570,13 @@ class TestBundleImport:
         assert len(rows) == 1
         assert rows[0]["file_name"] == "scan.pdf"
         assert rows[0]["content_type"] == "application/pdf"
-        # The media/ file was found in the extracted bundle and resolved.
-        assert rows[0]["file_path"].endswith(os.path.join("media", "scan.pdf"))
+        # The media/ file was copied out of the (now deleted) extraction
+        # into the DB's own media store.
+        from health_memex.media import resolve_asset_path
+
+        assert rows[0]["file_path"].startswith("media/")
+        resolved = resolve_asset_path(dest_db, rows[0]["file_path"])
+        assert resolved is not None and resolved.read_bytes() == b"%PDF fake"
 
     def test_directory_input_still_works(self, tmp_path):
         """Directory inputs continue to work after the bundle refactor."""

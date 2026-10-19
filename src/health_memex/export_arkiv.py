@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from arkiv import bundle_format, pack_bundle
 
+from health_memex.media import resolve_asset_path
+
 if TYPE_CHECKING:
     from health_memex.db import HealthMemexDB
 
@@ -533,12 +535,12 @@ def _export_source_assets(
     seen_names: set[str] = set()
     for row in rows:
         file_name = row["file_name"]
-        file_path = row["file_path"]
         mime = row.get("content_type") or "application/octet-stream"
 
-        # Skip assets whose source files don't exist
-        src_path = Path(file_path)
-        if not src_path.is_file():
+        # Skip assets whose source files don't exist (or whose stored
+        # path cannot be resolved inside the DB directory).
+        src_path = resolve_asset_path(db.db_path, row["file_path"])
+        if src_path is None or not src_path.is_file():
             continue
 
         # Disambiguate colliding file names with row ID prefix

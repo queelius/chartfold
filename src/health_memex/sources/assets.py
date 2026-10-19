@@ -9,6 +9,7 @@ import os
 import re
 from pathlib import Path
 
+from health_memex.media import resolve_asset_path
 from health_memex.models import SourceAsset
 
 # File extensions handled by source parsers (skip these)
@@ -227,7 +228,10 @@ def enrich_assets_from_meditech_toc(
 
     for asset in assets:
         # Get relative path from asset
-        asset_path = Path(asset.file_path)
+        # Freshly discovered assets carry absolute paths; no DB anchors them.
+        asset_path = resolve_asset_path(None, asset.file_path)
+        if asset_path is None:
+            continue
         try:
             rel_path = asset_path.relative_to(input_path)
         except ValueError:

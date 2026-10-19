@@ -363,7 +363,7 @@ CREATE TABLE IF NOT EXISTS source_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
     asset_type TEXT NOT NULL,      -- pdf, png, html, xsl, etc.
-    file_path TEXT NOT NULL,       -- absolute path on disk
+    file_path TEXT NOT NULL,       -- absolute (EHR-loaded) or relative to DB dir (imported); see media.py
     file_name TEXT NOT NULL,       -- basename for display
     file_size_kb INTEGER,
     content_type TEXT,             -- MIME type

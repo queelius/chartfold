@@ -200,6 +200,14 @@ def main():
             "Mutually exclusive with --overwrite."
         ),
     )
+    import_parser.add_argument(
+        "--media-dir",
+        default=None,
+        help=(
+            "Directory to store imported source-asset files in "
+            "(default: a media/ directory beside the database)"
+        ),
+    )
 
     # --- init-config ---
     config_parser = sub.add_parser(
@@ -775,6 +783,7 @@ def _handle_import(args):
         validate_only=args.validate_only,
         overwrite=args.overwrite,
         merge=args.merge,
+        media_dir=args.media_dir,
     )
 
     if result["success"]:
@@ -792,6 +801,10 @@ def _handle_import(args):
                 print(f"  {table:<25} {count:>6}")
         total = sum(counts.values())
         print(f"\n  Total records: {total}")
+        if result["errors"]:
+            print("\nWarnings:")
+            for error in result["errors"]:
+                print(f"  - {error}")
     else:
         print("Import failed:" if not args.validate_only else "Validation failed:")
         for error in result["errors"]:

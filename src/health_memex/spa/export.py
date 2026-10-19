@@ -18,6 +18,7 @@ from pathlib import Path
 
 from health_memex.core.utils import IMAGE_MIME_TYPES
 from health_memex.db import _SOFT_DELETE_TABLES
+from health_memex.media import resolve_asset_path
 
 _SPA_DIR = Path(__file__).parent
 
@@ -197,8 +198,12 @@ def _load_images_json(db_path: str) -> str:
         if asset_type not in IMAGE_MIME_TYPES:
             continue
 
-        file_path = Path(row["file_path"])
-        if not file_path.is_file() or file_path.stat().st_size > _MAX_IMAGE_SIZE:
+        file_path = resolve_asset_path(db_path, row["file_path"])
+        if (
+            file_path is None
+            or not file_path.is_file()
+            or file_path.stat().st_size > _MAX_IMAGE_SIZE
+        ):
             continue
 
         mime = row["content_type"] or IMAGE_MIME_TYPES.get(asset_type, "application/octet-stream")

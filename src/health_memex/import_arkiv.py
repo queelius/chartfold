@@ -11,14 +11,17 @@ Accepted input layouts (C5b workspace contract, auto-detected by extension):
 - ``.tar.gz`` / ``.tgz`` bundle of the same layout
 
 Archive bundles are extracted into a process-scoped TemporaryDirectory and
-the existing directory-based pipeline runs against the extracted tree. Any
-``media/`` assets are resolved relative to that extracted root exactly like
-they would be from a directory input.
+the existing directory-based pipeline runs against the extracted tree. Asset
+bytes (from ``media/`` or inline base64) are copied into the archive's own
+media store, ``<db dir>/media/<unique_id>.<ext>``, with ``file_path`` stored
+relative to the DB directory (see :mod:`health_memex.media`), so imported
+rows stay valid after the extraction (or the source bundle) is gone.
 """
 
 from __future__ import annotations
 
 import base64
+import binascii
 import contextlib
 import json
 import os
@@ -36,11 +39,19 @@ from health_memex.db import (
     _UNIQUE_KEYS,
     HealthMemexDB,
     _build_upsert_sql,
+    _compute_unique_id,
     _discover_fk_graph,
     _discover_tables,
     _topological_sort,
 )
 from health_memex.export_arkiv import _FK_FIELDS, _TAG_CONFIG
+from health_memex.media import (
+    MediaStoreError,
+    media_file_name,
+    media_root,
+    stored_file_path,
+    store_media,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -227,11 +238,9 @@ def _parse_source_asset_records(
         if metadata.get("table") != "source_assets":
             continue
 
-        # Parse the source_asset's own id (autoincrement) from any
-        # health-memex: URI present. source_assets has no unique_id
-        # column (no natural key beyond source+file_path), so its
-        # primary URI is file:// — the autoincrement string is only
-        # used by the caller for tag/asset bookkeeping.
+        # Parse the id portion of any health-memex: URI present. The
+        # exporter's primary URI for an asset is file://media/...; the
+        # row's durable unique_id travels in metadata instead.
         exported_id: str | None = None
         uri = record.get("uri", "")
         uri_match = _match_uri(uri)
@@ -256,22 +265,63 @@ def _parse_source_asset_records(
         # Set content_type from the record's mimetype
         row["content_type"] = record.get("mimetype", "application/octet-stream")
 
-        # Handle file_path: look for media file from URI
+        # Where the bytes come from: the bundle's media/ file and/or
+        # inline base64 (embed mode carries both). file_path is assigned
+        # at import time from the archive's own media store.
+        row["_uri"] = uri
         if uri.startswith("file://media/"):
-            media_name = uri[len("file://media/") :]
-            row["_media_name"] = media_name
-        elif record.get("content"):
-            # base64-embedded content
+            row["_media_name"] = uri[len("file://media/") :]
+        if record.get("content"):
             row["_base64_content"] = record["content"]
-
-        # file_path will be set during import based on archive location
-        # If not already set, initialize to empty
-        if "file_path" not in row:
-            row["file_path"] = ""
+        row.pop("file_path", None)
 
         result.append((exported_id, row))
 
     return result
+
+
+def _asset_upsert_sql(columns: list[str]) -> str:
+    """INSERT ... ON CONFLICT(unique_id) DO UPDATE for source_assets.
+
+    Keyed on the durable ``unique_id`` (a partial unique index, hence the
+    conflict-target WHERE) so re-importing the same bundle, with or without
+    ``merge``, updates the existing row instead of raising IntegrityError.
+    """
+    col_names = ", ".join(columns)
+    placeholders = ", ".join("?" for _ in columns)
+    updates = ", ".join(f"{c} = excluded.{c}" for c in columns if c != "unique_id")
+    return (
+        f"INSERT INTO source_assets ({col_names}) VALUES ({placeholders}) "
+        f"ON CONFLICT(unique_id) WHERE unique_id IS NOT NULL DO UPDATE SET {updates}"
+    )
+
+
+def _asset_bytes(
+    media_name: str | None, base64_content: str | None, media_dir: str
+) -> tuple[bytes | None, str | None]:
+    """Read an asset's bytes from the bundle's media/ dir or inline base64.
+
+    Returns ``(data, None)`` or ``(None, reason)``. A media file is used only
+    if it is a regular file (not a symlink) confined to *media_dir*.
+    """
+    if media_name:
+        candidate = os.path.join(media_dir, media_name)
+        real = os.path.realpath(candidate)
+        if (
+            real.startswith(os.path.realpath(media_dir) + os.sep)
+            and not os.path.islink(candidate)
+            and os.path.isfile(real)
+        ):
+            with open(real, "rb") as f:
+                return f.read(), None
+    if base64_content:
+        try:
+            return base64.b64decode(base64_content, validate=True), None
+        except (binascii.Error, ValueError) as e:
+            return None, f"invalid base64 content ({e})"
+    if media_name:
+        return None, f"media file {media_name!r} not found (or unsafe) in the bundle"
+    return None, "no media file or inline content"
 
 
 def _import_source_assets(
@@ -280,43 +330,57 @@ def _import_source_assets(
     archive_dir: str,
     uid_map: dict[str, dict[str, int]],
     table_columns: set[str],
-) -> int:
+    store_root: Path,
+) -> tuple[int, list[str]]:
     """Import source asset records into the database.
 
-    Handles file_path resolution from archive's media/ directory,
-    ref_id remapping through uid_map (parent.unique_id -> autoincrement
-    id of just-inserted parent row), and base64 content restoration.
+    Each asset's bytes (bundle ``media/`` file or inline base64) are copied
+    into *store_root* as ``<unique_id>.<ext>`` and ``file_path`` is stored
+    relative to the DB directory (see :mod:`health_memex.media`). The row
+    keeps the ``unique_id`` it carries in the bundle, so asset URIs are
+    stable across export/import; rows from legacy bundles without one get
+    an id minted from the natural key over the record's bundle URI.
+    ``ref_id`` is remapped through uid_map (parent.unique_id -> the
+    just-inserted parent's autoincrement id).
 
-    Returns the number of imported records.
+    Rows whose bytes cannot be read or stored safely are skipped and
+    reported. Returns ``(imported_count, errors)``.
     """
     count = 0
+    errors: list[str] = []
     media_dir = os.path.join(archive_dir, "media")
 
-    for exported_id, row in asset_rows:
-        # Resolve file_path from media/
+    for _exported_id, row in asset_rows:
         media_name = row.pop("_media_name", None)
         base64_content = row.pop("_base64_content", None)
+        bundle_uri = row.pop("_uri", "")
+        label = row.get("file_name") or bundle_uri or "<unnamed asset>"
 
-        if media_name and os.path.isdir(media_dir):
-            media_path = os.path.realpath(os.path.join(media_dir, media_name))
-            real_media_dir = os.path.realpath(media_dir)
-            if media_path.startswith(real_media_dir + os.sep) and os.path.isfile(media_path):
-                row["file_path"] = media_path
+        uid = row.get("unique_id")
+        if uid is None:
+            uid = _compute_unique_id(
+                "source_assets",
+                {"source": row.get("source"), "file_path": bundle_uri or row.get("file_name")},
+            )
+            row["unique_id"] = uid
 
-        if not row.get("file_path") and base64_content:
-            # Write base64 content to media/ in the archive
-            os.makedirs(media_dir, exist_ok=True)
-            file_name = row.get("file_name", f"asset_{exported_id}")
-            dest = os.path.realpath(os.path.join(media_dir, file_name))
-            real_media_dir = os.path.realpath(media_dir)
-            if not dest.startswith(real_media_dir + os.sep):
-                continue  # skip path-traversal attempt
-            with open(dest, "wb") as f:
-                f.write(base64.b64decode(base64_content))
-            row["file_path"] = dest
+        try:
+            name = media_file_name(uid, row.get("file_name", ""))
+        except MediaStoreError as e:
+            errors.append(f"source asset {label!r} skipped: {e}")
+            continue
 
-        if not row.get("file_path"):
-            row["file_path"] = ""
+        data, reason = _asset_bytes(media_name, base64_content, media_dir)
+        if data is None:
+            errors.append(f"source asset {label!r} skipped: {reason}")
+            continue
+
+        try:
+            dest = store_media(store_root, name, data)
+        except (MediaStoreError, OSError) as e:
+            errors.append(f"source asset {label!r} skipped: {e}")
+            continue
+        row["file_path"] = stored_file_path(db.db_path, dest)
 
         # Remap ref_id: row.ref_id holds the parent's unique_id string
         # (set by _parse_source_asset_records). Translate via uid_map
@@ -329,26 +393,16 @@ def _import_source_assets(
 
         # Filter to known columns only
         filtered = {k: v for k, v in row.items() if k in table_columns}
-
         if not filtered:
             continue
-
         cols = list(filtered.keys())
-        col_names = ", ".join(cols)
-        placeholders = ", ".join("?" for _ in cols)
-
-        db.conn.execute(
-            f"INSERT INTO source_assets ({col_names}) VALUES ({placeholders})",
-            list(filtered.values()),
-        )
+        db.conn.execute(_asset_upsert_sql(cols), list(filtered.values()))
 
         # source_assets isn't a parent table for any FK in the schema,
-        # so we don't need to add it to uid_map. (Earlier versions did
-        # that for completeness; it's never read.)
-
+        # so we don't need to add it to uid_map.
         count += 1
 
-    return count
+    return count, errors
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +572,7 @@ def import_arkiv(
     validate_only: bool = False,
     overwrite: bool = False,
     merge: bool = False,
+    media_dir: str | None = None,
 ) -> dict[str, Any]:
     """Import an arkiv archive (directory or bundle) into a health-memex DB.
 
@@ -540,6 +595,13 @@ def import_arkiv(
         merge: If True, UPSERT records into the existing database using
             natural-key (_UNIQUE_KEYS) conflict detection. Safe to run
             repeatedly against the same DB.
+        media_dir: Where to store imported asset files. Defaults to
+            ``<db dir>/media``; required when *db_path* is ``:memory:``
+            and the archive carries source assets.
+
+    Source asset bytes are copied out of the archive into the media
+    store, so the imported DB never depends on the archive (or its
+    temporary extraction) afterwards.
 
     Returns:
         {"success": bool, "errors": list[str], "counts": dict[str, int]}
@@ -559,6 +621,7 @@ def import_arkiv(
                 validate_only=validate_only,
                 overwrite=overwrite,
                 merge=merge,
+                media_dir=media_dir,
             )
     except (zipfile.BadZipFile, tarfile.TarError, ValueError, OSError) as e:
         return {
@@ -574,6 +637,7 @@ def _import_arkiv_dir(
     validate_only: bool = False,
     overwrite: bool = False,
     merge: bool = False,
+    media_dir: str | None = None,
 ) -> dict[str, Any]:
     """Import an already-extracted archive directory.
 
@@ -660,6 +724,15 @@ def _import_arkiv_dir(
 
     # Parse source asset records
     source_asset_rows = _parse_source_asset_records(source_asset_raw_records)
+
+    # Resolve the media store up front so an archive with assets is refused
+    # before the target DB is touched when there is nowhere to put them.
+    store_root: Path | None = None
+    if source_asset_rows:
+        try:
+            store_root = media_root(db_path, media_dir)
+        except MediaStoreError as e:
+            return {"success": False, "errors": [str(e)], "counts": {}}
 
     # Step 4: Prepare target DB
     # - overwrite: unlink existing so init_schema creates fresh
@@ -786,11 +859,12 @@ def _import_arkiv_dir(
         # Step 8: Handle source_assets — uses uid_map for ref_id
         # resolution (child carries parent.unique_id; we map to
         # parent.autoincrement_id).
-        if source_asset_rows:
+        if source_asset_rows and store_root is not None:
             sa_columns = _get_table_columns(db, "source_assets")
-            sa_count = _import_source_assets(
-                db, source_asset_rows, archive_dir, uid_map, sa_columns
+            sa_count, sa_errors = _import_source_assets(
+                db, source_asset_rows, archive_dir, uid_map, sa_columns, store_root
             )
+            errors.extend(sa_errors)
             db.conn.commit()
             counts["source_assets"] = sa_count
         else:

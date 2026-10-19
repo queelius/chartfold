@@ -284,7 +284,7 @@ class SourceAsset:
 
     source: str
     asset_type: str  # pdf, png, html, xsl, etc.
-    file_path: str  # absolute path on disk
+    file_path: str  # absolute, or relative to the DB dir (see media.resolve_asset_path)
     file_name: str  # basename for display
     file_size_kb: int = 0
     content_type: str = ""  # MIME type
