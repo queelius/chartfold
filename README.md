@@ -77,7 +77,16 @@ health-memex export arkiv --output ./arkiv/ --embed
 # Import from arkiv archive
 health-memex import ./arkiv/ --db new.db
 health-memex import ./arkiv/ --validate-only
+health-memex import ./arkiv.zip --db new.db --media-dir ./assets  # custom media store
 ```
+
+Import copies each source asset (PDF, image, ...) out of the archive into the
+database's own media store, `<db dir>/media/<unique_id>.<ext>` by default, and
+records the path relative to the database directory, so the imported database
+keeps working after the archive is deleted and can be moved together with its
+`media/` directory. Assets loaded directly from EHR exports keep their
+absolute paths to the original files. Files are named by each asset's durable
+`unique_id`, so byte-identical assets on distinct rows are stored once per row.
 
 ### MCP Server
 

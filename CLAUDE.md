@@ -179,7 +179,8 @@ Domain-specific extraction helpers used by adapters and analysis modules:
 ### Export Modules
 
 - `export_arkiv.py`: Arkiv universal record format (JSONL + README.md + schema.yaml). Primary backup/restore format with full round-trip support. Source assets exported to `media/` or inline base64 via `--embed`. Record URIs use `health-memex:{table}/{id}` prefix.
-- `import_arkiv.py`: Arkiv import with validation, FK remapping, tag unfolding, and source asset restoration. Accepts both `health-memex:` and legacy `chartfold:` URI prefixes.
+- `import_arkiv.py`: Arkiv import with validation, FK remapping, tag unfolding, and source asset restoration. Accepts both `health-memex:` and legacy `chartfold:` URI prefixes. Asset bytes are copied into the archive's media store (`<db dir>/media/<unique_id>.<ext>`, or `--media-dir`) and upserted by `unique_id`, so re-imports are idempotent.
+- `media.py`: source-asset storage. `source_assets.file_path` is either absolute (EHR-loaded assets, pointing at the original export) or relative to the DB directory (arkiv-imported assets). `resolve_asset_path(db_path, file_path)` is the **only** way to turn a stored `file_path` into a filesystem path; every reader must use it. `store_media` writes atomically (temp + `os.replace`), skips identical bytes, overwrites different bytes, and refuses symlinks.
 
 ### SPA (spa/)
 
@@ -241,6 +242,8 @@ This archive satisfies the `*-memex` contract (see `~/github/memex/CLAUDE.md`):
 
 - `mhtml_test_result.py`: The function `test_result_to_unified` starts with `test_`, so pytest tries to collect it as a test. Import it with `from ... import test_result_to_unified as adapt_test_result` in tests.
 - `source_assets` are inserted via raw SQL in tests (not through the adapter pipeline).
+- Imported `source_assets` rows must keep the `unique_id` carried in the bundle: the natural key is `(source, file_path)`, so recomputing it from the new relative path would change every asset URI. Media files are named by `unique_id` (not content hash) because `UNIQUE(source, file_path)` forbids two same-source rows sharing a path; identical bytes on distinct rows are stored per row by design.
+- Never read `source_assets.file_path` as a path directly; go through `media.resolve_asset_path`. Relative paths are anchored at the DB directory, not the CWD.
 - `_UNIQUE_KEYS` in `db.py` must match the UNIQUE constraints declared in `schema.sql`.
 - When adding a new table: update `_TABLE_MAP`, `_UNIQUE_KEYS`, `schema.sql`, `models.py`, `export_arkiv.py` (`_TIMESTAMP_FIELDS`, `_COLLECTION_DESCRIPTIONS`, `_FK_FIELDS` if applicable), `analysis/visit_diff.py`, and if it's a non-clinical table add it to `_NON_CLINICAL_TABLES` in `spa/chat_prompt.py`.
 - Legacy arkiv archives exported under the old `chartfold` name use `chartfold:` URI prefixes. The importer (`import_arkiv.py`) accepts both `health-memex:` and `chartfold:` URIs for backwards compatibility.

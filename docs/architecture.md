@@ -89,7 +89,7 @@ social_history, family_history, mental_status
 load_log        -- Audit trail
 notes           -- Personal annotations
 note_tags       -- Tag taxonomy
-source_assets   -- Original file references
+source_assets   -- Original file references (absolute EHR paths, or media/<unique_id>.<ext> relative to the DB dir for arkiv-imported assets)
 ```
 
 **Key Indexes**:
